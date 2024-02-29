@@ -1,0 +1,185 @@
+
+#   000 ip xxxxxxx  : AND
+#   001 ip xxxxxxx  : TAD
+#   010 ip xxxxxxx  : ISZ
+#   011 ip xxxxxxx  : DCA
+#   100 ip xxxxxxx  : JMS
+#   101 ip xxxxxxx  : JMP
+
+#   110 xxxxxxxxx   : IOT (passed to RASPI)
+
+#   111 0 xxxxxxxx  : OPR group 1
+#           1 <7> = CLA
+#           1 <6> = CLL
+#           2 <5> = CMA
+#           2 <4> = CML
+#           4 <3> = ROT AC and L RIGHT
+#           4 <2> = ROT AC and L LEFT
+#           4 <1> = 0: rot 1; 1: rot 2
+#                   0 0 0 = nop
+#                   0 0 1 = BSW
+#                   0 1 0 = ROL 1
+#                   0 1 1 = ROL 2
+#                   1 0 0 = ROR 1
+#                   1 0 1 = ROR 2
+#                   1 1 0 = undef
+#                   1 1 1 = undef
+#           3 <0> = IAC
+#
+#       CLA,CLL -> CMA,CML -> IAC -> RAR,RAL,RTR,RTL,BSW
+
+#   111 1 xxxxxxx 0 : OPR group 2
+#           2 <7> = CLA
+#           1 <6> = SMA
+#           1 <5> = SZA
+#           1 <4> = SNL
+#           1 <3> = reverse branch
+#           3 <2> = OSR  (passed to RASPI as an I/O instruction)
+#           4 <1> = HLT  (passed to RASPI as an I/O instruction)
+#
+#       SMA,SZA,SNL,rev -> CLA -> OSR -> HLT
+
+#   111 1 xxxxxxx 1 : OPR group 3 (passed to RASPI as an I/O instruction)
+
+
+#   fetch1:                 send PC to RASPI and tell it to read
+#       alua = pc
+#       alub = -1
+#       aluop = AND
+#       mread
+#   fetch2:                 get opcode,address back from RASPI into IR,MA
+#       ir = mq
+#       alua[11:07] = meminst ? (mq[7] ? pc[11:07] : 00000) : mq[11:07]
+#       alua[06:00] = mq[06:00]
+#       alub = -1
+#       aluop = AND
+#       ma = aluq
+#       incpc
+#
+#   defer1:                 send address to RASPI and tell it to read (indexed: and write)
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       mread[,mwrite]
+#   defer2:                 get pointer value from RASPI and save in MA
+#       alua = mq
+#       alub = -1
+#       aluop = AND
+#       ma = aluq
+#   defer3:                 indexed: send incremented MA back to RASPI
+#       alua = ma
+#       alub = 1
+#       aluop = ADD
+#       ma = aluq
+#
+#   jmp1:                   write MA to PC
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       pc = aluq
+#       if ! intreq, mread => fetch2
+#       else, => intrq1
+#
+#   intrq1:                 set up 'jms 0' and clear int req; send 0 to RASPI and tell it to write
+#       alua = don't care
+#       alub = 0
+#       aluop = AND
+#       ma = aluq
+#       ir = 10000
+#       intak
+#       mwrite
+#               => jms2
+#
+#   jms1:                   send MA to RASPI and tell it to write
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       mwrite
+#   jms2:                   send PC to RASPI as data to write
+#       alua = pc
+#       alub = -1
+#       aluop = AND
+#   jms3:                   increment MA and write to PC
+#       alua = ma
+#       alub = +1
+#       aluop = ADD
+#       pc = aluq
+#       if ! intreq, mread => fetch2
+#       else, => intrq1
+#
+#   arith1:                 send MA to RASPI and tell it to read
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       mread
+#   and2:                   perform anding with AC and data from RASPI, write to AC
+#       alua = mq
+#       alub = ac
+#       aluop = AND
+#       ac = aluq
+#   tad2:                   get value from RASPI, write to MA
+#       alua = mq
+#       alub = -1
+#       aluop = AND
+#       ma = aluq
+#   tad3:                   perform addition on MA + L,AC, put result in L,AC
+#       alua = ma
+#       alub = ac
+#       aluop = ADD
+#       ac = aluq
+#       link = link ^ cout
+#
+#   dca1:                   send MA to RASPI and tell it to write
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       mwrite
+#   dca2:                   send AC to RASPI as data to write
+#       alua = -1
+#       alub = ac
+#       aluop = AND
+#       ac = 0
+#
+#   isz1:                   send MA to RASPI as address and tell it to read & write
+#       alua = ma
+#       alub = -1
+#       aluop = AND
+#       mread,mwrite
+#   isz2:                   get data back from RASPI into MA
+#       alua = mq
+#       alub = -1
+#       aluop = AND
+#       ma = aluq
+#   isz3:                   send MA+1 back to RASPI as data to write to location
+#       alua = ma
+#       alub = +1
+#       aluop = ADD
+#       incpc = alucout
+#
+#   iot1:                   send AC to RASPI & tell RASPI to do I/O
+#       alua  = -1
+#       alub  = ac
+#       aluop = AND
+#       ioinstr
+#   iot2:                   get AC from RASPI
+#       alua  = mq
+#       alub  = -1
+#       aluop = AND
+#       ac    = aluq
+#       ln    = mql         (for group 3 EAE)
+#       incpc = ioskp
+#
+#   grpa1:                  update AC, update link
+#       alua = ma[05] ? -1 : 0
+#       alub = ir[07] ? ac : 0
+#       inc_axb = maq[00]
+#       ac,link = rotq
+#
+#   grpb1:                  (excludes OSR,HLT) maybe increment PC; maybe clear AC; maybe start fetch
+#       alua = pc
+#       alub = grpb_skip ? +1 : 0
+#       aluop = ADD
+#       pc = aluq
+#       if ma[07], ac = 0
+#       if ! intreq, mread => fetch2
+#       else, => intrq1

@@ -1,0 +1,67 @@
+
+... 256-word buffers used by this function and everything it calls
+|
+
+    // LEVEL 8
+1   Vol::umount
+
+    // LEVEL 7
+1   File::close
+3   File::enter
+2   File::lookup
+2   File::remove
+1   Stream::read
+3   Stream::write
+
+    // LEVEL 6
+1   File::delit
+3   File::extend
+1   File::vbntolbn
+1   Vol::createfile
+
+    // LEVEL 5
+1   File::create
+1   File::rxhb
+1   File::wxhb
+1   Stream::~Stream
+1   Vol::openfile
+
+    // LEVEL 4
+1   Stream::close
+1   Vol::allochdr
+1   Vol::gethdrlbn
+2   Vol::mount
+
+    // LEVEL 3
+1   File::open
+1   File::updattrs
+1   Vol::idxvbntolbn
+
+    // LEVEL 2
+0   File::rphb
+0   File::wphb
+1   Vol::allocblk
+1   Vol::freeblks
+3   Vol::initvol
+
+    // LEVEL 1
+0   RK8Disk::rlb
+0   RK8Disk::wlb
+
+    // LEVEL 0
+
+0   Dirent::fill
+0   Disk::Disk
+0   Disk::~Disk
+0   File::File
+0   File::~File
+0   File::calchdrchksum
+0   File::cmpdirent
+0   RK8Disk::RK8Disk
+0   RK8Disk::~RK8Disk
+0   RK8Disk::oback
+0   Stream::Stream
+0   Vol::Vol
+0   Vol::~Vol
+0   getnow48
+

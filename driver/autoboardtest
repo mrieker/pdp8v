@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+#  Module tester using paddles
+#
+#  just raspi and paddles:
+#    ./autoboardtest [-gdb] [-mult] [-page] [-verbose] rpi
+#
+#  raspi and paddles with acl and alu boards:
+#    ./autoboardtest [-gdb] [-page] [-verbose] rpi acl alu
+#
+#  everything:
+#    ./autoboardtest [-gdb] [-page] [-verbose] all
+#
+cd `dirname $0`
+./loadmod.sh
+. ./iowsns.si
+. ./gpioudp.si
+./iowowner.sh
+dbg=''
+if [ "$1" == "-gdb" ]
+then
+    dbg='gdb --args'
+    shift
+fi
+exec $dbg ./autoboardtest.`uname -m` "$@"

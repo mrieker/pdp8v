@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 0)
+  (lib (name "IOW56Paddle-rescue")(type "Legacy")(uri "${KIPRJMOD}/IOW56Paddle-rescue.lib")(options "")(descr ""))
+)

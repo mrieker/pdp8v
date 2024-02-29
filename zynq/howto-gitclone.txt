@@ -1,0 +1,30 @@
+
+made from pdp8v.tcl
+  file->project->write tcl
+  default options (only 'copy sources to new project' checked)
+
+assumes vivado 2023.2 is started from the project directory when tcl file is created,
+eg, vivado pdp8v.xpr
+
+when cloning:
+ 1) start vivado from the project directory and 'source pdp8v.tcl' script
+    - it creates a subdirectory with copy of all the source files plus lots of puque
+    - tcl error is ok: 'ERROR: [Common 17-69] Command failed: Invalid constraints filename specified'
+ 2) shut down vivado
+ 3) delete files from the project directory:
+      rm -rf NA pdp8v.srcs vivado.* .Xil
+ 4) move all files from subdirectory to project directory & delete subdirectory:
+      mv pdp8v/* .
+      rmdir pdp8v
+ 5) the dumbbell vivado sometimes moves files, eg, from sources_1/new to sources_1/imported/new
+      so git might have to be updated with the moved files
+ 6) restart vivado from project directory:
+      vivado pdp8v.xpr
+ 7) re-generate the pdp8v.tcl script to reflect the moved files and update it in git
+ 8) it takes extra time to build (generate bitstream) first time
+
+use makebootbin.sh to create BOOT.BIN file and copy to zturn's /boot/ directory
+to test, from the zturn:
+  cd nfs/pdp8/driver
+  ./raspictl -randmem -printinstr -zynqlib
+

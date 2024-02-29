@@ -1,0 +1,18 @@
+
+1972 handbook page 102 (v 2-10)
+
+    RIM format:
+
+        <6> = sync bit  <5:0> = addr <11:06>
+                        <5:0> = addr <05:00>
+                        <5:0> = data <11:06>
+                        <5:0> = data <05:00>
+
+    BIN format:
+
+        <6> = sync bit  <5:0> = addr <11:06>
+                        <5:0> = addr <05:00>
+                        <5:0> = data <11:06>
+                        <5:0> = data <05:00>
+            ... may have multiple data words
+

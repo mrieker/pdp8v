@@ -1,0 +1,26 @@
+
+how to make an bootable SD card:
+
+ 1) copy bootable raspi SD card
+ 2) re-init boot partition (keeping it FAT)
+ 3) copy BOOT.BIN, image.ub, and make an empty config.txt
+
+or starting with bootable zynq SD card:
+
+ 1) copy root filesystem from raspi card to zynq card
+
+either way then:
+
+ 1) modify /etc/fstab to mount the correct partitions (UUIDs might be different)
+
+  proc            /proc  proc  defaults          0  0
+  /dev/mmcblk0p1  /boot  vfat  defaults          0  2
+  /dev/mmcblk0p2  /      ext4  defaults,noatime  0  1
+
+ 2) put in zynq and reboot
+    serial port console comes up as 9600 baud
+
+ 3) maybe unlock root account by setting password with passwd command
+
+ 4) update /etc/hostname, /etc/hosts and /etc/dhcpcd.conf
+

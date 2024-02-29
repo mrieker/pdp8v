@@ -1,0 +1,5 @@
+# serial numbers of IOWPaddles plugged into the A,B,C,D connectors
+export iowsn_a=00000247
+export iowsn_b=00000246
+export iowsn_c=00000243
+export iowsn_d=00000249

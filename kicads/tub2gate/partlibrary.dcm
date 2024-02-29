@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 6J6
+D double triode
+K triode valve 
+F http://www.r-type.org/pdfs/ecc88.pdf
+$ENDCMP
+#
+#End Doc Library

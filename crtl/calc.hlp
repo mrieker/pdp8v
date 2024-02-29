@@ -1,0 +1,74 @@
+
+numbers:
+    values are all double precision complex
+    format examples:
+        1           real is 1, imaginary is zero
+        j           real is zero, imaginary is 1
+        j2          real is zero, imaginary is 2
+        3j4         real is 3, imaginary is 4
+        deg 5@30    real is 4.33, imaginary is 2.5
+    numeric parts (real or imaginary) can be any
+    double precision number, eg, 3, 3.4, 3.45e-6,
+    -3.45e6, .7
+
+input line format:
+    by default, after doing a computation, the result is saved in a numbered register
+    such as $1, $3, etc, and can be recalled by using that name in place of a number,
+    eg, 3*$6
+
+    results may be stored in a named variable by specifying the variable at beginning
+    of line followed by = then the computation, eg, c3=1/(2*pi*500e6*470), then that
+    name can be used in place of a number, eg, 1/(2*pi*sqrt(l2*c3))
+
+    arithmetic expressions using
+        + -         addition, subtraction (lowest precedence)
+        * /         multiplication, division
+        ** //       exponentiation, logarithm
+        @           complex composition from magnitude @ argument (highest precedence)
+                        shorthand for (re magnitude * cos re argument) + j * (re magnitude * sin re argument)
+
+    use ( ) to alter precedence in usual way, eg,
+        3+4*5+6     gives 29
+        3+4*(5+6)   gives 47
+
+    may reference built-in constants:
+        e, pi
+
+    may reference built-in functions (arguments separated by spaces):
+        abs x       absolute value of x
+        acos x      arccosine of x
+        arg x       argument of x (shorthand for arctan (im x/re x) but also returns full 2*pi range)
+        asin x      arcsine of x
+        atan x      arctangent of x
+        cos x       cosine of x
+        en x        natural exponent of x (use b**x for arbitrary base, eg 10**2 gives 100)
+        hypot x y   shorthand for sqrt(sq x+sq y)
+        im x        imaginary part of x (returned as real number)
+        ln x        natural logarithm of x (use b//x for arbitrary base, eg 10//100 gives 2)
+        re x        real part of x
+        sin x       sine of x
+        sq x        square of x (shorthand for x**2)
+        sqrt x      square root of x (shorthand for x**0.5)
+        tan x       tangent of x
+
+        deg     causes all subsequent angles passed to cos, sin, tan to be assumed in degrees
+                    and all angle values computed by acos, arg, asin, atan to be in degrees
+                    eg, deg sin 90 gives 1
+
+        rad     causes all subsequent angles passed to cos, sin, tan to be assumed in radians
+                    and all angle values computed by acos, arg, asin, atan to be in radians
+                    eg, rad cos (pi/3) gives 0.5
+
+    commands can be given on input line by themselves:
+        dump        prints out all named variables and their values
+        help        prints out this text
+        load fn     loads user defined variables and functions from file
+        quit        exits the calculator program
+        save fn     saves user defined variables and functions into file
+
+user defined functions:
+    funcname parm1 ... = expression
+
+    for example:
+        neg x = - x
+        hyp3d x y z = sqrt (sq x + sq y + sq z)

@@ -1,0 +1,79 @@
+
+/ ../asm/assemble.x86_64 -pal lightroll.pal lightroll.obj > lightroll.lis
+/ ../asm/link.x86_64 -o lightroll.oct lightroll.obj > lightroll.map
+/ ../driver/raspictl -mintimes -startpc 0 lightroll.oct
+
+	CLZE = 6130  /  (RTC) clear the given enable bits
+	CLSK = 6131  /  (RTC) skip if requesting interrupt
+	CLDE = 6132  /  (RTC) set the given enable bits
+	CLAB = 6133  /  (RTC) set buffer and counter to given value
+	CLEN = 6134  /  (RTC) read enable register
+	CLSA = 6135  /  (RTC) read status register and reset it
+	CLBA = 6136  /  (RTC) read buffer register
+	CLCA = 6137  /  (RTC) read counter into buffer and read buffer
+
+	ION  = 6001
+	CLA2 = 7600		/ ONE CYCLE FASTER THAN REGULAR CLA
+
+*0
+ISR,
+	JMP	START
+	DCA	SAVEAC
+	CLSA			/ CLEAR CLOCK INTERRUPT REQUEST
+	CLA2
+	TAD	SAVEAC
+	ION
+	JMP I	ISR
+
+*10
+POINTR,	TABLE-1
+
+	.global __boot
+__boot,
+START,
+	CLA CMA			/ CLEAR ALL FLAGS
+	CLZE
+	CLA2			/ SET NUMBER OF TICKS
+	TAD	PERIOD
+	CLAB
+	CLA2			/ SET INTERRUPT ENABLE
+	TAD	INTENA
+	CLDE
+	ION			/ ENABLE INTERRUPTS
+LOOP,
+	CLA CLL			/ GET VALUE TO HALT WITH
+LOOP2,
+	TAD I	POINTR
+	HLT
+	CLA2			/ SEE IF AT END OF TABLE
+	TAD	POINTR
+	TAD	ENDTBPTR
+	SZA CLA
+	JMP	LOOP2		/ REPEAT AS IS IF NOT
+	TAD	BEGTBPTR	/ RESET TO BEGINNING OF TABLE IF SO
+	DCA	POINTR
+	JMP	LOOP
+
+SAVEAC,	0			/ SAVE AC DURING INTERRUPT
+
+INTENA,	5500			/    <11> = INT ENAB
+				/ <10:09> = 01  : REPEAT
+				/ <08:06> = 101 : 10uS TICKS
+PERIOD, -3333.			/ INTERRUPT EVERY 33330uS
+
+BEGTBPTR, TABLE-1
+ENDTBPTR, -ENDTAB
+
+TABLE,	4001
+	6003
+	3006
+	1414
+	0630
+	0360
+	0140
+	0360
+	0630
+	1414
+ENDTAB,	3006
+
+

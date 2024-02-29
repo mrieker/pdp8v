@@ -1,0 +1,7 @@
+
+halt state pin:
+
+    fetch1q -> STATES[07] -> PIN_B5 -> GPIO_0_7  -> pin 10
+    fetch2q -> STATES[08] -> PIN_A5 -> GPIO_0_8  -> pin 13
+    halt1q  -> STATES[17] -> PIN_E6 -> GPIO_0_17 -> pin 22
+

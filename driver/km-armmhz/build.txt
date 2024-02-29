@@ -1,0 +1,10 @@
+# make sure running latest kernel so installing headers will match version
+apt-get update
+apt-get upgrade
+
+# install latest headers
+apt-get install raspberrypi-kernel-headers
+
+# compile and load
+make
+insmod armmhz.ko

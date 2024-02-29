@@ -1,0 +1,52 @@
+
+pins that need to be jumpered on a real hardware implementation
+for the proc_ma_seq_mqjmp_aluq testboard module
+
+note that the proc_ma_seq_mqjmp_aluq module in proc.mod does this
+by the _aluq = mq statement so testboard will match the hardware
+
+the bits of the MA get tested by sensing autoidx and the various
+bits of Group 1 & 2 instruction that trigger an I/O instruction
+
+
+#define abody \
+
+        _aluq[11],          /* 03 */ \
+         mq[11],            /* 06 */ \
+
+        _aluq[10],          /* 10 */ \
+         mq[10],            /* 13 */ \
+
+        _aluq[09],          /* 17 */ \
+         mq[09],            /* 20 */ \
+
+        _aluq[08],          /* 24 */ \
+         mq[08],            /* 27 */ \
+
+        _aluq[07],          /* 31 */ \
+#define bbody \
+         mq[07],            /* 03 */ \
+
+        _aluq[06],          /* 07 */ \
+         mq[06],            /* 10 */ \
+
+        _aluq[05],          /* 14 */ \
+         mq[05],            /* 17 */ \
+
+        _aluq[04],          /* 21 */ \
+         mq[04],            /* 24 */ \
+
+        _aluq[03],          /* 28 */ \
+         mq[03],            /* 31 */ \
+
+#define cbody \
+
+        _aluq[02],          /* 03 */ \
+         mq[02],            /* 06 */ \
+
+        _aluq[01],          /* 10 */ \
+         mq[01],            /* 13 */ \
+
+        _aluq[00],          /* 17 */ \
+         mq[00],            /* 20 */ \
+

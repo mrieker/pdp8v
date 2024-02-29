@@ -1,0 +1,57 @@
+
+    HODE C+ (not C++) LANGUAGE REFERENCE
+
+* standard C language features
+
+    intrinsic type = aliases ...
+        __flt32_t  = float
+        __flt64_t  = double
+        __bool_t   = bool (byte that can contain only 0 or 1)
+        __int8_t   = char  = signed char
+        __int16_t  = short = signed short = int = signed int = __ssize_t
+        __int32_t  = long  = signed long
+        __int64_t
+        __uint8_t  = unsigned char
+        __uint16_t = unsigned short = unsigned int = __size_t
+        __uint32_t = unsighed long
+        __uint64_t
+        __void     = void
+
+    struct/union declaration does automatic typedef of same name
+
+    cannot declare function pointers like this:
+        void (*funcptr) (int arg);
+    must use separate typedef and declaration:
+        typedef void FuncType (int arg);
+        FuncType *funcptr;
+
+    no multi-dimension arrays
+
+* some C++ features
+
+    multiple inheritance
+
+    virtual functions
+
+    try/catch/throw PLUS finally
+        can only throw & catch a pointer type
+
+    no parameters to constructor (use init or static functions as needed)
+
+    no class, private, protected, public (use struct & all are public)
+
+    no overloading
+
+    no templates
+
+    no namespaces
+
+    no std:: library
+
+    no function bodies in struct decl, must define externally
+
+    use '<structtype>::<structtype> ();' if no explicit constructor
+    to tell it where to put vtable and internal init() function.
+    if struct has explicit constructor, vtable and internal init()
+    are inserted right after constructor body.
+

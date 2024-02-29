@@ -1,0 +1,827 @@
+EESchema Schematic File Version 2
+LIBS:power
+LIBS:device
+LIBS:transistors
+LIBS:conn
+LIBS:linear
+LIBS:regul
+LIBS:74xx
+LIBS:cmos4000
+LIBS:adc-dac
+LIBS:memory
+LIBS:xilinx
+LIBS:microcontrollers
+LIBS:dsp
+LIBS:microchip
+LIBS:analog_switches
+LIBS:motorola
+LIBS:texas
+LIBS:intel
+LIBS:audio
+LIBS:interface
+LIBS:digital-audio
+LIBS:philips
+LIBS:display
+LIBS:cypress
+LIBS:siliconi
+LIBS:opto
+LIBS:atmel
+LIBS:contrib
+LIBS:valves
+LIBS:partlibrary
+LIBS:tester-cache
+EELAYER 25 0
+EELAYER END
+$Descr User 7500 6000
+encoding utf-8
+Sheet 1 1
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L 6J6 U1
+U 1 1 62BDFD93
+P 2800 1700
+F 0 "U1" H 2970 1980 50  0000 L CNN
+F 1 "6J6" H 3000 1400 50  0000 L CNN
+F 2 "footlibrary:B7G-0.7dia" H 3070 1300 50  0001 C CNN
+F 3 "" H 2800 1700 50  0001 C CNN
+	1    2800 1700
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R4
+U 1 1 62BDFD9F
+P 2800 750
+F 0 "R4" V 2880 750 50  0000 C CNN
+F 1 "26.7K" V 2800 750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 2730 750 50  0001 C CNN
+F 3 "" H 2800 750 50  0001 C CNN
+	1    2800 750 
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R3
+U 1 1 62BDFDA5
+P 2400 2750
+F 0 "R3" V 2480 2750 50  0000 C CNN
+F 1 "150K" V 2400 2750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 2330 2750 50  0001 C CNN
+F 3 "" H 2400 2750 50  0001 C CNN
+	1    2400 2750
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R11
+U 1 1 62BDFDE0
+P 6600 1650
+F 0 "R11" V 6680 1650 50  0000 C CNN
+F 1 "26.7K" V 6600 1650 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 6530 1650 50  0001 C CNN
+F 3 "" H 6600 1650 50  0001 C CNN
+	1    6600 1650
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R9
+U 1 1 62BDFDE6
+P 5800 2750
+F 0 "R9" V 5880 2750 50  0000 C CNN
+F 1 "150K" V 5800 2750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 5730 2750 50  0001 C CNN
+F 3 "" H 5800 2750 50  0001 C CNN
+	1    5800 2750
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R10
+U 1 1 62BDFDEC
+P 6200 750
+F 0 "R10" V 6280 750 50  0000 C CNN
+F 1 "26.7K" V 6200 750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 6130 750 50  0001 C CNN
+F 3 "" H 6200 750 50  0001 C CNN
+	1    6200 750 
+	1    0    0    -1  
+$EndComp
+$Comp
+L 6J6 U1
+U 2 1 62BDFE3B
+P 6200 1700
+F 0 "U1" H 6370 1980 50  0000 L CNN
+F 1 "6J6" H 6400 1400 50  0000 L CNN
+F 2 "footlibrary:B7G-0.7dia" H 6470 1300 50  0001 C CNN
+F 3 "" H 6200 1700 50  0001 C CNN
+	2    6200 1700
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R5
+U 1 1 62F33AD9
+P 3200 1650
+F 0 "R5" V 3280 1650 50  0000 C CNN
+F 1 "26.7K" V 3200 1650 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 3130 1650 50  0001 C CNN
+F 3 "" H 3200 1650 50  0001 C CNN
+	1    3200 1650
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R6
+U 1 1 62F33B69
+P 3200 3450
+F 0 "R6" V 3280 3450 50  0000 C CNN
+F 1 "46.4K" V 3200 3450 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 3130 3450 50  0001 C CNN
+F 3 "" H 3200 3450 50  0001 C CNN
+	1    3200 3450
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R12
+U 1 1 62F37BE8
+P 6600 3450
+F 0 "R12" V 6680 3450 50  0000 C CNN
+F 1 "46.4K" V 6600 3450 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 6530 3450 50  0001 C CNN
+F 3 "" H 6600 3450 50  0001 C CNN
+	1    6600 3450
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R13
+U 1 1 63056209
+P 6900 1250
+F 0 "R13" V 6980 1250 50  0000 C CNN
+F 1 "4.7K" V 6900 1250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 6830 1250 50  0001 C CNN
+F 3 "" H 6900 1250 50  0001 C CNN
+	1    6900 1250
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R7
+U 1 1 63056215
+P 3500 1250
+F 0 "R7" V 3580 1250 50  0000 C CNN
+F 1 "4.7K" V 3500 1250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 3430 1250 50  0001 C CNN
+F 3 "" H 3500 1250 50  0001 C CNN
+	1    3500 1250
+	1    0    0    -1  
+$EndComp
+$Comp
+L 6J6 U1
+U 3 1 6305882F
+P 6650 4250
+F 0 "U1" H 6820 4530 50  0000 L CNN
+F 1 "6J6" H 6850 3950 50  0000 L CNN
+F 2 "footlibrary:B7G-0.7dia" H 6920 3850 50  0001 C CNN
+F 3 "" H 6650 4250 50  0001 C CNN
+	3    6650 4250
+	0    1    1    0   
+$EndComp
+$Comp
+L GND #PWR2
+U 1 1 63064800
+P 2700 3200
+F 0 "#PWR2" H 2700 2950 50  0001 C CNN
+F 1 "GND" H 2700 3050 50  0000 C CNN
+F 2 "" H 2700 3200 50  0001 C CNN
+F 3 "" H 2700 3200 50  0001 C CNN
+	1    2700 3200
+	1    0    0    -1  
+$EndComp
+$Comp
+L C C4
+U 1 1 630CEFA7
+P 2700 2750
+F 0 "C4" H 2725 2850 50  0000 L CNN
+F 1 "0.1u" H 2725 2650 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 2738 2600 50  0001 C CNN
+F 3 "" H 2700 2750 50  0001 C CNN
+	1    2700 2750
+	1    0    0    -1  
+$EndComp
+$Comp
+L C C1
+U 1 1 630DB1E1
+P 900 2750
+F 0 "C1" H 925 2850 50  0000 L CNN
+F 1 "0.1u" H 925 2650 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 938 2600 50  0001 C CNN
+F 3 "" H 900 2750 50  0001 C CNN
+	1    900  2750
+	1    0    0    -1  
+$EndComp
+$Comp
+L C C3
+U 1 1 630DB1E7
+P 1300 3450
+F 0 "C3" H 1325 3550 50  0000 L CNN
+F 1 "0.1u" H 1325 3350 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 1338 3300 50  0001 C CNN
+F 3 "" H 1300 3450 50  0001 C CNN
+	1    1300 3450
+	1    0    0    -1  
+$EndComp
+$Comp
+L CONN_01X03 J3
+U 1 1 6317AA52
+P 1600 1700
+F 0 "J3" H 1600 1900 50  0000 C CNN
+F 1 "CONN_01X03" V 1700 1700 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 1600 1700 50  0001 C CNN
+F 3 "" H 1600 1700 50  0001 C CNN
+	1    1600 1700
+	-1   0    0    -1  
+$EndComp
+$Comp
+L CONN_01X06 J1
+U 1 1 6317AE60
+P 300 550
+F 0 "J1" H 300 750 50  0000 C CNN
+F 1 "CONN_01X03" V 400 550 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x06_Pitch2.54mm" H 300 550 50  0001 C CNN
+F 3 "" H 300 550 50  0001 C CNN
+	1    300  550 
+	-1   0    0    -1  
+$EndComp
+$Comp
+L CONN_01X03 J4
+U 1 1 6317C6F8
+P 5000 1700
+F 0 "J4" H 5000 1900 50  0000 C CNN
+F 1 "CONN_01X03" V 5100 1700 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 5000 1700 50  0001 C CNN
+F 3 "" H 5000 1700 50  0001 C CNN
+	1    5000 1700
+	-1   0    0    -1  
+$EndComp
+$Comp
+L CONN_01X03 J5
+U 1 1 6317CE03
+P 5400 4250
+F 0 "J5" H 5400 4450 50  0000 C CNN
+F 1 "CONN_01X03" V 5500 4250 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 5400 4250 50  0001 C CNN
+F 3 "" H 5400 4250 50  0001 C CNN
+	1    5400 4250
+	-1   0    0    -1  
+$EndComp
+$Comp
+L CONN_01X01 J6
+U 1 1 6308F79C
+P 7200 2500
+F 0 "J6" H 7200 2600 50  0000 C CNN
+F 1 "CONN_01X01" V 7300 2500 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x01_Pitch2.54mm" H 7200 2500 50  0001 C CNN
+F 3 "" H 7200 2500 50  0001 C CNN
+	1    7200 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L CONN_01X01 J7
+U 1 1 6308F7A2
+P 7200 3000
+F 0 "J7" H 7200 3100 50  0000 C CNN
+F 1 "CONN_01X01" V 7300 3000 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x01_Pitch2.54mm" H 7200 3000 50  0001 C CNN
+F 3 "" H 7200 3000 50  0001 C CNN
+	1    7200 3000
+	1    0    0    -1  
+$EndComp
+$Comp
+L D_Zener D6
+U 1 1 63168EB8
+P 6100 2750
+F 0 "D6" H 6100 2850 50  0000 C CNN
+F 1 "3.0V" H 6100 2650 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 6100 2750 50  0001 C CNN
+F 3 "" H 6100 2750 50  0001 C CNN
+	1    6100 2750
+	0    1    1    0   
+$EndComp
+$Comp
+L R R1
+U 1 1 6316A12B
+P 1650 2200
+F 0 "R1" V 1730 2200 50  0000 C CNN
+F 1 "220" V 1650 2200 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 1580 2200 50  0001 C CNN
+F 3 "" H 1650 2200 50  0001 C CNN
+	1    1650 2200
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	2700 2100 2700 2600
+Wire Wire Line
+	1800 2200 6100 2200
+Wire Wire Line
+	6100 2100 6100 2600
+Wire Wire Line
+	2800 900  2800 1300
+Wire Wire Line
+	2800 300  2800 600 
+Wire Wire Line
+	500  300  6200 300 
+Wire Wire Line
+	1800 1700 2500 1700
+Wire Wire Line
+	2400 1600 2400 2600
+Wire Wire Line
+	5800 2900 5800 4850
+Wire Wire Line
+	6200 900  6200 1300
+Wire Wire Line
+	6200 300  6200 600 
+Wire Wire Line
+	5800 1600 5800 2600
+Wire Wire Line
+	5200 1700 5900 1700
+Connection ~ 2700 2200
+Wire Wire Line
+	600  3000 7000 3000
+Wire Wire Line
+	2400 3000 2400 2900
+Wire Wire Line
+	2700 2900 2700 3200
+Connection ~ 2700 3000
+Wire Wire Line
+	7000 2500 6900 2500
+Connection ~ 2400 3000
+Wire Wire Line
+	5600 4150 6200 4150
+Wire Wire Line
+	5600 4350 6200 4350
+Connection ~ 2800 300 
+Wire Wire Line
+	1300 2200 1500 2200
+$Comp
+L C C2
+U 1 1 644398EA
+P 1300 2750
+F 0 "C2" H 1325 2850 50  0000 L CNN
+F 1 "0.1u" H 1325 2650 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 1338 2600 50  0001 C CNN
+F 3 "" H 1300 2750 50  0001 C CNN
+	1    1300 2750
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	1300 2900 1300 3300
+Connection ~ 1300 3000
+Wire Wire Line
+	1300 400  1300 2600
+$Comp
+L D_Zener D7
+U 1 1 64439F97
+P 6900 1650
+F 0 "D7" H 6900 1750 50  0000 C CNN
+F 1 "1N4148" H 6900 1550 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 6900 1650 50  0001 C CNN
+F 3 "" H 6900 1650 50  0001 C CNN
+	1    6900 1650
+	0    -1   -1   0   
+$EndComp
+$Comp
+L D_Zener D3
+U 1 1 6443A0FB
+P 3500 1650
+F 0 "D3" H 3500 1750 50  0000 C CNN
+F 1 "1N4148" H 3500 1550 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 3500 1650 50  0001 C CNN
+F 3 "" H 3500 1650 50  0001 C CNN
+	1    3500 1650
+	0    -1   -1   0   
+$EndComp
+Text Label 4100 2200 0    60   ~ 0
++3V
+Wire Wire Line
+	6900 1400 6900 1500
+Wire Wire Line
+	3500 1400 3500 1500
+Wire Wire Line
+	900  3000 900  2900
+$Comp
+L R R8
+U 1 1 6443FD41
+P 5800 750
+F 0 "R8" V 5880 750 50  0000 C CNN
+F 1 "47K" V 5800 750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 5730 750 50  0001 C CNN
+F 3 "" H 5800 750 50  0001 C CNN
+	1    5800 750 
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R2
+U 1 1 6443FE6A
+P 2400 750
+F 0 "R2" V 2480 750 50  0000 C CNN
+F 1 "47K" V 2400 750 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 2330 750 50  0001 C CNN
+F 3 "" H 2400 750 50  0001 C CNN
+	1    2400 750 
+	1    0    0    -1  
+$EndComp
+$Comp
+L D_Zener D2
+U 1 1 644400B0
+P 2400 1450
+F 0 "D2" H 2400 1550 50  0000 C CNN
+F 1 "1N4148" H 2400 1350 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 2400 1450 50  0001 C CNN
+F 3 "" H 2400 1450 50  0001 C CNN
+	1    2400 1450
+	0    1    -1   0   
+$EndComp
+$Comp
+L D_Zener D1
+U 1 1 644401A2
+P 2150 1100
+F 0 "D1" H 2150 1200 50  0000 C CNN
+F 1 "1N4148" H 2150 1000 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 2150 1100 50  0001 C CNN
+F 3 "" H 2150 1100 50  0001 C CNN
+	1    2150 1100
+	1    0    0    -1  
+$EndComp
+$Comp
+L D_Zener D4
+U 1 1 64440242
+P 5550 1100
+F 0 "D4" H 5550 1200 50  0000 C CNN
+F 1 "1N4148" H 5550 1000 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 5550 1100 50  0001 C CNN
+F 3 "" H 5550 1100 50  0001 C CNN
+	1    5550 1100
+	1    0    0    -1  
+$EndComp
+$Comp
+L D_Zener D5
+U 1 1 644402E4
+P 5800 1450
+F 0 "D5" H 5800 1550 50  0000 C CNN
+F 1 "1N4148" H 5800 1350 50  0000 C CNN
+F 2 "Diodes_THT:D_DO-35_SOD27_P7.62mm_Horizontal" H 5800 1450 50  0001 C CNN
+F 3 "" H 5800 1450 50  0001 C CNN
+	1    5800 1450
+	0    1    -1   0   
+$EndComp
+Connection ~ 2400 1700
+Wire Wire Line
+	900  2600 900  300 
+Connection ~ 900  300 
+Wire Wire Line
+	6600 3700 6600 3600
+Wire Wire Line
+	700  3700 6600 3700
+Wire Wire Line
+	1300 3600 1300 3700
+Wire Wire Line
+	6600 1800 6600 3300
+Wire Wire Line
+	3200 3600 3200 3700
+Connection ~ 3200 3700
+Wire Wire Line
+	3200 1800 3200 3300
+Wire Wire Line
+	3200 1500 3200 1100
+Wire Wire Line
+	3200 1100 2800 1100
+Connection ~ 2800 1100
+Wire Wire Line
+	6200 1100 6600 1100
+Wire Wire Line
+	6600 1100 6600 1500
+Connection ~ 6200 1100
+Connection ~ 6100 2200
+Wire Wire Line
+	6100 3000 6100 2900
+Connection ~ 5800 3000
+Wire Wire Line
+	5800 900  5800 1300
+Wire Wire Line
+	2400 900  2400 1300
+Wire Wire Line
+	2300 1100 2400 1100
+Connection ~ 2400 1100
+Connection ~ 5800 1700
+Wire Wire Line
+	5700 1100 5800 1100
+Connection ~ 5800 1100
+Wire Wire Line
+	1300 400  6900 400 
+Wire Wire Line
+	5800 400  5800 600 
+Wire Wire Line
+	2400 600  2400 400 
+Connection ~ 2400 400 
+Connection ~ 1300 2200
+Wire Wire Line
+	3500 1100 3500 400 
+Connection ~ 3500 400 
+Wire Wire Line
+	6900 400  6900 1100
+Connection ~ 5800 400 
+Text Label 4100 300  0    60   ~ 0
++120V
+Wire Wire Line
+	3500 2100 3500 1800
+Wire Wire Line
+	6900 2100 6900 1800
+Wire Wire Line
+	2000 1100 1900 1100
+Wire Wire Line
+	1900 1100 1900 1600
+Wire Wire Line
+	1900 1600 1800 1600
+Wire Wire Line
+	5200 1600 5300 1600
+Wire Wire Line
+	5300 1600 5300 1100
+Wire Wire Line
+	5300 1100 5400 1100
+Wire Wire Line
+	5200 1800 5300 1800
+Wire Wire Line
+	5300 1800 5300 2100
+Wire Wire Line
+	5300 2100 6900 2100
+Connection ~ 6600 2100
+Wire Wire Line
+	1800 1800 1900 1800
+Wire Wire Line
+	1900 1800 1900 2100
+Wire Wire Line
+	1900 2100 3500 2100
+Connection ~ 3200 2100
+Text Label 4150 3700 0    60   ~ 0
+-96V
+Connection ~ 900  3000
+Wire Wire Line
+	600  400  600  3000
+Wire Wire Line
+	5800 4250 5600 4250
+Wire Wire Line
+	6900 2500 6900 3000
+Connection ~ 6100 3000
+Text Label 6550 400  0    60   ~ 0
++5V
+Text Label 5650 4150 0    60   ~ 0
+VF1
+Text Label 5650 4350 0    60   ~ 0
+VF2
+Wire Wire Line
+	500  500  1300 500 
+Connection ~ 1300 500 
+Wire Wire Line
+	700  3700 700  800 
+Wire Wire Line
+	700  800  500  800 
+Connection ~ 1300 3700
+Wire Wire Line
+	600  400  500  400 
+Wire Wire Line
+	500  700  600  700 
+Connection ~ 600  700 
+Wire Wire Line
+	500  600  600  600 
+Connection ~ 600  600 
+$Comp
+L R R14
+U 1 1 6444ED9E
+P 5900 4600
+F 0 "R14" V 5980 4600 50  0000 C CNN
+F 1 "10K" V 5900 4600 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 5830 4600 50  0001 C CNN
+F 3 "" H 5900 4600 50  0001 C CNN
+	1    5900 4600
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R15
+U 1 1 6444EF11
+P 6100 4600
+F 0 "R15" V 6180 4600 50  0000 C CNN
+F 1 "10K" V 6100 4600 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 6030 4600 50  0001 C CNN
+F 3 "" H 6100 4600 50  0001 C CNN
+	1    6100 4600
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5800 4850 6100 4850
+Wire Wire Line
+	6100 4850 6100 4750
+Connection ~ 5800 4250
+Wire Wire Line
+	5900 4750 5900 4850
+Connection ~ 5900 4850
+Wire Wire Line
+	5900 4450 5900 4150
+Connection ~ 5900 4150
+Wire Wire Line
+	6100 4450 6100 4350
+Connection ~ 6100 4350
+$Comp
+L Q_NPN_EBC Q1
+U 1 1 6457F3E9
+P 1300 4800
+F 0 "Q1" H 1500 4850 50  0000 L CNN
+F 1 "2N3904" H 1500 4750 50  0000 L CNN
+F 2 "TO_SOT_Packages_THT:TO-92_Molded_Wide" H 1500 4900 50  0001 C CNN
+F 3 "" H 1300 4800 50  0001 C CNN
+	1    1300 4800
+	1    0    0    -1  
+$EndComp
+$Comp
+L Q_NPN_EBC Q2
+U 1 1 6457F6AC
+P 2400 4800
+F 0 "Q2" H 2600 4850 50  0000 L CNN
+F 1 "2N3904" H 2600 4750 50  0000 L CNN
+F 2 "TO_SOT_Packages_THT:TO-92_Molded_Wide" H 2600 4900 50  0001 C CNN
+F 3 "" H 2400 4800 50  0001 C CNN
+	1    2400 4800
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R16
+U 1 1 6457F7C1
+P 1400 4250
+F 0 "R16" V 1480 4250 50  0000 C CNN
+F 1 "1K" V 1400 4250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 1330 4250 50  0001 C CNN
+F 3 "" H 1400 4250 50  0001 C CNN
+	1    1400 4250
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R17
+U 1 1 6457F8B3
+P 2100 4250
+F 0 "R17" V 2180 4250 50  0000 C CNN
+F 1 "68K" V 2100 4250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 2030 4250 50  0001 C CNN
+F 3 "" H 2100 4250 50  0001 C CNN
+	1    2100 4250
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R18
+U 1 1 6457F96B
+P 2500 4250
+F 0 "R18" V 2580 4250 50  0000 C CNN
+F 1 "1K" V 2500 4250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 2430 4250 50  0001 C CNN
+F 3 "" H 2500 4250 50  0001 C CNN
+	1    2500 4250
+	1    0    0    -1  
+$EndComp
+$Comp
+L R R19
+U 1 1 6457FA2D
+P 3200 4250
+F 0 "R19" V 3280 4250 50  0000 C CNN
+F 1 "68K" V 3200 4250 50  0000 C CNN
+F 2 "footlibrary:R_Axial_QtrWatt" V 3130 4250 50  0001 C CNN
+F 3 "" H 3200 4250 50  0001 C CNN
+	1    3200 4250
+	1    0    0    -1  
+$EndComp
+$Comp
+L C C5
+U 1 1 6457FB01
+P 1850 4500
+F 0 "C5" H 1875 4600 50  0000 L CNN
+F 1 "0.1u" H 1875 4400 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 1888 4350 50  0001 C CNN
+F 3 "" H 1850 4500 50  0001 C CNN
+	1    1850 4500
+	0    1    1    0   
+$EndComp
+$Comp
+L C C6
+U 1 1 6457FC25
+P 2950 4500
+F 0 "C6" H 2975 4600 50  0000 L CNN
+F 1 "0.1u" H 2975 4400 50  0000 L CNN
+F 2 "footlibrary:C_Axial_0.1uF" H 2988 4350 50  0001 C CNN
+F 3 "" H 2950 4500 50  0001 C CNN
+	1    2950 4500
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	1400 4400 1400 4600
+Wire Wire Line
+	700  4500 1700 4500
+Connection ~ 1400 4500
+Wire Wire Line
+	2000 4500 2100 4500
+Wire Wire Line
+	2100 4400 2100 4800
+Wire Wire Line
+	2250 4500 2800 4500
+Wire Wire Line
+	2500 4400 2500 4600
+Connection ~ 2500 4500
+Wire Wire Line
+	3100 4500 3200 4500
+Wire Wire Line
+	3200 4400 3200 5200
+Wire Wire Line
+	2100 4800 2200 4800
+Connection ~ 2100 4500
+Wire Wire Line
+	1400 5000 1400 5100
+Wire Wire Line
+	900  5100 2500 5100
+Wire Wire Line
+	2500 5000 2500 5300
+Wire Wire Line
+	3200 5200 1000 5200
+Wire Wire Line
+	1000 5200 1000 4800
+Wire Wire Line
+	1000 4800 1100 4800
+Connection ~ 3200 4500
+Wire Wire Line
+	1400 4000 1400 4100
+Wire Wire Line
+	1400 4000 3600 4000
+Wire Wire Line
+	3200 4000 3200 4100
+Wire Wire Line
+	2500 4100 2500 4000
+Connection ~ 2500 4000
+Wire Wire Line
+	2100 4100 2100 4000
+Connection ~ 2100 4000
+$Comp
+L GND #PWR1
+U 1 1 64580F5D
+P 2500 5300
+F 0 "#PWR1" H 2500 5050 50  0001 C CNN
+F 1 "GND" H 2500 5150 50  0000 C CNN
+F 2 "" H 2500 5300 50  0001 C CNN
+F 3 "" H 2500 5300 50  0001 C CNN
+	1    2500 5300
+	1    0    0    -1  
+$EndComp
+Connection ~ 2500 5100
+$Comp
+L CONN_01X03 J2
+U 1 1 64582394
+P 500 4500
+F 0 "J2" H 500 4700 50  0000 C CNN
+F 1 "CONN_01X03" V 600 4500 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 500 4500 50  0001 C CNN
+F 3 "" H 500 4500 50  0001 C CNN
+	1    500  4500
+	-1   0    0    -1  
+$EndComp
+$Comp
+L CONN_01X03 J8
+U 1 1 645824AE
+P 500 5400
+F 0 "J8" H 500 5600 50  0000 C CNN
+F 1 "CONN_01X03" V 600 5400 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_1x03_Pitch2.54mm" H 500 5400 50  0001 C CNN
+F 3 "" H 500 5400 50  0001 C CNN
+	1    500  5400
+	-1   0    0    -1  
+$EndComp
+Wire Wire Line
+	700  4400 800  4400
+Wire Wire Line
+	800  4400 800  4500
+Connection ~ 800  4500
+Wire Wire Line
+	700  5300 2250 5300
+Wire Wire Line
+	2250 5300 2250 4500
+Wire Wire Line
+	800  5300 800  5400
+Wire Wire Line
+	800  5400 700  5400
+Connection ~ 800  5300
+Wire Wire Line
+	700  4600 900  4600
+Wire Wire Line
+	900  4600 900  5500
+Wire Wire Line
+	900  5500 700  5500
+Connection ~ 900  5100
+Connection ~ 1400 5100
+Connection ~ 3200 4000
+Text Label 3350 4000 0    60   ~ 0
++5V
+$EndSCHEMATC

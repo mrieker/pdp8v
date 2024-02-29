@@ -1,0 +1,119 @@
+
+##########################
+#   build linux kernel   #
+##########################
+
+# https://www.instructables.com/Getting-Started-With-PetaLinux/
+
+apt install tofrodos iproute gawk gcc git-core make net-tools ncurses-dev libncurses5-dev tftpd-hpa zlib1g-dev flex bison lib32z1 lib32ncurses5 lib32stdc++6 libselinux1
+apt install build-essential
+apt install chrpath socat autoconf libtool texinfo gcc-multilib
+apt install libsdl1.2-dev libglib2.0-dev
+apt install openssl-dev
+apt install libssl-dev
+apt install openssl
+apt install zlib1g:i386
+
+dpkg-reconfigure dash
+
+mkdir petadevel
+/tools/Xilinx/Downloads/petalinux-v2018.3-final-installer.run petadevel
+
+source petadevel/settings.sh
+source /tools/Xilinx/Vivado/2018.3/settings64.sh
+
+mkdir petakernl
+cd petakernl
+petalinux-create -t project -s ../zturn_7z020_hdmi.bsp
+cd zturn
+petalinux-config    1m35    << accept all defaults
+
+petalinux-config -c kernel
+    Device Drivers --->
+        DMA Engine Support --->
+            Xilinx DMA Engines [off]
+            Xilinx AXI DMAS Engine [off]
+petalinux-build     3m6     << let it fail to build vdmafb.c
+
+cd build/tmp/work-shared/plnx-zynq7/kernel-source
+  patch -p1 < ~/MYIR_HW/vdmahdmi.patch
+    to drivers to disable VDMA and HDMI
+
+    - unpatched xilinx_vtc.c 20094 bytes
+        patched xilinx_vtc.c 19220 bytes
+
+cc ../../../../..
+petalinux-build     1m55    << it should succeed
+
+petalinux-package --boot --force --fsbl ./images/linux/zynq_fsbl.elf --fpga ./images/linux/system.bit --u-boot
+  copy images/linux/BOOT.BIN,image.ub to /boot/ on sdcard
+
+#######################################
+#   build BOOT.BIN with a .bit file   #
+#######################################
+
+# creates BOOT.BIN - can be run chrooted to the ubu1604 disk
+#  - can use any .bit file
+(do the above 2 source commands)
+petalinux-package --boot --force --fsbl ./images/linux/zynq_fsbl.elf --fpga ./images/linux/system.bit --u-boot
+
+#################################################
+#   copying raspi linux rootfs to zynq rootfs   #
+#################################################
+
+copy homepi rootfs to zynq rootfs (rsync -aHxv)
+- change ip address to 192.168.1.19
+  get rid of vpn stuff
+  update fstab entries
+  delete homebackups
+  empty out crontab
+  change /etc/hostname to zturn
+
+uname -r = 4.14.0-xilinx-v2018.3
+
+kernel source is in test01/zturn/build/tmp/work-shared/plnx-zynq7/kernel-source
+  rsync -av test01/zturn/build/tmp/work-shared/plnx-zynq7/kernel-source/ root@zturn:/usr/src/linux-headers-4.14.0-xilinx-v2018.3
+  rsync -av test01/zturn/build/tmp/work-shared/plnx-zynq7/kernel-build-artifacts/ root@zturn:/usr/src/linux-headers-4.14.0-xilinx-v2018.3
+
+then on zturn as root:
+  ln -s /usr/src/linux-headers-4.14.0-xilinx-v2018.3 /lib/modules/4.14.0-xilinx-v2018.3/build
+
+  cd /usr/src/linux-headers-4.14.0-xilinx-v2018.3
+  make oldconfig && make prepare
+  make modules_prepare
+
+
+##############################
+#   create a Vivado project  #
+##############################
+
+Use Z-turnBoard_Tutorial_Book.pdf
+    - make sure board_files/zturn-7z020 is in place in vivado tree
+    - in left column, "Create Block Design"
+    - add ZYNQ7 Processing System
+    - do "Run Block Automation" to define and connect DDR, FIXED_IO ports
+    - interconnect clocks FCLK_CLK0 -> M_AXI_GP0_ACLK, S_AXI_HP0_ACLK
+    - add any Verilog/VHDL files & add as modules to block diagram
+    - create hardware wrapper
+        "Sources" tab
+        right-click the .bd file
+        select "Create HDL Wrapper"
+        "Let Vivado manage..."
+        OK
+
+    - Run Synthesis, but then do "Open Synthesized Design"
+        - Window -> I/O Ports
+        - Scalar ports
+        - make pin assignments
+        - click save (floppy) button in upper left to save as constraints file
+
+    - Run Synthesis again to use new pin assignments
+    - Run Implementation
+    - Generate Bitstream
+
+create a new BOOT.BIN -
+    source both.si
+    cd test01/zturn
+    petalinux-package --boot --force --fsbl ./images/linux/zynq_fsbl.elf --fpga ***BITFILE***.bit --u-boot
+...get BOOT.BIN from images/linux
+

@@ -1,0 +1,102 @@
+
+
+    GPIO-0/JP1
+
+    GPIO_0_IN0  A8   1   2  D3  GPIO_0_0
+    GPIO_0_IN1  B8   3   4  C3  GPIO_0_1
+    GPIO_0_2    A2   5   6  A3  GPIO_0_3
+    GPIO_0_4    B3   7   8  B4  GPIO_0_5
+    GPIO_0_6    A4   9  10  B5  GPIO_0_7
+    VCC_SYS         11  12      GND
+    GPIO_0_8    A5  13  14  D5  GPIO_0_9
+    GPIO_0_10   B6  15  16  A6  GPIO_0_11
+    GPIO_0_12   B7  17  18  D6  GPIO_0_13
+    GPIO_0_14   A7  19  20  C6  GPIO_0_15
+    GPIO_0_16   C8  21  22  E6  GPIO_0_17
+    GPIO_0_18   E7  23  24  D8  GPIO_0_19
+    GPIO_0_20   E8  25  26  F8  GPIO_0_21
+    GPIO_0_22   F9  27  28  E9  GPIO_0_23
+    VCC_3P3         29  30      GND
+    GPIO_0_24   C9  31  32  D9  GPIO_0_25
+    GPIO_0_26   E11 33  34  E11 GPIO_0_27
+    GPIO_0_28   C11 35  36  B11 GPIO_0_29
+    GPIO_0_30   A12 37  38  D11 GPIO_0_31
+    GPIO_0_32   D12 39  40  B12 GPIO_0_33
+
+
+DE0-LEDS
+
+    D34 GPIO_0_33                               D16 GPIO_0_32
+                    D33 GPIO_0_31                               D15 GPIO_0_30
+    D32 GPIO_0_29                               D14 GPIO_0_28
+                    D31 GPIO_0_27                               D13 GPIO_0_26
+    D30 GPIO_0_25                               D12 GPIO_0_24
+
+                    D29 GPIO_0_23                               D11 GPIO_0_22
+    D28 GPIO_0_21                               D10 GPIO_0_20
+                    D27 GPIO_0_19                               D9  GPIO_0_18
+    D26 GPIO_0_17                               D8  GPIO_0_16
+                    D25 GPIO_0_15                               D7  GPIO_0_14
+    D24 GPIO_0_13                               D6  GPIO_0_12
+                    D23 GPIO_0_11                               D5  GPIO_0_10
+    D22 GPIO_0_9                                D4  GPIO_0_8
+
+                    D21 GPIO_0_7                                D3  GPIO_0_6
+    D20 GPIO_0_5                                D2  GPIO_0_4
+                    D19 GPIO_0_3                                D1  GPIO_0_2
+    D18 GPIO_0_1
+                    D17 GPIO_0_0
+
+
+
+                          GPIO-1/JP2                                                RASPI
+     raspi    de0                         de0      raspi            de0      raspi           raspi    de0
+            GPIO_1_IN0  T9   1   2  F13 GPIO_1_0  GPIO_26         GPIO_1_2  GPIO_21 40  39  GND
+            GPIO_1_IN1  R9   3   4  T15 GPIO_1_1  GPIO_19         GPIO_1_4  GPIO_20 38  37  GPIO_26 GPIO_1_0
+    GPIO_21 GPIO_1_2    T14  5   6  T13 GPIO_1_3  GPIO_13         GPIO_1_6  GPIO_16 36  35  GPIO_19 GPIO_1_1
+    GPIO_20 GPIO_1_4    R13  7   8  T12 GPIO_1_5  GPIO_6                    GND     34  33  GPIO_13 GPIO_1_3
+    GPIO_16 GPIO_1_6    R12  9  10  T11 GPIO_1_7  GPIO_5          GPIO_1_8  GPIO_12 32  31  GPIO_6  GPIO_1_5
+            VCC_SYS         11  12      GND                                 GND     30  29  GPIO_5  GPIO_1_7
+    GPIO_12 GPIO_1_8    T10 13  14  R11 GPIO_1_9                            ID_SC   28  27  ID_SD
+    GPIO_7  GPIO_1_10   P11 15  16  R10 GPIO_1_11                 GPIO_1_10 GPIO_7  26  25  GND
+    GPIO_8  GPIO_1_12   N12 17  18  P9  GPIO_1_13 GPIO_11         GPIO_1_12 GPIO_8  24  23  GPIO_11 GPIO_1_13
+    GPIO_25 GPIO_1_14   N9  19  20  N11 GPIO_1_15 GPIO_9          GPIO_1_14 GPIO_25 22  21  GPIO_9  GPIO_1_15
+            GPIO_1_16   L16 21  22  K16 GPIO_1_17 GPIO_10                   GND     20  19  GPIO_10 GPIO_1_17
+    GPIO_24 GPIO_1_18   R16 23  24  L15 GPIO_1_19 GPIO_22         GPIO_1_18 GPIO_24 18  17  3.3V
+    GPIO_23 GPIO_1_20   P15 25  26  P16 GPIO_1_21 GPIO_27         GPIO_1_20 GPIO_23 16  15  GPIO_22 GPIO_1_19
+            GPIO_1_22   R14 27  28  N16 GPIO_1_23 GPIO_17                   GND     14  13  GPIO_27 GPIO_1_21
+            VCC_3P3         29  30      GND                       GPIO_1_24 GPIO_18 12  11  GPIO_17 GPIO_1_23
+    GPIO_18 GPIO_1_24   N15 31  32  P14 GPIO_1_25                 GPIO_1_26 GPIO_15 10   9  GND
+    GPIO_15 GPIO_1_26   L14 33  34  N14 GPIO_1_27 GPIO_4          GPIO_1_28 GPIO_14  8   7  GPIO_4  GPIO_1_27
+    GPIO_14 GPIO_1_28   M10 35  36  L13 GPIO_1_29 GPIO_3                    GND      6   5  GPIO_3  GPIO_1_29
+            GPIO_1_30   J16 37  38  K15 GPIO_1_31 GPIO_2                    5V       4   3  GPIO_2  GPIO_1_31
+            GPIO_1_32   J13 39  40  J14 GPIO_1_33                           5V       2   1  3.3V
+
+
+
+                                         CLK    CS   RES   GND   3.3
+                                           *     *     *     *     *
+                                           6     7     8     9    10
+
+                                                    OLIMEX
+                                                  ENC28J60-H
+
+                                           5     4     3     2     1
+                                           *     *     *     *     *
+                                         INT   WOL    SO    SI   SCK
+
+
+
+
+                                      PIN_D9   E10   B11   D11   B12
+                                    GPIO_025   027   029   031   033
+                GND                GND   INT   CLK    CS   RES    COMRCV
+ 2               12                 30    32    34    36    38    40
+ *                *                  *     *     *     *     *     *
+
+ *                *                  *     *     *     *     *     *
+ 1               11                 29    31    33    35    37    39
+                +5V               +3.3   WOL    SO    SI   SCK    COMXMT
+                                    GPIO_024   026   028   030   032
+                                      PIN_C9   E11   C11   A12   D12
+

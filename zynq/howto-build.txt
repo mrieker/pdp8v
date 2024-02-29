@@ -1,0 +1,17 @@
+
+from homepc2:
+
+ 1) build with vivado 2018.3
+ 2) cd ~/MYIR_HW
+ 3) source both.si
+ 4) cd petakernl/zturn
+ 5) petalinux-package --boot --force --fsbl images/linux/zynq_fsbl.elf --fpga ~/nfs/pdp8/zynq/pdp8v.runs/impl_1/myboard_wrapper.bit --u-boot
+ 6) scp -p images/linux/BOOT.BIN root@192.168.1.19:/boot/
+ 7) ssh root@192.168.1.19 reboot
+
+test:
+
+ 1) ssh 192.168.1.19
+ 2) cd nfs/pdp8/driver
+ 3) ./raspictl -cpuhz 60000 -zynqlib -randmem -quiet -mintimes
+

@@ -1,0 +1,146 @@
+
+OUT 01  P5.2
+OUT 02  P6.1
+OUT 03  P6.7
+OUT 04  P6.3
+OUT 05  P3.0
+OUT 06  P8.6
+OUT 07  P4.2
+OUT 08  P4.0
+OUT 09  P5.7
+OUT 10  P8.5
+OUT 11  P2.7
+OUT 12  P8.3
+OUT 13  P6.6
+OUT 14  P6.4
+OUT 15  P5.3
+OUT 16  P6.0
+
+OUT 17  P3.7
+OUT 18  P3.3
+OUT 19  P7.3
+OUT 20  P7.7
+OUT 21  P0.1
+OUT 22  P0.0
+OUT 23  P0.5
+OUT 24  P4.5
+OUT 25  P2.2
+OUT 26  P3.4
+OUT 27  P4.4
+OUT 28  P0.4
+OUT 29  P4.6
+OUT 30  P1.0
+OUT 31  P7.4
+OUT 32  P7.0
+
+
+IN  01  P2.6
+IN  02  P2.4
+IN  03  P5.4
+IN  04  P6.5
+IN  05  P4.1
+IN  06  P4.3
+IN  07  P8.4
+IN  08  P5.6
+IN  09  P2.3
+IN  10  P2.5
+IN  11  P5.5
+IN  12  P3.1
+IN  13  P4.7
+IN  14  P5.1
+IN  15  P6.2
+IN  16  P1.1
+
+IN  17  P3.5
+IN  18  P7.1
+IN  19  P7.5
+IN  20  P8.7
+IN  21  P0.3
+IN  22  P0.7
+IN  23  P2.1
+IN  24  P0.2
+IN  25  P3.2
+IN  26  P2.0
+IN  27  P0.6
+IN  28  P3.6
+IN  29  P5.0
+IN  30  P7.6
+IN  31  P7.2
+IN  32  P1.2
+
+
+
+P0.0  OUT 22  
+P0.1  OUT 21  
+P0.2  IN  24  
+P0.3  IN  21  
+P0.4  OUT 28  
+P0.5  OUT 23  
+P0.6  IN  27  
+P0.7  IN  22  
+
+P1.0  OUT 30  
+P1.1  IN  16  
+P1.2  IN  32  
+
+P2.0  IN  26  
+P2.1  IN  23  
+P2.2  OUT 25  
+P2.3  IN  09  
+P2.4  IN  02  
+P2.5  IN  10  
+P2.6  IN  01  
+P2.7  OUT 11  
+
+P3.0  OUT 05  
+P3.1  IN  12  
+P3.2  IN  25  
+P3.3  OUT 18  
+P3.4  OUT 26  
+P3.5  IN  17  
+P3.6  IN  28  
+P3.7  OUT 17  
+
+P4.0  OUT 08  
+P4.1  IN  05  
+P4.2  OUT 07  
+P4.3  IN  06  
+P4.4  OUT 27  
+P4.5  OUT 24  
+P4.6  OUT 29  
+P4.7  IN  13  
+
+P5.0  IN  29  
+P5.1  IN  14  
+P5.2  OUT 01  
+P5.3  OUT 15  
+P5.4  IN  03  
+P5.5  IN  11  
+P5.6  IN  08  
+P5.7  OUT 09  
+
+P6.0  OUT 16  
+P6.1  OUT 02  
+P6.2  IN  15  
+P6.3  OUT 04  
+P6.4  OUT 14  
+P6.5  IN  04  
+P6.6  OUT 13  
+P6.7  OUT 03  
+
+P7.0  OUT 32  
+P7.1  IN  18  
+P7.2  IN  31  
+P7.3  OUT 19  
+P7.4  OUT 31  
+P7.5  IN  19  
+P7.6  IN  30  
+P7.7  OUT 20  
+
+P8.3  OUT 12  
+P8.4  IN  07  
+P8.5  OUT 10  
+P8.6  OUT 06  
+P8.7  IN  20  
+
+

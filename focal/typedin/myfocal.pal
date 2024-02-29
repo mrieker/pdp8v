@@ -1,0 +1,909 @@
+
+// ../../driver/raspictl -nohw -startpc 200 myfocal.oct
+// ../../driver/raspictl -cpuhz 52000 -startpc 200 myfocal.oct
+
+	ION  = 6001	/ interrupts on
+	IOF  = 6002	/ interrupts off
+
+	HCF  = 6010	/ dump registers and memory then exit
+
+	KSF  = 6031	/ skip if kb char to be read
+	KCC  = 6032	/ clear kb flag, clear acc, start reader
+	KRS  = 6034	/ read kb char but don't clear flag
+	KIE  = 6035	/ keyboard and printer interrupt enable
+	KRB  = 6036	/ read kb char and clear flag
+
+	TFL  = 6040	/ set tt flag pretending it is ready to accept
+	TSF  = 6041	/ skip if tt ready to accept
+	TCF  = 6042	/ clear tt flag
+	TPC  = 6044	/ start printing tt char
+	TLS  = 6046	/ clear tt flag, start printing tt char
+
+	CLSK = 6131	/ skip on clock interrupt
+	CLLR = 6132	/ set clock enable bits
+	CLAB = 6133	/ write clock buffer & counter
+	CLEN = 6134	/ read clock enable bits
+	CLSA = 6135	/ read clock status
+
+	LINC = 6141	/ switch to LINC mode
+
+	RMF  = 6244	/ restore memory field
+
+	SYS  = 6304	/ system call
+
+	DLDC = 6732	/ load command register
+	DLDR = 6733	/ load disk address and read
+	DLDW = 6735	/ load disk address and write
+	DRDS = 6741	/ read status register
+	DCLS = 6742	/ clear status register
+	DSKD = 6745	/ skip if disk done
+	DLWC = 6753	/ load negative word count
+	DLCA = 6755	/ load current address
+
+	.global	__boot
+
+*0
+	.-.
+	jmp i	.+1
+	.word	intserv
+
+*0020
+
+_tt4oct, tt4oct
+_ttchar, ttchar
+_ttcrlf, ttcrlf
+_ttline, ttline
+_umul,	umul
+_udiv,	udiv
+_wfi,	wfi
+
+kb_rem,	kb_ring
+tt_rem, tt_ring			/ where to get next char from ring
+
+rtc_count, .word 0,0		/ realtime clock overflow count
+
+umul_mcand, .blkw 2
+umul_multr, .blkw 1
+umul_prod,  .blkw 2
+
+udiv_dvquo, .blkw 2		/ dividend on input, quotient on output
+udiv_ndvsr, .blkw 1		/ negative of divisor
+udiv_remdr, .blkw 1		/ remainder on output
+
+*0200
+__boot,
+	cla iac
+
+	kie			/ enable keyboard and printer interrupt
+
+	tad	m0175		/ set up rtc interrupt 8 timesper second
+	clab			/ - counter = buffer = -125.
+	cla
+	tad	p5300		/ enable interrupt, use buffer for cycle, count at 1KHz
+	cllr
+
+	ion
+
+	cla			/ print CR LF
+	jms i	_ttcrlf
+main,
+	jms	printtime
+	tad	p0276		/ '>'
+	jms i	_ttchar
+
+	jms i	main_kbline	/ read line from keyboard into kbline_buf
+
+	jms	printtime
+	tad	p0272		/ ':'
+	jms i	_ttchar
+
+	tad	main_kbline_buf	/ print out line in kbline_buf
+	jms i	_ttline
+	jms i	_ttcrlf		/ print CR LF
+	jmp	main
+
+printtime, .-.
+	iof
+	tad	rtc_count+1
+	dca	main_tmp
+	tad	rtc_count+0
+	ion
+	jms	tt4oct
+	tad	main_tmp
+	jms	tt4oct
+	jmp i	printtime
+
+m0175,	-0175
+p0272,	 0272
+p0276,	 0276
+p5300,	 5300
+
+main_tmp, .-.
+main_kbline, kbline
+main_kbline_buf, kbline_buf
+
+////////////////////////////////////////////////////////////////
+/ print 4 octal digits
+/  input:
+/   ac = number to print
+/   interrupts on
+/  output:
+/   number printed
+/   ac = 0
+tt4oct,	.-.
+	dca	tt4oct_tmp
+	tad	tt4oct_tmp
+	bsw
+	rtr
+	rar
+	jms	tt4oct_print
+	tad	tt4oct_tmp
+	bsw
+	jms	tt4oct_print
+	tad	tt4oct_tmp
+	rtr
+	rar
+	jms	tt4oct_print
+	tad	tt4oct_tmp
+	jms	tt4oct_print
+	jmp i	tt4oct
+
+tt4oct_print, .-.
+	and	p0007
+	tad	p0060
+	jms i	_ttchar
+	jmp i	tt4oct_print
+
+tt4oct_tmp, .-.
+
+p0007,	0007
+p0060,	0060
+
+*0400
+////////////////////////////////////////////////////////////////
+/ wait for interrupt
+/ minimally needs to be: cla ; ion ; hlt
+/  input:
+/   interrupts off
+/  output:
+/   ac = 0
+/   interrupts on
+wfi,	.-.
+	cla cll
+	tad	rollen
+	rar
+	tad	rollem
+	ral
+	ion
+	hlt
+	dca	rollem
+	ral
+	dca	rollen
+	jmp i	wfi
+
+rollem,	03000
+rollen, 0
+
+////////////////////////////////////////////////////////////////
+/ interrupt service
+intserv,
+	dca	in_acum		/ save accumulator
+	ral			/ get link in <00>
+	dca	in_link		/ save link
+	clsk			/ check realtime clock
+	skp
+	jmp	rtcintr
+rtciret,
+	ksf			/ check keyboard
+	skp
+	jmp i	in_kbintr
+kbiret,
+	tsf			/ check printer
+	skp
+	jmp i	in_ttintr
+ttiret,
+	dskd			/ check disk
+	skp
+	jmp i	in_rkintr
+rkiret,
+	rmf			/ restore iframe,dframe,usermode
+	tad	in_link		/ get link in <00>
+	cll rar			/ rotate into link, clear ac
+	tad	in_acum		/ restore accumulator
+	ion
+	jmp i	0
+
+in_rtcintr, rtcintr
+in_kbintr, kbintr
+in_ttintr, ttintr
+in_rkintr, rkintr
+in_acum, .-.
+in_link, .-.
+
+////////////////////////////////////////////////////////////////
+/ realtime clock interrupt
+rtcintr,
+	clsa			/ read and clear status and interrupt
+	sma cla
+	jmp	rtciret
+	isz	rtc_count+1	/ count the counter overflows
+	jmp	rtciret
+	isz	rtc_count+0
+	jmp	rtciret
+	jmp	rtciret
+
+*0600
+/////////////////////////////////////////////////////////////////
+/ read line from keyboard
+/  input:
+/   ac = 0
+/   interrupts on
+/  output:
+/   ac = 0
+/   kbline_buf = null-terminated string
+kbline,	.-.
+	tad	kbline_beg	/ point to beginning of buffer
+	dca	kbline_ptr
+	tad	m0120		/ get negative buffer length
+	dca	kbline_len
+kbline_loop,
+	cla
+	jms	kbchar		/ get char from keyboard
+	tad	m0215		/ check for CR
+	sna
+	jmp	kbline_done	/ if so, all done
+	tad	m0023		/ see if other control char
+	spa
+	jmp	kbline_loop	/ ignore them
+	/ ac = char - 240
+	tad	m0137		/ check for rubout
+	sna
+	jmp	kbline_rubout	/ if so, go process it
+	tad	p0377		/ restore ascii char (now known to be printable)
+	dca i	kbline_ptr	/ save in buffer (there's always room for a nul)
+	tad	kbline_len	/ see if room in buffer
+	iac
+	sna
+	jmp	kbline_loop	/ if not, ignore and look for CR or rubout
+	dca	kbline_len	/ update remaining room (always leaving room for a nul)
+	tad i	kbline_ptr	/ echo to printer
+	jms i	_ttchar
+	isz	kbline_ptr	/ increment line buffer pointer
+	jmp	kbline_loop	/ read more from keyboard
+kbline_done,
+	dca i	kbline_ptr	/ null terminate line buffer
+	jms i	_ttcrlf		/ echo CR LF
+	jmp i	kbline		/ return to caller
+kbline_rubout,
+	tad	kbline_len	/ rubout, see if at beginning of line
+	tad	p0120
+	sna
+	jmp	kbline_loop	/ if so, ignore rubout
+	tad	m0121		/ if not, decrement num chars
+	dca	kbline_len
+	cma			/ decrement line buffer pointer
+	tad	kbline_ptr
+	dca	kbline_ptr
+	tad i	kbline_ptr	/ echo char that was deleted
+	jms i	_ttchar
+	jmp	kbline_loop	/ read more from keyboard
+
+m0120,	-0120
+m0121,  -0121
+m0137,	-0137
+m0215,	-0215
+m0023,	-0023
+p0120,   0120
+p0377,	 0377
+
+kbline_beg, kbline_buf
+kbline_ptr, .-.
+kbline_len, .-.
+
+////////////////////////////////////////////////////////////////
+/ read character from keyboard (no echo)
+/  input:
+/   ac = 0
+/   interrupts on
+/  output:
+/   kbchar_new = ac = ascii char
+kbchar,	.-.
+kbchar_loop,
+	iof
+	tad i	kb_rem
+	sna
+	jmp	kbchar_idle
+	dca	kbchar_new
+	dca i	kb_rem
+	tad	kb_rem
+	cma iac
+	and	c0020
+	cma
+	dca	kb_rem
+	ion
+	tad	kbchar_new
+	jmp i	kbchar
+kbchar_idle,
+	jms i	_wfi
+	jmp	kbchar_loop
+
+c0020,	~0020
+
+kbchar_new, .-.
+
+////////////////////////////////////////////////////////////////
+/ keyboard interrupt service
+kbintr,
+	krb			/ get char from kb
+	sna			/ ignore nulls
+	jmp i	kbintr_ret
+	dca	kb_tmp
+	tad	kb_tmp
+	tad	m0203		/ check for ctrl-c
+	sna cla
+	jmp i	kbintr_ctrlc
+	tad i	kb_ins		/ see if room in ring buffer
+	sza
+	jmp	kbintr_full
+	tad	kb_tmp		/ store char therein
+	dca i	kb_ins
+	tad	kb_ins		/ inc pointer with wrap
+	cma iac
+	and	c0020
+	cma
+	dca	kb_ins
+	jmp i	kbintr_ret
+kbintr_full,
+	tad i	kbintr_ttbsy	/ full, see if tt busy
+	sza cla
+	jmp	kbintr_ding
+	tad	p0207		/ not busy, output bell directly
+	tpc
+	dca i	kbintr_ttbsy
+	jmp i	kbintr_ret
+kbintr_ding,
+	tad	p0207		/ tt busy, tell it to ring bell asap
+	dca i	kbintr_ttbel
+	jmp i	kbintr_ret
+
+m0203,	-0203
+p0207,	 0207
+
+kbintr_ctrlc, ctrlc
+kbintr_ret, kbiret
+kbintr_ttbsy, tt_bsy
+kbintr_ttbel, tt_bel
+
+kb_tmp,	.-.
+kb_ins, kb_ring
+
+*01000
+////////////////////////////////////////////////////////////////
+/ got control-C
+ctrlc,
+	tad i	tt_rem		/ empty out tt ring
+	sna cla
+	jmp	ctrlc_ttmt
+	dca i	tt_rem
+	tad	tt_rem
+	iac
+	and	c0020b
+	dca	tt_rem
+	jmp	ctrlc
+ctrlc_ttmt,
+	tad i	kb_rem		/ empty out kb ring
+	sna cla
+	jmp	ctrlc_kbmt
+	dca i	kb_rem
+	tad	kb_rem
+	cma iac
+	and	c0020b
+	cma
+	dca	kb_rem
+	jmp	ctrlc_ttmt
+ctrlc_kbmt,
+	ion			/ interrupts ok now
+	tad	ctrlc_msg	/ print ctrl-C message
+	jms i	_ttline
+	jmp i	ctrlc_main	/ prompt for new command
+
+ctrlc_msg, ctrlc_buf		/ '^' 'C' CR LF NULL
+ctrlc_main, main
+
+/////////////////////////////////////////////////////////////////
+/ print cr/lf on screen
+/  input:
+/   ac = 0
+/   interrupts on
+/  output:
+/   ac = 0
+ttcrlf,	.-.
+	tad	ttcrlf_msg
+	jms	ttline
+	jmp i	ttcrlf
+
+ttcrlf_msg, ttcrlf_buf		/ CR LF NULL
+
+/////////////////////////////////////////////////////////////////
+/ print line on screen
+/  input:
+/   ac = address of null-terminated string
+/   interrupts on
+/  output:
+/   ac = 0
+ttline,	.-.
+	dca	ttline_ptr
+ttline_loop,
+	tad i	ttline_ptr
+	sna
+	jmp i	ttline
+	jms	ttchar
+	isz	ttline_ptr
+	jmp	ttline_loop
+
+ttline_ptr, .-.
+
+/////////////////////////////////////////////////////////////////
+/ print char on screen
+/  input:
+/   ac = ascii character
+/   interrupts on
+/  output:
+/   ac = 0
+ttchar,	.-.
+	dca	ttchar_new	/ save character
+ttchar_loop,
+	iof
+	tad i	tt_ins		/ see if room in ring buffer
+	sza
+	jmp	ttchar_full	/ if not, wait for it to empty
+	tad	tt_bsy		/ has room, see if busy printing
+	sna cla
+	jmp	ttchar_idle	/ idle, go start it up
+	tad	ttchar_new	/ busy, get character to output
+	dca i	tt_ins		/ store in ring buffer
+	tad	tt_ins		/ increment pointer with wrap
+	iac
+	and	c0020b
+	dca	tt_ins
+	jmp	ttchar_done
+ttchar_full,
+	jms i	_wfi		/ wait for ring to possibly empty
+	jmp	ttchar_loop	/ go back and check to see if room
+ttchar_idle,
+	tad	ttchar_new	/ tt idle, get char to output
+	tpc			/ start outputting to tty
+	dca	tt_bsy		/ remember it's busy printing
+ttchar_done,
+	ion
+	jmp i	ttchar
+
+ttchar_new, .-.			/ latest char passed to ttchar
+tt_ins, tt_ring			/ where to put next char into ring
+tt_bsy, .-.			/ non-zero means tt busy printing char
+tt_bel, .-.			/ non-zero means ring bell next tt interrupt
+
+////////////////////////////////////////////////////////////////
+/ printer interrupt service
+ttintr,
+	cla
+	tad	tt_bel		/ see if bell wanted
+	sza
+	jmp	ttintr_ding	/ go ring it
+	tad i	tt_rem		/ see if anything in ring buffer
+	sna
+	jmp	ttintr_idle	/ if not, go idle
+	tpc			/ if so, start printing
+	dca	tt_bsy		/ remember it's busy
+	dca i	tt_rem		/ remove from ring
+	tad	tt_rem		/ inc pointer with wrap
+	iac
+	and	c0020b
+	dca	tt_rem
+	jmp i	ttintr_ret
+ttintr_ding,
+	tpc			/ start ringing bell
+	dca	tt_bsy		/ remember it's busy
+	dca	tt_bel		/ don't ring again
+	jmp i	ttintr_ret
+ttintr_idle,
+	tcf			/ clear int req
+	dca	tt_bsy		/ not printing anything
+	jmp i	ttintr_ret
+
+c0020b,	~0020
+
+ttintr_ret, ttiret
+
+*01200
+////////////////////////////////////////////////////////////////
+/ unsigned multiply
+/  input:
+/   ac = 0
+/   umul_multr = multiplier
+/   umul_mcand = multiplicand
+/  output:
+/   ac = 0
+/   umul_multr = zeroed
+/   umul_mcand = shifted
+/   umul_prod += product
+umul,	.-.
+	tad	umul_multr
+	sna
+	jmp i	umul
+umul_loop,
+	cll rar
+	dca	umul_multr
+	snl
+	jmp	umul_skip
+	cll
+	tad	umul_prod+1
+	tad	umul_mcand+1
+	dca	umul_prod+1
+	ral
+	tad	umul_prod+0
+	tad	umul_mcand+0
+	dca	umul_prod+0
+umul_skip,
+	cla cll
+	tad	umul_mcand+1
+	ral
+	dca	umul_mcand+1
+	tad	umul_mcand+0
+	ral
+	dca	umul_mcand+0
+	tad	umul_multr
+	sza
+	jmp	umul_loop
+	jmp i	umul
+
+////////////////////////////////////////////////////////////////
+/ unsigned divide
+/  input:
+/   ac = 0
+/   udiv_dvquo = dividend
+/   udiv_ndvsr = negative of divisor
+/  output:
+/   ac = 0
+/   udiv_remdr = remainder
+/   udiv_dvquo = quotient
+/  scratch:
+/   udiv_count
+udiv,	.-.
+	tad	m0030
+	dca	udiv_count
+	dca	udiv_remdr
+udiv_loop,
+	/ [link] [remdr] [dvquo+0] [dvquo+1] < quotient bits
+	/        [ndvsr]
+	tad	udiv_dvquo+1	/ shift link-remdr-dvquo left one bit
+	cll ral			/ zero goes in bottom for quotient bit
+	dca	udiv_dvquo+1
+	tad	udiv_dvquo+0
+	ral
+	dca	udiv_dvquo+0
+	tad	udiv_remdr
+	ral
+	dca	udiv_remdr
+	tad	udiv_remdr	/ get top 12 bits of 36-bit dividend (link = 13th bit)
+	tad	udiv_ndvsr	/ add negative divisor
+	snl
+	jmp	udiv_skip
+	dca	udiv_remdr	/ boosted negated divisor from neg to pos, it fits
+	isz	udiv_dvquo+1	/ change bottom quotient bit to a one
+udiv_skip,
+	cla
+	isz	udiv_count
+	jmp	udiv_loop
+	jmp i	udiv
+
+m0030,	-030
+
+udiv_count, .blkw 1		/ iteration counter
+
+*01400
+////////////////////////////////////////////////////////////////
+/ read or write disk blocks
+/  input:
+/   rkdrno<2:1> = drive number 0..3
+/         <5:3> = memory frame 0..7
+/   rkblok = block number 0..3199
+/   rkwcnt = word count - 1
+/   rkmadr = memory address
+/   interrupts on
+/  output:
+/   transfer complete
+/   ac = 0
+rkrlb,	.-.
+	jms	rkdoio
+		dldr
+	jmp i	rkrlb
+rkwlb,	.-.
+	jms	rkdoio
+		dldw
+	jmp i	rkwlb
+
+rkdoio,	.-.
+	cla
+	tad	rkdrno		/ get frame and drive
+	tad	p2000		/ enable interrupts
+	dldc			/ load command register & clear ac
+	tad	rkwcnt		/ get word count - 1
+	cma			/ get - word count
+	dlwc			/ load negative word count & clear ac
+	tad	rkmadr		/ get memory address
+	dlca			/ load current address & clear ac
+	tad i	rkdoio		/ get dldr/dldw opcode
+	dca	rkopcd
+	isz	rkdoio
+	dca	rkstat		/ clear completion status
+	tad	rkblok		/ get disk address
+rkopcd,	.-.			/ save disk address & start i/o
+rkdoio_loop,
+	iof
+	tad	rkstat		/ check for completion
+	sza
+	jmp	rkdoio_done
+	jms i	_wfi		/ in prog, wait for interrupt
+	jmp	rkdoio_loop
+rkdoio_done,
+	ion			/ done, interrupts on
+	and	p5776		/ check error bits
+	sna cla
+	jmp i	rkdoio		/ no error, return
+	tad	rkdoio_eptr	/ error, print message
+	jms i	_ttline
+	tad	rkstat
+	jms i	_tt4oct
+	hlt			/ halt forever
+	jmp	.-1
+
+p2000,	2000
+p5776,	5776
+rkdoio_eptr, rkdoio_emsg
+
+rkdrno,	.-.			/ mem frame, drive no
+rkwcnt,	.-.			/ word count - 1
+rkmadr,	.-.			/ memory address
+rkblok,	.-.			/ block number
+rkstat,	.-.			/ resultant status
+
+/ disk interrupt
+rkintr,
+	drds			/ read status register
+	dca	rkstat		/ save in memory
+	dcls			/ clear status so it stops interrupting
+	jmp i	rkintr_ret
+
+rkintr_ret, rkiret
+
+*07600
+	. = (. + 037) & -040
+tt_ring, .blkw 020		/ 16 words, 32-word alogned
+kb_ring, .blkw 020
+
+kbline_buf, .blkw 0121		/ 81 words
+
+ctrlc_buf,  .word 0336,0303
+ttcrlf_buf, .word 0215,0212,0
+
+rkdoio_emsg, .asciz "\r\n*FATAL* RK ERR "
+
+.if 0
+////////////////////////////////////////////////////////////////
+/ ascii to symbol name
+/  input:
+/   cmdptr = points to 12-bit ascii string
+/  output:
+/   ac = 0
+/   link set: no symbol found
+/        clr: symbol found
+/             cmdptr = incremented
+/             symnam = filled in
+asc2symnam, .-.
+	cll cml				/ disallow digits
+	jms	asc2symchr
+	cll cml				/ set link in case of failure
+	sna
+	jmp i	asc2symnam		/ first char not a symbol, return with link set
+	dca	symnam+1		/ save first char in bottom of output
+	dca	symnam+0
+	jms	symnamshl		/ make room for second char
+	cll				/ allow digits
+	jms	asc2symchr		/ try to get second char
+	jms	symnamadd		/ insert it or a zero into output
+	jms	symnamshl		/ make room for third char
+	cll				/ allow digits
+	jms	asc2symchr		/ try to get third char
+	jms	symnamadd		/ insert it or a zero into output
+	jms	symnamshl		/ make room for fourth char
+	cll				/ allow digits
+	jms	asc2symchr		/ try to get fourth char
+	jms	symnamadd		/ insert it or a zero into output
+	cll cla				/ return with link cleared
+	jmp i	asc2symnam
+
+/ add ac to symnam
+symnamadd, .-.
+	cll
+	tad	symnam+1
+	dca	symnam+1
+	ral
+	tad	symnam+0
+	dca	symnam+0
+	jmp i	symnamadd
+
+/ multiply symnam (by 046) to shift it left to make room for another character
+symnamshl, .-.
+	cll cla
+	tad	symnam+1
+	ral
+	dca	symnam+1
+	tad	symnam+0
+	ral
+	dca	symnam+0
+
+	tad	symnam+1
+	dca	symnamshl_temp+1
+	tad	symnam+0
+	dca	symnamshl_temp+0
+
+	tad	p11
+	dca	symnamshl_mask
+symnamshl_loop,
+	cla
+symnamshl_skip,
+	tad	symnamshl_temp+1
+	ral
+	dca	symnamshl_temp+1
+	tad	symnamshl_temp+0
+	ral
+	dca	symnamshl_temp+0
+
+	tad	symnamshl_mask
+	rar
+	dca	symnamshl_mask
+	snl
+	jmp	symnamshl_skip
+
+	cll
+	tad	symnam+1
+	tad	symnamshl_temp+1
+	dca	symnam+1
+	ral
+	tad	symnam+0
+	tad	symnamshl_temp+0
+	dca	symnam+0
+
+	tad	symnamshl_mask
+	szl
+	jmp	symnamshl_loop
+
+	jmp i	symnamshl
+
+symnamshl_temp, .blkw 2
+symnamshl_mask, .blkw
+
+p11,	 011
+p12,	 012
+p32,	 032
+p33,	 033
+p34,	 034
+p40,	 040
+p45,	 045
+p177,	 177
+m72,	-072
+m60,	-060
+m57,	-057
+m34,	-034
+
+////////////////////////////////////////////////////////////////
+/ convert ascii to symbol character
+/  input:
+/   cmdptr = points to 12-bit ascii string
+/   link set: do not include 0-9
+/        clr: include 0-9
+/  output:
+/   ac = 0: not a symbol character
+/     else: ac = symbol character
+/             001..032 = A..Z or a..z
+/                  033 = _
+/             034..045 = 0..9
+/	    cmdptr = incremented
+asc2symchr, .-.
+	cla				/ get ascii char to convert
+	tad i	cmdptr
+	and	p177
+	szl				/ see if decimal digits allowed
+	jmp	asc2symchr_nodigs	/ digits not allowed
+	tad	m72			/ allowed, make '0'..'9' just negative
+	cll
+	tad	p12			/ transition digits to non-negative
+	snl
+	jmp	asc2symchr_nondig
+	tad	p34			/ negative transitioned to positive, it was '0'..'9'
+	jmp	asc2symchr_found
+asc2symchr_nodigs,
+	tad	m60			/ digits not allowed, update ac just like when checking for digits
+asc2symchr_nondig,
+	/ ac = char - 060
+	tad	m57			/ check for underscore character
+	sna
+	jmp	asc2symchr_under
+	/ ac = char - 137
+	spa
+	tad	p40			/ convert upper case to lower case
+	tad	m34			/ make 'a'..'z' just negative
+	/ ac = char - 173
+	cll
+	tad	p32			/ transition lower case to non-negative
+	szl
+	jmp	asc2symchr_alpha	/ transitioned from neg to non-neg, must be a letter
+	cla				/ none of the above, return with zero ac
+	jmp i	asc2symchr
+
+	/ ac = 000 => 033
+asc2symchr_under,
+	tad	p33
+	jmp	asc2symchr_found
+
+	/ ac = 000..031 => 001..032
+asc2symchr_alpha,
+	iac
+asc2symchr_found,
+	isz	cmdptr
+	jmp i	asc2symchr
+.endif
+
+.if 0
+	/ compute v1 * v2 + v3
+
+	cla
+	tad	v1
+	dca	umul_mcand+1
+	tad	v2
+	dca	umul_multr
+	tad	v3
+	dca	umul_prod+1
+	jms i	_umul
+
+	tad	umul_prod+0
+	hlt
+	cla
+	tad	umul_prod+1
+	hlt
+
+	/ compute (v1 * v2 + v3) / v2 = v1 r v3
+
+	cla
+	tad	umul_prod+0
+	dca	udiv_dvquo+0
+	tad	umul_prod+1
+	dca	udiv_dvquo+1
+	tad	v2
+	cia
+	dca	udiv_ndvsr
+	jms i	_udiv
+
+	tad	udiv_dvquo+0
+	hlt
+	cla
+	tad	udiv_dvquo+1
+	hlt
+	cla
+	tad	udiv_remdr
+	hlt
+
+exit,
+	cla
+	tad	sys_exit_p
+	sys
+	jmp	exit
+
+v1,	01145
+v2,	01170
+v3,	00456
+
+sys_exit_p, sys_exit
+sys_exit, 0
+.endif

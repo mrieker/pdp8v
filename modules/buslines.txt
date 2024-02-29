@@ -1,0 +1,368 @@
+
+                ACL     ALU     MA      PC      RPI     SEQ
+
+_ac_aluq        in                                      out
+ acq[11:00]     out     in
+_alu_add                in                              out
+_alu_and                in                              out
+_alua_m1                in                              out
+_alua_ma                in                              out
+ alua_mq0600            in                              out
+ alua_mq1107            in                              out
+ alua_pc0600            in                              out
+ alua_pc1107            in                              out
+ alub_1                 in                              out
+_alub_ac                in                              out
+_alub_m1                in                              out
+_alucout                out                             in
+_aluq[11:00]    in      out     in      in      in
+ clok2          in              in      in      out     in
+_grpa1q         in      in                              out
+ grpb_skip      out                                     in
+_halt                                           in      out
+ inc_axb                in                              out
+ intak                                          in      out
+ intrq                                          out     in
+ ioinst                                         in      out
+ ioskp                                          out     in
+ iot3q          in                                      out
+_ln_wrt         in                                      out
+_lnq            out     in
+ lnq            out     in                      in
+_ma_aluq                        in                      out
+_maq[11:00]     in      in      out                     in
+ maq[11:00]     in      in      out                     in
+ mq[11:00]      in      in                      out     in
+ mql                                            out
+_mread                                          in      out
+_mwrite                                         in      out
+_newlink        in      out
+_pc_aluq                                in              out
+_pc_inc                                 in              out
+ pcq[11:00]             in              out
+ reset          in              in      in      out     in
+ tad2q          in                                      out
+
+ fetch2q                                                out *
+ grpb1q                                                 out *
+_intrq1q                                                out *
+-------------------------------------------------------
+
+                    RASPI   ALU     PCREG   REGS    SEQ
+
+A01 _acq[11]        nc      in      nc      out     nc
+A02 _aluq[11]       in      out     nc      nc      nc
+A03 _maq[11]        nc      in      nc      out     in
+A04  maq[11]        nc      in      nc      out     in
+A05  mq[11]         out     in      nc      in      in
+A06 _pcq[11]        nc      in      out     nc      nc
+A07  rotq[11]       nc      out     in      in      nc
+A08 _acq[10]        nc      in      nc      out     nc
+A09 _aluq[10]       in      on      nc      nc      nc
+A10 _maq[10]        nc      in      nc      out     in
+A11  maq[10]        nc      in      nc      out     in
+A12  mq[10]         out     in      nc      in      in
+A13 _pcq[10]        nc      in      out     nc      nc
+A14  rotq[10]       nc      out     in      in      nc
+A15 _acq[09]        nc      in      nc      out     nc
+A16 _aluq[09]       in      out     nc      nc      nc
+A17 _maq[09]        nc      in      nc      out     in
+A18  maq[09]        nc      in      nc      out     in
+A19  mq[09]         out     in      nc      in      in
+A20 _pcq[09]        nc      in      out     nc      nc
+A21  rotq[09]       nc      out     in      in      nc
+A22 _acq[08]        nc      in      nc      out     nc
+A23 _aluq[08]       in      out     nc      nc      nc
+A24 _maq[08]        nc      in      nc      out     in
+A25  maq[08]        nc      in      nc      out     in
+A26  mq[08]         out     in      nc      in      in
+A27 _pcq[08]        nc      in      out     nc      nc
+A28  rotq[08]       nc      out     in      in      nc
+A29 _acq[07]        nc      in      nc      out     nc
+A30 _aluq[07]       in      out     nc      nc      nc
+A31 _maq[07]        nc      in      nc      out     in
+
+B01  maq[07]        nc      in      nc      out     in
+B02  mq[07]         out     in      nc      in      in
+B03 _pcq[07]        nc      in      out     nc      nc
+B04  rotq[07]       nc      out     in      in      nc
+B05 _acq[06]        nc      in      nc      out     nc
+B06 _aluq[06]       in      out     nc      nc      nc
+B07 _maq[06]        nc      in      nc      out     in
+B08  maq[06]        nc      in      nc      out     in
+B09  mq[06]         out     in      nc      in      in
+B10 _pcq[06]        nc      in      out     nc      nc
+B11  rotq[06]       nc      out     in      in      nc
+B12 _acq[05]        nc      in      nc      out     nc
+B13 _aluq[05]       in      out     nc      nc      nc
+B14 _maq[05]        nc      in      nc      out     in
+B15  maq[05]        nc      in      nc      out     in
+B16  mq[05]         out     in      nc      in      in
+B17 _pcq[05]        nc      in      out     nc      nc
+B18  rotq[05]       nc      out     in      in      nc
+B19 _acq[04]        nc      in      nc      out     nc
+B20 _aluq[04]       in      out     nc      nc      nc
+B21 _maq[04]        nc      in      nc      out     in
+B22  maq[04]        nc      in      nc      out     in
+B23  mq[04]         out     in      nc      in      in
+B24 _pcq[04]        nc      in      out     nc      nc
+B25  rotq[04]       nc      out     in      in      nc
+B26 _acq[03]        nc      in      nc      out     nc
+B27 _aluq[03]       in      out     nc      nc      nc
+B28 _maq[03]        nc      in      nc      out     in
+B29  maq[03]        nc      in      nc      out     in
+B30  mq[03]         out     in      nc      in      in
+B31 _pcq[03]        nc      in      out     nc      nc
+
+C01  rotq[03]       nc      out     in      in      nc
+C02 _acq[02]        nc      in      nc      out     nc
+C03 _aluq[02]       in      out     nc      nc      nc
+C04 _maq[02]        nc      in      nc      out     in
+C05  maq[02]        nc      in      nc      out     in
+C06  mq[02]         out     in      nc      in      in
+C07 _pcq[02]        nc      in      out     nc      nc
+C08  rotq[02]       nc      out     in      in      nc
+C09 _acq[01]        nc      in      nc      out     nc
+C10 _aluq[01]       in      out     nc      nc      nc
+C11 _maq[01]        nc      in      nc      out     in
+C12  maq[01]        nc      in      nc      out     in
+C13  mq[01]         out     in      nc      in      in
+C14 _pcq[01]        nc      in      out     nc      nc
+C15  rotq[01]       nc      out     in      in      nc
+C16 _acq[00]        nc      in      nc      out     nc
+C17 _aluq[00]       in      out     nc      nc      nc
+C18 _maq[00]        nc      in      nc      out     in
+C19  maq[00]        nc      in      nc      out     in
+C20  mq[00]         out     in      nc      in      in
+C21 _pcq[00]        nc      in      out     nc      nc
+C22  rotq[00]       nc      out     in      in      nc
+C23 _ac_aluq        nc      nc      nc      in      out
+C24 _alu_add        nc      in      nc      nc      out
+C25 _alu_and        nc      in      nc      nc      out
+C26 _alua_m1        nc      in      nc      nc      out
+C27
+C28 _alua_ma        nc      in      nc      nc      out
+C29  alua_mq0600    nc      in      nc      nc      out
+C30  alua_mq1107    nc      in      nc      nc      out
+C31  alua_pc0600    nc      in      nc      nc      out
+C32  alua_pc1107    nc      in      nc      nc      out
+
+D01 _alub_0         nc      in      nc      nc      out
+D02 _alub_1         nc      in      nc      nc      out
+D03 _alub_ac        nc      in      nc      nc      out
+D04  alucout        nc      out     nc      in      in
+D05  clok2          out     nc      in      in      in
+D06  fetch2q        nc      nc      nc      in      out
+D07 _grpa1q         nc      in      nc      nc      out
+D08  grpa1q[3]      nc      in      nc      in      out
+D09  grpa1q[2]      nc      in      nc      in      out
+D10  grpa1q[1]      nc      in      nc      in      out
+D11  grpa1q[0]      nc      in      nc      in      out
+D12  grpb_skip      nc      nc      nc      out     in
+D13  grpb1q         nc      nc      nc      in      out
+D14 _halt           in      nc      nc      nc      out
+D15  inc_axb        nc      in      nc      nc      out
+D16  intak          in      nc      nc      nc      out
+D17  intrq          out     nc      nc      nc      in
+D18 _intrq1q        nc      nc      nc      in      out
+D19  ioinst         in      nc      nc      nc      out
+D20  ioskp          out     nc      nc      nc      in
+D21  iot3q          nc      nc      nc      in      out
+D22 _ln_wrt         nc      nc      nc      in      out
+D23  lnq            in      in      nc      out     nc
+D24 _ma_aluq        nc      nc      nc      in      out
+D25  mql            out     nc      nc      in      nc
+D26 _mread          in      nc      nc      nc      out
+D27 _mwrite         in      nc      nc      nc      out
+D28 _pc_aluq        nc      nc      in      nc      out
+D29 _pc_inc         nc      nc      in      nc      out
+D30  reset          out     nc      in      in      in
+D31  rotcout        nc      out     nc      in      nc
+D32  tad2q          nc      nc      nc      in      out
+
+-------------------------------------------------------
+
+                    RASPI   ALU
+
+ 12 _aluq[11:00]    in      out
+  1  lnq            in      in
+ 12  mq[11:00]      out     in
+---
+ 25
+
+-------------------------------------------------------
+
+                    RASPI   PCREG
+
+  1  clok2          out     in
+  1  reset          out     in
+---
+  2
+
+-------------------------------------------------------
+
+                    RASPI   REGS
+
+  1  clok2          out     in
+  1  lnq            in      out
+  1  mql            out     in
+ 12  mq[11:00]      out     in
+  1  reset          out     in
+---
+ 16
+
+-------------------------------------------------------
+
+                    RASPI   SEQ
+
+  1  clok2          out     in
+  1 _halt           in      out
+  1  intak          in      out
+  1  intrq          out     in
+  1  ioinst         in      out
+  1  ioskp          out     in
+ 12  mq[11:00]      out     in
+  1 _mread          in      out
+  1 _mwrite         in      out
+  1  reset          out     in
+---
+ 21
+
+-------------------------------------------------------
+
+                    ALU     PCREG
+
+ 12 _pcq[11:00]     in      out
+ 12  rotq[11:00]    out     in
+---
+ 24
+
+-------------------------------------------------------
+
+                    ALU     REGS
+
+ 12 _acq[11:00]     in      out
+  1  alucout        out     in
+  4  grpa1q[3:0]    in      in
+  1  lnq            in      out
+ 12 _maq[11:00]     in      out
+ 12  maq[11:00]     in      out
+ 12  mq[11:00]      in      in
+  1  rotcout        out     in
+ 12  rotq[11:00]    out     in
+---
+ 67
+
+-------------------------------------------------------
+
+                    ALU     SEQ
+
+  1 _alu_add        in      out
+  1 _alu_and        in      out
+  1  alua_0_0600    in      out
+  1  alua_0_1107    in      out
+  1 _alua_ma        in      out
+  1  alua_mq0600    in      out
+  1  alua_mq1107    in      out
+  1  alua_pc0600    in      out
+  1  alua_pc1107    in      out
+  1 _alub_0         in      out
+  1 _alub_1         in      out
+  1 _alub_ac        in      out
+  1  alucout        out     in
+  1 _grpa1q         in      out
+  4  grpa1q[3:0]    in      out
+  1  inc_axb        in      out
+ 12 _maq[11:00]     in      in
+ 12  maq[11:00]     in      in
+ 12  mq[11:00]      in      in
+---
+ 54
+
+-------------------------------------------------------
+
+                    PCREG   REGS
+
+  1  clok2          in      in
+  1  reset          in      in
+ 12  rotq[11:00]    in      in
+---
+ 14
+
+-------------------------------------------------------
+
+                    PCREG   SEQ
+
+  1  clok2          in      in
+  1  grpb_skip      out     in
+  1 _pc_aluq        in      out
+  1 _pc_inc         in      out
+  1  reset          in      in
+---
+  5
+
+-------------------------------------------------------
+
+                    REGS    SEQ
+
+  1 _ac_aluq        in      out
+  1  alucout        in      in
+  1  clok2          in      in
+  1  fetch2q        in      out
+  4  grpa1q[3:0]    in      out
+  1  grpb1q         in      out
+  1 _intrq1q        in      out
+  1  iot3q          in      out
+  1 _ma_aluq        in      out
+ 12 _maq[11:00]     out     in
+ 12  maq[11:00]     out     in
+ 12  mq[11:00]      in      in
+  1  reset          in      in
+  1  tad2q          in      out
+---
+ 50
+
+-------------------------------------------------------
+
+                SEQ
+
+_maq[11:00]     in
+ mq[11:00]      in
+ alucout        in
+ clok2          in
+ intrq          in
+ ioskp          in
+ irq[11:09]     in
+ maq[11:00]     in
+ reset          in
+
+                        _ac_aluq        out
+                        _alu_add        out
+                        _alu_and        out
+                         alua_0_0600    out
+                         alua_0_1107    out
+                        _alua_ma        out
+                         alua_mq0600    out
+                         alua_mq1107    out
+                         alua_pc0600    out
+                         alua_pc1107    out
+                        _alub_0         out
+                        _alub_1         out
+                        _alub_ac        out
+                         fetch2q        out
+                        _grpa1q         out
+                         grpa1q[3:0]    out
+                         grpb1q         out
+                        _halt           out
+                         inc_axb        out
+                         intak          out
+                        _intrq1q        out
+                         ioinst         out
+                         iot3q          out
+                        _ma_aluq        out
+                        _mread          out
+                        _mwrite         out
+                        _pc_aluq        out
+                        _pc_inc         out
+                         tad2q          out
+

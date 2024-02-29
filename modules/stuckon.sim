@@ -1,0 +1,192 @@
+#
+#  processed by netgen to simulate processor
+#  acts as if it were a raspberry pi hooked up to pins of proc.mod
+#
+#   ../netgen/netgen.sh whole.mod -sim proc.sim
+#
+
+set hc 250
+set sv 1         ;# 0=quiet; 1=print states
+expr {srand (12345)}
+
+module proc
+
+# send value coming out of RASPI going into the processor
+
+proc ForceMQ {val} {
+    force MQ $val
+}
+
+proc ForceMQL {val} {
+    force MQL $val
+}
+
+proc ForceMQOff {} {
+    force MQ 0bXXXXXXXXXXXX
+    force MQL 0bX
+    force IOSKP 0bX
+}
+
+proc ForceClock {on} {
+    force CLOK2 $on
+}
+
+proc ForceReset {on} {
+    force RESET $on
+}
+
+proc ForceIoSkp {on} {
+    force IOSKP $on
+}
+
+proc ForceIntRq {on} {
+    force INTRQ $on
+}
+
+# get register contents
+
+proc GetACBits {} {
+    set ac00 [examine Q_f_0_DFF_aclo_acl]
+    set ac01 [examine Q_f_1_DFF_aclo_acl]
+    set ac02 [examine Q_f_2_DFF_aclo_acl]
+    set ac03 [examine Q_f_3_DFF_aclo_acl]
+    set ac04 [examine Q_f_0_DFF_acmid_acl]
+    set ac05 [examine Q_f_1_DFF_acmid_acl]
+    set ac06 [examine Q_f_2_DFF_acmid_acl]
+    set ac07 [examine Q_f_3_DFF_acmid_acl]
+    set ac08 [examine Q_f_0_DFF_achi_acl]
+    set ac09 [examine Q_f_1_DFF_achi_acl]
+    set ac10 [examine Q_f_2_DFF_achi_acl]
+    set ac11 [examine Q_f_3_DFF_achi_acl]
+    return $ac11$ac10$ac09$ac08$ac07$ac06$ac05$ac04$ac03$ac02$ac01$ac00
+}
+
+proc GetALUQBits {} {
+    set _aluq00 [examine Q_0__aluq_alu_5_0_5]
+    set _aluq01 [examine Q_1__aluq_alu_5_0_5]
+    set _aluq02 [examine Q_2__aluq_alu_5_0_5]
+    set _aluq03 [examine Q_3__aluq_alu_5_0_5]
+    set _aluq04 [examine Q_4__aluq_alu_5_0_5]
+    set _aluq05 [examine Q_5__aluq_alu_5_0_5]
+    set _aluq06 [examine Q_0__aluq_alu_11_6_5]
+    set _aluq07 [examine Q_1__aluq_alu_11_6_5]
+    set _aluq08 [examine Q_2__aluq_alu_11_6_5]
+    set _aluq09 [examine Q_3__aluq_alu_11_6_5]
+    set _aluq10 [examine Q_4__aluq_alu_11_6_5]
+    set _aluq11 [examine Q_5__aluq_alu_11_6_5]
+    return [string map {0 1 1 0} $_aluq11$_aluq10$_aluq09$_aluq08$_aluq07$_aluq06$_aluq05$_aluq04$_aluq03$_aluq02$_aluq01$_aluq00]
+}
+
+proc GetIRQ1108Bits {} {
+    set ir08 [examine Q_c_0_DLat_ireg08_seq]
+    set ir09 [examine Q_c_0_DLat_ireg09_seq]
+    set ir10 [examine Q_c_0_DLat_ireg10_seq]
+    set ir11 [examine Q_c_0_DLat_ireg11_seq]
+    return $ir11$ir10$ir09$ir08
+}
+
+proc GetLink {} {
+    return [examine Q_e_0_DFF_lnreg_acl]
+}
+
+proc GetMABits {} {
+    set ma00 [examine Q_e_0_DFF_malo_ma]
+    set ma01 [examine Q_e_1_DFF_malo_ma]
+    set ma02 [examine Q_e_2_DFF_malo_ma]
+    set ma03 [examine Q_e_3_DFF_malo_ma]
+    set ma04 [examine Q_e_0_DFF_mamid_ma]
+    set ma05 [examine Q_e_1_DFF_mamid_ma]
+    set ma06 [examine Q_e_2_DFF_mamid_ma]
+    set ma07 [examine Q_e_3_DFF_mamid_ma]
+    set ma08 [examine Q_e_0_DFF_mahi_ma]
+    set ma09 [examine Q_e_1_DFF_mahi_ma]
+    set ma10 [examine Q_e_2_DFF_mahi_ma]
+    set ma11 [examine Q_e_3_DFF_mahi_ma]
+    return $ma11$ma10$ma09$ma08$ma07$ma06$ma05$ma04$ma03$ma02$ma01$ma00
+}
+
+proc GetPCBits {} {
+    set pc00 [examine Q_f_0_DFF_pc00_pc]
+    set pc01 [examine Q_f_0_DFF_pc01_pc]
+    set pc02 [examine Q_f_0_DFF_pc02_pc]
+    set pc03 [examine Q_f_0_DFF_pc03_pc]
+    set pc04 [examine Q_f_0_DFF_pc04_pc]
+    set pc05 [examine Q_f_0_DFF_pc05_pc]
+    set pc06 [examine Q_f_0_DFF_pc06_pc]
+    set pc07 [examine Q_f_0_DFF_pc07_pc]
+    set pc08 [examine Q_f_0_DFF_pc08_pc]
+    set pc09 [examine Q_f_0_DFF_pc09_pc]
+    set pc10 [examine Q_f_0_DFF_pc10_pc]
+    set pc11 [examine Q_f_0_DFF_pc11_pc]
+    return $pc11$pc10$pc09$pc08$pc07$pc06$pc05$pc04$pc03$pc02$pc01$pc00
+}
+
+proc GetState {name} {
+    switch $name {
+        fetch1  {return [examine Q_f_0_DFF_fetch1_seq]}
+        fetch2  {return [examine Q_e_0_DFF_fetch2_seq]}
+        defer1  {return [examine Q_e_0_DFF_defer1_seq]}
+        defer2  {return [examine Q_e_0_DFF_defer2_seq]}
+        defer3  {return [examine Q_e_0_DFF_defer3_seq]}
+        arith1  {return [examine Q_0_arith1q_seq_0_0_2]}
+        and2    {return [examine Q_0_and2q_seq_0_0_2]}
+        tad2    {return [examine Q_0_tad2q_seq_0_0_2]}
+        tad3    {return [examine Q_0_tad3q_seq_0_0_2]}
+        isz1    {return [examine Q_0_isz1q_seq_0_0_2]}
+        isz2    {return [examine Q_0_isz2q_seq_0_0_2]}
+        isz3    {return [examine Q_0_isz3q_seq_0_0_2]}
+        dca1    {return [examine Q_0_dca1q_seq_0_0_2]}
+        dca2    {return [examine Q_0_dca2q_seq_0_0_2]}
+        jmp1    {return [examine Q_0_jmp1q_seq_0_0_2]}
+        grpa1   {return [examine Q_0_grpa1q_seq_0_0_1]}
+        grpb1   {return [examine Q_0_grpb1q_seq_0_0_1]}
+        iot1    {return [examine Q_0_iot1q_seq_0_0_2]}
+        iot2    {return [examine Q_0_iot2q_seq_0_0_2]}
+        jms1    {return [examine Q_0_jms1q_seq_0_0_2]}
+        jms2    {return [examine Q_0_jms2q_seq_0_0_2]}
+        jms3    {return [examine Q_0_jms3q_seq_0_0_2]}
+        intak1  {return [examine Q_e_0_DFF_intak1_seq]}
+    }
+    Error "bad state $name"
+}
+
+proc GetCtrl {name} {
+    switch $name {
+        _mread       {return [examine Q_0__mread_seq_0_0_5]}
+        _mwrite      {return [examine Q_0__mwrite_seq_0_0_3]}
+        _intak       {return [examine Q_f_0_DFF_intak1_seq]}
+        ioinst       {return [examine Q_0_iot1q_seq_0_0_2]}
+        _dfrm        {return [examine Q_0__dfrm_seq_0_0_2]}
+        _jump        {return [examine Q_0__jump_seq_0_0_2]}
+        _endinst     {return [examine Q_0__endinst_seq_0_0_2]}
+        _alu_add     {return [examine Q_0__alu_add_seq_0_0_2]}
+        _alu_and     {return [examine Q_0__alu_and_seq_0_0_2]}
+        inc_axb      {return [examine Q_0_inc_axb_seq_0_0_2]}
+        _alua_ma     {return [examine Q_0__alua_ma_seq_0_0_4]}
+        alua_mq1107  {return [examine Q_0_alua_mq1107_seq_0_0_2]}
+        alua_mq0600  {return [examine Q_0_alua_mq0600_seq_0_0_1]}
+        alua_pc1107  {return [examine Q_0_alua_pc1107_seq_0_0_2]}
+        alua_pc0600  {return [examine Q_0_alua_pc0600_seq_0_0_1]}
+        _alua_m1     {return [examine Q_0__alua_m1_seq_0_0_3]}
+        alub_1       {return [examine Q_0_alub_1_seq_0_0_2]}
+        _alub_ac     {return [examine Q_0__alub_ac_seq_0_0_3]}
+        _alub_m1     {return [examine Q_0__alub_m1_seq_0_0_3]}
+        _ac_aluq     {return [examine Q_0__ac_aluq_seq_0_0_3]}
+        _ac_sc       {return [examine Q_0__ac_sc_seq_0_0_3]}
+        _ln_wrt      {return [examine Q_0__ln_wrt_seq_0_0_2]}
+        _ma_aluq     {return [examine Q_0__ma_aluq_seq_0_0_2]}
+        _pc_aluq     {return [examine Q_0__pc_aluq_seq_0_0_2]}
+        _pc_inc      {return [examine Q_0__pc_inc_seq_0_0_5]}
+    }
+    Error "bad ctrl $name"
+}
+
+proc Error {msg} {
+    echo $msg
+    exit
+}
+
+#
+# use test script common with de0 testing
+#
+source "commontest.tcl"

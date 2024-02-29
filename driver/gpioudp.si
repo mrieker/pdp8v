@@ -1,0 +1,8 @@
+##if [ "`hostname`" == "de0piv" ]
+##then
+    export physlib_gpioudpaddr=
+    export physlib_gpioudpmsec=
+##else
+##    export physlib_gpioudpaddr=192.168.1.6
+##    export physlib_gpioudpmsec=200
+##fi

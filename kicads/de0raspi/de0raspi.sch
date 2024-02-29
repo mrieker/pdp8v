@@ -1,0 +1,674 @@
+EESchema Schematic File Version 2
+LIBS:power
+LIBS:device
+LIBS:transistors
+LIBS:conn
+LIBS:linear
+LIBS:regul
+LIBS:74xx
+LIBS:cmos4000
+LIBS:adc-dac
+LIBS:memory
+LIBS:xilinx
+LIBS:microcontrollers
+LIBS:dsp
+LIBS:microchip
+LIBS:analog_switches
+LIBS:motorola
+LIBS:texas
+LIBS:intel
+LIBS:audio
+LIBS:interface
+LIBS:digital-audio
+LIBS:philips
+LIBS:display
+LIBS:cypress
+LIBS:siliconi
+LIBS:opto
+LIBS:atmel
+LIBS:contrib
+LIBS:valves
+LIBS:de0raspi-cache
+EELAYER 25 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 1 1
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L CONN_02X20 J1
+U 1 1 6271978E
+P 2350 2550
+F 0 "J1" H 2350 3600 50  0000 C CNN
+F 1 "DEO_GPIO1" V 2350 2550 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_2x20_Pitch2.54mm" H 2350 1600 50  0001 C CNN
+F 3 "" H 2350 1600 50  0001 C CNN
+	1    2350 2550
+	1    0    0    -1  
+$EndComp
+$Comp
+L CONN_02X20 J2
+U 1 1 627197C2
+P 5750 2550
+F 0 "J2" H 5750 3600 50  0000 C CNN
+F 1 "RASPI_GPIO" V 5750 2550 50  0000 C CNN
+F 2 "Pin_Headers:Pin_Header_Straight_2x20_Pitch2.54mm" H 5750 1600 50  0001 C CNN
+F 3 "" H 5750 1600 50  0001 C CNN
+	1    5750 2550
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	6000 1700 6100 1700
+Wire Wire Line
+	6100 1700 6100 1500
+Wire Wire Line
+	6100 1500 4100 1500
+Wire Wire Line
+	4100 1500 4100 1600
+Wire Wire Line
+	6000 1800 6200 1800
+Wire Wire Line
+	6200 1800 6200 1400
+Wire Wire Line
+	6200 1400 4200 1400
+Wire Wire Line
+	4200 1400 4200 1700
+Wire Wire Line
+	6000 1900 6300 1900
+Wire Wire Line
+	6300 1900 6300 1300
+Wire Wire Line
+	6300 1300 4300 1300
+Wire Wire Line
+	4300 1300 4300 1800
+Wire Wire Line
+	6000 2000 6400 2000
+Wire Wire Line
+	6400 2000 6400 1200
+Wire Wire Line
+	6400 1200 4400 1200
+Wire Wire Line
+	4400 1200 4400 1900
+Wire Wire Line
+	6000 2100 6500 2100
+Wire Wire Line
+	6500 2100 6500 1100
+Wire Wire Line
+	6500 1100 4500 1100
+Wire Wire Line
+	4500 1100 4500 2000
+Wire Wire Line
+	6000 2400 6600 2400
+Wire Wire Line
+	6600 2400 6600 1000
+Wire Wire Line
+	6600 1000 4600 1000
+Wire Wire Line
+	4600 1000 4600 2400
+Wire Wire Line
+	6000 2500 6700 2500
+Wire Wire Line
+	6700 2500 6700 900 
+Wire Wire Line
+	6700 900  4700 900 
+Wire Wire Line
+	4700 900  4700 2500
+Wire Wire Line
+	2000 1800 2100 1800
+Wire Wire Line
+	2000 800  2000 1800
+Wire Wire Line
+	5400 800  5400 1600
+Wire Wire Line
+	5400 1600 5500 1600
+Wire Wire Line
+	2100 1900 1900 1900
+Wire Wire Line
+	1900 1900 1900 700 
+Wire Wire Line
+	5300 700  5300 1700
+Wire Wire Line
+	5300 1700 5500 1700
+Wire Wire Line
+	2100 2000 1800 2000
+Wire Wire Line
+	1800 2000 1800 600 
+Wire Wire Line
+	5200 600  5200 1800
+Wire Wire Line
+	5200 1800 5500 1800
+Wire Wire Line
+	2100 2200 1700 2200
+Wire Wire Line
+	1700 2200 1700 500 
+Wire Wire Line
+	5100 500  5100 2000
+Wire Wire Line
+	5100 2000 5500 2000
+Wire Wire Line
+	2100 2300 1600 2300
+Wire Wire Line
+	1600 2300 1600 400 
+Wire Wire Line
+	5000 400  5000 2300
+Wire Wire Line
+	5000 2300 5500 2300
+Wire Wire Line
+	1500 2400 2100 2400
+Wire Wire Line
+	1500 300  1500 2400
+Wire Wire Line
+	4900 300  4900 2400
+Wire Wire Line
+	4900 2400 5500 2400
+Wire Wire Line
+	2100 2500 1400 2500
+Wire Wire Line
+	1400 2500 1400 200 
+Wire Wire Line
+	4800 200  4800 2500
+Wire Wire Line
+	4800 2500 5500 2500
+Wire Wire Line
+	4100 3400 4100 3600
+Wire Wire Line
+	4100 3600 6100 3600
+Wire Wire Line
+	6100 3600 6100 3400
+Wire Wire Line
+	6100 3400 6000 3400
+Wire Wire Line
+	4200 3300 4200 3700
+Wire Wire Line
+	4200 3700 6200 3700
+Wire Wire Line
+	6200 3700 6200 3300
+Wire Wire Line
+	6200 3300 6000 3300
+Wire Wire Line
+	4300 3200 4300 3800
+Wire Wire Line
+	4300 3800 6300 3800
+Wire Wire Line
+	6300 3800 6300 3200
+Wire Wire Line
+	6300 3200 6000 3200
+Wire Wire Line
+	4400 2900 4400 3900
+Wire Wire Line
+	4400 3900 6400 3900
+Wire Wire Line
+	6400 3900 6400 3000
+Wire Wire Line
+	6400 3000 6000 3000
+Wire Wire Line
+	4500 2800 4500 4000
+Wire Wire Line
+	4500 4000 6500 4000
+Wire Wire Line
+	6500 4000 6500 2900
+Wire Wire Line
+	6500 2900 6000 2900
+Wire Wire Line
+	4600 2700 4600 4100
+Wire Wire Line
+	4600 4100 6600 4100
+Wire Wire Line
+	6600 4100 6600 2800
+Wire Wire Line
+	6600 2800 6000 2800
+Wire Wire Line
+	4700 2600 4700 4200
+Wire Wire Line
+	4700 4200 6700 4200
+Wire Wire Line
+	6700 4200 6700 2600
+Wire Wire Line
+	6700 2600 6000 2600
+Wire Wire Line
+	5500 3200 5400 3200
+Wire Wire Line
+	5400 3200 5400 4300
+Wire Wire Line
+	2000 4300 2000 3300
+Wire Wire Line
+	2000 3300 2100 3300
+Wire Wire Line
+	5500 3100 5300 3100
+Wire Wire Line
+	5300 3100 5300 4400
+Wire Wire Line
+	1900 4400 1900 3200
+Wire Wire Line
+	1900 3200 2100 3200
+Wire Wire Line
+	5500 3000 5200 3000
+Wire Wire Line
+	5200 3000 5200 4500
+Wire Wire Line
+	1800 4500 1800 3100
+Wire Wire Line
+	1800 3100 2100 3100
+Wire Wire Line
+	5500 2800 5100 2800
+Wire Wire Line
+	5100 2800 5100 4600
+Wire Wire Line
+	1700 4600 1700 2800
+Wire Wire Line
+	1700 2800 2100 2800
+Wire Wire Line
+	5500 2700 5000 2700
+Wire Wire Line
+	5000 2700 5000 4700
+Wire Wire Line
+	1600 4700 1600 2700
+Wire Wire Line
+	1600 2700 2100 2700
+Wire Wire Line
+	4900 3000 4900 2900
+Wire Wire Line
+	4900 2900 5500 2900
+$Comp
+L R R1
+U 1 1 62819C1B
+P 3250 200
+F 0 "R1" V 3330 200 50  0000 C CNN
+F 1 "33" V 3250 200 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 200 50  0001 C CNN
+F 3 "" H 3250 200 50  0001 C CNN
+	1    3250 200 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R2
+U 1 1 6281A0B1
+P 3250 300
+F 0 "R2" V 3330 300 50  0000 C CNN
+F 1 "33" V 3250 300 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 300 50  0001 C CNN
+F 3 "" H 3250 300 50  0001 C CNN
+	1    3250 300 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R3
+U 1 1 6281A0F5
+P 3250 400
+F 0 "R3" V 3330 400 50  0000 C CNN
+F 1 "33" V 3250 400 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 400 50  0001 C CNN
+F 3 "" H 3250 400 50  0001 C CNN
+	1    3250 400 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R4
+U 1 1 6281A0FB
+P 3250 500
+F 0 "R4" V 3330 500 50  0000 C CNN
+F 1 "33" V 3250 500 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 500 50  0001 C CNN
+F 3 "" H 3250 500 50  0001 C CNN
+	1    3250 500 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R5
+U 1 1 6281A181
+P 3250 600
+F 0 "R5" V 3330 600 50  0000 C CNN
+F 1 "33" V 3250 600 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 600 50  0001 C CNN
+F 3 "" H 3250 600 50  0001 C CNN
+	1    3250 600 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R6
+U 1 1 6281A187
+P 3250 700
+F 0 "R6" V 3330 700 50  0000 C CNN
+F 1 "33" V 3250 700 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 700 50  0001 C CNN
+F 3 "" H 3250 700 50  0001 C CNN
+	1    3250 700 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R7
+U 1 1 6281A18D
+P 3250 800
+F 0 "R7" V 3330 800 50  0000 C CNN
+F 1 "33" V 3250 800 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 800 50  0001 C CNN
+F 3 "" H 3250 800 50  0001 C CNN
+	1    3250 800 
+	0    1    1    0   
+$EndComp
+$Comp
+L R R8
+U 1 1 6281A4E3
+P 3250 1600
+F 0 "R8" V 3330 1600 50  0000 C CNN
+F 1 "33" V 3250 1600 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 1600 50  0001 C CNN
+F 3 "" H 3250 1600 50  0001 C CNN
+	1    3250 1600
+	0    1    1    0   
+$EndComp
+$Comp
+L R R9
+U 1 1 6281A4E9
+P 3250 1700
+F 0 "R9" V 3330 1700 50  0000 C CNN
+F 1 "33" V 3250 1700 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 1700 50  0001 C CNN
+F 3 "" H 3250 1700 50  0001 C CNN
+	1    3250 1700
+	0    1    1    0   
+$EndComp
+$Comp
+L R R10
+U 1 1 6281A4EF
+P 3250 1800
+F 0 "R10" V 3330 1800 50  0000 C CNN
+F 1 "33" V 3250 1800 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 1800 50  0001 C CNN
+F 3 "" H 3250 1800 50  0001 C CNN
+	1    3250 1800
+	0    1    1    0   
+$EndComp
+$Comp
+L R R11
+U 1 1 6281A4F5
+P 3250 1900
+F 0 "R11" V 3330 1900 50  0000 C CNN
+F 1 "33" V 3250 1900 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 1900 50  0001 C CNN
+F 3 "" H 3250 1900 50  0001 C CNN
+	1    3250 1900
+	0    1    1    0   
+$EndComp
+$Comp
+L R R12
+U 1 1 6281A4FB
+P 3250 2000
+F 0 "R12" V 3330 2000 50  0000 C CNN
+F 1 "33" V 3250 2000 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2000 50  0001 C CNN
+F 3 "" H 3250 2000 50  0001 C CNN
+	1    3250 2000
+	0    1    1    0   
+$EndComp
+$Comp
+L R R19
+U 1 1 6281A501
+P 3250 3200
+F 0 "R19" V 3330 3200 50  0000 C CNN
+F 1 "33" V 3250 3200 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 3200 50  0001 C CNN
+F 3 "" H 3250 3200 50  0001 C CNN
+	1    3250 3200
+	0    1    1    0   
+$EndComp
+$Comp
+L R R20
+U 1 1 6281A507
+P 3250 3300
+F 0 "R20" V 3330 3300 50  0000 C CNN
+F 1 "33" V 3250 3300 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 3300 50  0001 C CNN
+F 3 "" H 3250 3300 50  0001 C CNN
+	1    3250 3300
+	0    1    1    0   
+$EndComp
+$Comp
+L R R21
+U 1 1 6281A50D
+P 3250 3400
+F 0 "R21" V 3330 3400 50  0000 C CNN
+F 1 "33" V 3250 3400 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 3400 50  0001 C CNN
+F 3 "" H 3250 3400 50  0001 C CNN
+	1    3250 3400
+	0    1    1    0   
+$EndComp
+$Comp
+L R R13
+U 1 1 6281A6BB
+P 3250 2400
+F 0 "R13" V 3330 2400 50  0000 C CNN
+F 1 "33" V 3250 2400 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2400 50  0001 C CNN
+F 3 "" H 3250 2400 50  0001 C CNN
+	1    3250 2400
+	0    1    1    0   
+$EndComp
+$Comp
+L R R14
+U 1 1 6281A6C1
+P 3250 2500
+F 0 "R14" V 3330 2500 50  0000 C CNN
+F 1 "33" V 3250 2500 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2500 50  0001 C CNN
+F 3 "" H 3250 2500 50  0001 C CNN
+	1    3250 2500
+	0    1    1    0   
+$EndComp
+$Comp
+L R R15
+U 1 1 6281A6C7
+P 3250 2600
+F 0 "R15" V 3330 2600 50  0000 C CNN
+F 1 "33" V 3250 2600 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2600 50  0001 C CNN
+F 3 "" H 3250 2600 50  0001 C CNN
+	1    3250 2600
+	0    1    1    0   
+$EndComp
+$Comp
+L R R16
+U 1 1 6281A6CD
+P 3250 2700
+F 0 "R16" V 3330 2700 50  0000 C CNN
+F 1 "33" V 3250 2700 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2700 50  0001 C CNN
+F 3 "" H 3250 2700 50  0001 C CNN
+	1    3250 2700
+	0    1    1    0   
+$EndComp
+$Comp
+L R R17
+U 1 1 6281A6D3
+P 3250 2800
+F 0 "R17" V 3330 2800 50  0000 C CNN
+F 1 "33" V 3250 2800 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2800 50  0001 C CNN
+F 3 "" H 3250 2800 50  0001 C CNN
+	1    3250 2800
+	0    1    1    0   
+$EndComp
+$Comp
+L R R18
+U 1 1 6281A6D9
+P 3250 2900
+F 0 "R18" V 3330 2900 50  0000 C CNN
+F 1 "33" V 3250 2900 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 2900 50  0001 C CNN
+F 3 "" H 3250 2900 50  0001 C CNN
+	1    3250 2900
+	0    1    1    0   
+$EndComp
+$Comp
+L R R22
+U 1 1 6281B01F
+P 3250 4300
+F 0 "R22" V 3330 4300 50  0000 C CNN
+F 1 "33" V 3250 4300 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4300 50  0001 C CNN
+F 3 "" H 3250 4300 50  0001 C CNN
+	1    3250 4300
+	0    1    1    0   
+$EndComp
+$Comp
+L R R23
+U 1 1 6281B025
+P 3250 4400
+F 0 "R23" V 3330 4400 50  0000 C CNN
+F 1 "33" V 3250 4400 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4400 50  0001 C CNN
+F 3 "" H 3250 4400 50  0001 C CNN
+	1    3250 4400
+	0    1    1    0   
+$EndComp
+$Comp
+L R R24
+U 1 1 6281B02B
+P 3250 4500
+F 0 "R24" V 3330 4500 50  0000 C CNN
+F 1 "33" V 3250 4500 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4500 50  0001 C CNN
+F 3 "" H 3250 4500 50  0001 C CNN
+	1    3250 4500
+	0    1    1    0   
+$EndComp
+$Comp
+L R R25
+U 1 1 6281B031
+P 3250 4600
+F 0 "R25" V 3330 4600 50  0000 C CNN
+F 1 "33" V 3250 4600 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4600 50  0001 C CNN
+F 3 "" H 3250 4600 50  0001 C CNN
+	1    3250 4600
+	0    1    1    0   
+$EndComp
+$Comp
+L R R26
+U 1 1 6281B037
+P 3250 4700
+F 0 "R26" V 3330 4700 50  0000 C CNN
+F 1 "33" V 3250 4700 50  0000 C CNN
+F 2 "Resistors_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 3180 4700 50  0001 C CNN
+F 3 "" H 3250 4700 50  0001 C CNN
+	1    3250 4700
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	1400 200  3100 200 
+Wire Wire Line
+	3400 200  4800 200 
+Wire Wire Line
+	4900 300  3400 300 
+Wire Wire Line
+	3100 300  1500 300 
+Wire Wire Line
+	1600 400  3100 400 
+Wire Wire Line
+	3400 400  5000 400 
+Wire Wire Line
+	5100 500  3400 500 
+Wire Wire Line
+	1700 500  3100 500 
+Wire Wire Line
+	1800 600  3100 600 
+Wire Wire Line
+	3400 600  5200 600 
+Wire Wire Line
+	5300 700  3400 700 
+Wire Wire Line
+	1900 700  3100 700 
+Wire Wire Line
+	2000 800  3100 800 
+Wire Wire Line
+	3400 800  5400 800 
+Wire Wire Line
+	2600 1600 3100 1600
+Wire Wire Line
+	4100 1600 3400 1600
+Wire Wire Line
+	4200 1700 3400 1700
+Wire Wire Line
+	3100 1700 2600 1700
+Wire Wire Line
+	2600 1800 3100 1800
+Wire Wire Line
+	4300 1800 3400 1800
+Wire Wire Line
+	4400 1900 3400 1900
+Wire Wire Line
+	3100 1900 2600 1900
+Wire Wire Line
+	2600 2000 3100 2000
+Wire Wire Line
+	4500 2000 3400 2000
+Wire Wire Line
+	4600 2400 3400 2400
+Wire Wire Line
+	3100 2400 2600 2400
+Wire Wire Line
+	2600 2500 3100 2500
+Wire Wire Line
+	4700 2500 3400 2500
+Wire Wire Line
+	4700 2600 3400 2600
+Wire Wire Line
+	3100 2600 2600 2600
+Wire Wire Line
+	2600 2700 3100 2700
+Wire Wire Line
+	3400 2700 4600 2700
+Wire Wire Line
+	4500 2800 3400 2800
+Wire Wire Line
+	3100 2800 2600 2800
+Wire Wire Line
+	2600 2900 3100 2900
+Wire Wire Line
+	3400 2900 4400 2900
+Wire Wire Line
+	2600 3000 4900 3000
+Wire Wire Line
+	4300 3200 3400 3200
+Wire Wire Line
+	3100 3200 2600 3200
+Wire Wire Line
+	2600 3300 3100 3300
+Wire Wire Line
+	3400 3300 4200 3300
+Wire Wire Line
+	4100 3400 3400 3400
+Wire Wire Line
+	3100 3400 2600 3400
+Wire Wire Line
+	2000 4300 3100 4300
+Wire Wire Line
+	5400 4300 3400 4300
+Wire Wire Line
+	5300 4400 3400 4400
+Wire Wire Line
+	3100 4400 1900 4400
+Wire Wire Line
+	1800 4500 3100 4500
+Wire Wire Line
+	5200 4500 3400 4500
+Wire Wire Line
+	5100 4600 3400 4600
+Wire Wire Line
+	3100 4600 1700 4600
+Wire Wire Line
+	1600 4700 3100 4700
+Wire Wire Line
+	5000 4700 3400 4700
+Wire Wire Line
+	2600 2100 5500 2100
+$EndSCHEMATC

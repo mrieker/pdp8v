@@ -1,0 +1,92 @@
+#
+#  processed by netgen to simulate processor
+#  acts as if it were a raspberry pi hooked up to pins of proc.mod
+#
+#   ../netgen/netgen.sh whole.mod -sim proc.sim
+#
+
+set hc 250
+set sv 0         ;# 0=quiet; 1=print states
+expr {srand (12345)}
+
+module proc
+#monitor cin_inc_12/alu _oldlink/alu _newlink/alu
+
+# send value coming out of RASPI going into the processor
+
+proc ForceMQ {val} {
+    force MQ $val
+}
+
+proc ForceMQL {val} {
+    force MQL $val
+}
+
+proc ForceMQOff {} {
+    force MQ 0bXXXXXXXXXXXX
+    force MQL 0bX
+    force IOSKP 0bX
+}
+
+proc ForceClock {on} {
+    force CLOK2 $on
+}
+
+proc ForceReset {on} {
+    force RESET $on
+}
+
+proc ForceIoSkp {on} {
+    force IOSKP $on
+}
+
+proc ForceIntRq {on} {
+    force INTRQ $on
+}
+
+# get register contents
+
+proc GetACBits {} {
+    return [examine acq]
+}
+
+proc GetALUQBits {} {
+    return [string map {0 1 1 0} [examine _aluq]]
+}
+
+proc GetIRQ1108Bits {} {
+    return [examine irq/seq][examine irq_8/seq]
+}
+
+proc GetLink {} {
+    return [examine lnq]
+}
+
+proc GetMABits {} {
+    return [examine maq]
+}
+
+proc GetPCBits {} {
+    return [examine pcq]
+}
+
+proc GetState {name} {
+    return [examine ${name}q/seq]
+}
+
+proc GetCtrl {name} {
+    if {$name == "_endinst"} {
+        return [examine _endinst/seq]
+    }
+    return [examine $name]
+}
+
+proc Error {msg} {
+    echo $msg
+    exit
+}
+
+#
+# use test script common with de0 testing
+#
+source "commontest.tcl"

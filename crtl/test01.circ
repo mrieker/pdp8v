@@ -1,0 +1,10 @@
+inductor  L1 (source, ground) 4.7e-6
+current   I2 (source, ground) 0.1
+capacitor C1 (source, vinput) 0.01e-6
+capacitor C2 (vinput, ground) 470e-12
+inductor  L2 (vinput, middle) 2e-6
+capacitor C3 (middle, ground) 940e-12
+inductor  L3 (middle, voutput) 2e-6
+capacitor C4 (voutput, ground) 470e-12
+resistor  R1 (voutput, ground) 50
+acanal 7e6 8e6 1e5

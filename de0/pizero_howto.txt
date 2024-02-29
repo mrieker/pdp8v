@@ -1,0 +1,12 @@
+
+plug USB cable into center-most connector
+give it a few seconds to boot
+
+on homepc, do ifconfig
+look for device enp0s29u1u7i1 or similar
+do ifconfig enp0s29u1u7i1 192.168.5.1
+do ssh pi@192.168.5.2
+
+seems the ifconfig on homepc drops ip address without notice
+so put the ifconfig in a loop script one a second
+
