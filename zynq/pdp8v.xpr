@@ -110,11 +110,11 @@
         <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_SyncReset_0_0/myboard_SyncReset_0_0.xci">
           <Proxy FileSetName="myboard_SyncReset_0_0"/>
         </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_processing_system7_0_0/myboard_processing_system7_0_0.xci">
-          <Proxy FileSetName="myboard_processing_system7_0_0"/>
-        </CompFileExtendedInfo>
         <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_Zynq_0_0/myboard_Zynq_0_0.xci">
           <Proxy FileSetName="myboard_Zynq_0_0"/>
+        </CompFileExtendedInfo>
+        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_processing_system7_0_0/myboard_processing_system7_0_0.xci">
+          <Proxy FileSetName="myboard_processing_system7_0_0"/>
         </CompFileExtendedInfo>
       </File>
       <File Path="$PPRDIR/myboard/hdl/myboard_wrapper.vhd">

@@ -22,13 +22,12 @@
 #define _GPIOLIB_H
 
 #include <netinet/in.h>
-#include <semaphore.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string>
 
-#define DEFADDHZ 17000
-#define DEFCPUHZ 22000
+#define DEFADDHZ 20000  // seems happy with vpp=117.3, vgg=-87.3
+#define DEFCPUHZ 32000  // ...giving raspictl -randmem => 25340 Hz
 
 #define G_CLOCK       0x4   // GPIO[02]   out: send clock signal to cpu
 #define G_RESET       0x8   // GPIO[03]   out: send reset signal to cpu
@@ -114,7 +113,6 @@ struct CSrcLib : GpioLib {
 private:
     CSrcMod *module;
     bool latestwdata;
-    sem_t waitsem;
     uint32_t latestwvalu;
     uint64_t waituntilns;
     uint64_t writecount;

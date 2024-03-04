@@ -11,7 +11,7 @@ module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
 
     wire x = D & _SC;
 
-    ///*
+    /*
     // pulsed and-or-invert style latch
     //   addhz=17000 ./raspictl -zynqlib -randmem -mintimes -quiet -cpuhz 29000  =>  avghz 26131
     reg[8:0] count;
@@ -32,9 +32,9 @@ module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
     StandCell xnot (U, _x, x);
     StandCell snor (U, _Q, _PC & pulse &  x | _PC &  Q);
     StandCell rnor (U,  Q, _PS & pulse & _x | _PS & _Q);
-    //*/
+    */
 
-    /*
+    ///*
     // edge-triggered using 6 nand gate standcells
     wire a, b, c, d, e, f;
 
@@ -47,7 +47,7 @@ module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
     StandCell dnand (U, d, c & a & _PS);
     StandCell enand (U, e, b & f & _PC);
     StandCell fnand (U, f, c & e & _PS);
-    */
+    //*/
 
     /*
     always @(posedge U) begin

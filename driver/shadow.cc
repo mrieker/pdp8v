@@ -675,7 +675,13 @@ printsavedregs:;
             (LLU) c, statestr (p->state), p->link, p->ac, p->ir, p->ma, p->pc,
             (p->state == FETCH1) ? "" : disassemble (p->ir, p->pc).c_str ());
     }
-    ABORT ();
+    StateMismatchException sme;
+    throw sme;
+}
+
+char const *Shadow::StateMismatchException::what ()
+{
+    return "shadow detected state mismatch on GPIO and/or paddles";
 }
 
 Shadow::State Shadow::firstexecstate ()

@@ -21,6 +21,8 @@
 #ifndef _SHADOW_H
 #define _SHADOW_H
 
+#include <exception>
+
 #include "gpiolib.h"
 #include "miscdefs.h"
 
@@ -60,6 +62,10 @@ struct Shadow {
         State state;
         bool link;
         uint16_t ac, ir, ma, pc;
+    };
+
+    struct StateMismatchException : std::exception {
+        virtual char const *what ();
     };
 
     Regs r;

@@ -50,6 +50,7 @@ lib.a.$(MACH): \
 		pipelib.o.$(MACH) \
 		rdcyc.o.$(MACH) \
 		readprompt.o.$(MACH) \
+		rimloader.o.$(MACH) \
 		shadow.o.$(MACH) \
 		scncall.o.$(MACH) \
 		strprintf.o.$(MACH) \
@@ -146,8 +147,14 @@ zynqtest.$(MACH): zynqtest.o.$(MACH) $(LIBS)
 csrcmod_%.so.$(MACH): csrcmod_%.cc csrcmod.cc
 	$(GPP) -shared -o $@ $^
 
-csrcmod_%.cc: ../modules/whole.mod
+csrcmod_%.cc: ../modules/whole.mod ../netgen/classes/NetGen.class
 	../netgen/netgen.sh ../modules/whole.mod -gen $* -csource $@
+
+../netgen/classes/NetGen.class:
+	cd ../netgen ; make
+
+../modules/whole.mod:
+	cd ../modules ; make whole.mod
 
 rdcyc.o.$(MACH): $(RDCYC) *.h
 	$(GPP) -DUNIPROC=$(UNIPROC) -c -o $@ $<

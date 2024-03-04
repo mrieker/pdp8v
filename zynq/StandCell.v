@@ -10,17 +10,17 @@ module StandCell (U, _Q, D);
 
     always @(posedge U) begin
         if (D) begin
-            // tPHL = 0.4uS (40 * 10nS)
-            if (counter > 39) begin
-                counter <= 39;
+            // tPHL = 0.30uS (30 * 10nS)
+            if (counter > 29) begin
+                counter <= 29;
             end else if (counter != 0) begin
                 counter <= counter - 1;
             end else begin
                 _Q <= 0;
             end
         end else begin
-            // tPLH = 4uS (400 * 10nS)
-            if (counter > 399) begin
+            // tPLH = 3.0uS (300 * 10nS)
+            if (counter > 299) begin
                 _Q <= 1;
             end else begin
                 counter <= counter + 1;

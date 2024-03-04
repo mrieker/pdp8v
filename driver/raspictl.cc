@@ -25,7 +25,7 @@
  *  export cpuhz=<cpuhz>
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guihalt] [-haltcont]
  *          [-haltprint] [-haltstop] [-infloopstop] [-linc] [-mintimes] [-nohw] [-os8zap] [-paddles] [-pipelib] [-printinstr]
- *          [-printstate] [-quiet] [-randmem] [-startpc <address>] [-stopat <address>] [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-startpc <address>] [-stopat <address>] [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -49,6 +49,8 @@
  *      -printstate  : print message at beginning of each state
  *      -quiet       : don't print undefined/unsupported opcode messages
  *      -randmem     : supply random opcodes and data for testing
+ *      -resetonerr  : reset if error is detected
+ *      -rimloader   : load file is in rimloader format
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
  *      -watchwrite  : print message if the given address is written to
@@ -81,6 +83,7 @@
 #include "memory.h"
 #include "miscdefs.h"
 #include "rdcyc.h"
+#include "rimloader.h"
 #include "scncall.h"
 #include "shadow.h"
 
@@ -133,6 +136,8 @@ int main (int argc, char **argv)
     bool nohw = false;
     bool os8zap = false;
     bool pipelib = false;
+    bool resetonerr = false;
+    bool rimldr = false;
     bool zynqlib = false;
     char const *corename = NULL;
     char const *loadname = NULL;
@@ -147,6 +152,7 @@ int main (int argc, char **argv)
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-binloader") == 0) {
             binldr = true;
+            rimldr = false;
             continue;
         }
         if (strcasecmp (argv[i], "-corefile") == 0) {
@@ -234,6 +240,15 @@ int main (int argc, char **argv)
             quiet = true;
             initcount = 1;
             initreads[0] = 07300;   // CLA CLL
+            continue;
+        }
+        if (strcasecmp (argv[i], "-resetonerr") == 0) {
+            resetonerr = true;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-rimloader") == 0) {
+            binldr = false;
+            rimldr = true;
             continue;
         }
         if (strcasecmp (argv[i], "-startpc") == 0) {
@@ -344,6 +359,25 @@ int main (int argc, char **argv)
                 initreads[1] = 05400;           // JMP @0
                 initreads[0] = start & 07777;
             }
+        } else if (rimldr) {
+
+            // pdp-8 rimloader format
+            uint16_t start;
+            int rc = rimloader (loadname, loadfile, &start);
+            if (rc != 0) return rc;
+
+            // maybe a start address was given
+            if (! (start & 0x8000)) {
+                if (start & 070000) {
+                    initcount = 4;
+                    initreads[3] = 06203 | ((start >> 9) & 070);    // change both I & D fields
+                } else {
+                    initcount = 3;
+                }
+                initreads[2] = 07300;           // CLA CLL
+                initreads[1] = 05400;           // JMP @0
+                initreads[0] = start & 07777;
+            }
         } else {
 
             // linker format
@@ -399,183 +433,197 @@ int main (int argc, char **argv)
     // close gpio on exit
     atexit (exithandler);
 
+    shadow.open (gpio);
+
+reseteverything:;
+
     // reset cpu circuit
     gpio->doareset ();
 
     // tell shadowing that cpu has been reset
-    shadow.open (gpio);
     shadow.reset ();
     if (guihalt) shadow.haltflags |= HF_HALTIT;
 
     // reset things we keep state of
     ioreset ();
 
-    uint16_t lastreaddata = 0;
-    for ever {
+    try {
+        uint16_t lastreaddata = 0;
+        for ever {
 
-        // invariant:
-        //  clock has been low for half cycle
-        //  G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
+            // invariant:
+            //  clock has been low for half cycle
+            //  G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
 
-        // get input signals just before raising clock
-        uint32_t sample = gpio->readgpio ();
+            // get input signals just before raising clock
+            uint32_t sample = gpio->readgpio ();
 
-        // raise clock then wait for half a cycle
-        SHADOWCHECK (sample);
-        if (shadow.r.state == Shadow::FETCH2) {
-            // keep IR LEDs steady with old opcode instead of turning all on
-            // cosmetic only, otherwise can use the else's writegpio()
-            gpio->writegpio (true, G_CLOCK | syncintreq | shadow.r.ir * G_DATA0);
-        } else {
-            gpio->writegpio (false, G_CLOCK | syncintreq);
-        }
-        gpio->halfcycle (shadow.aluadd ());
+            // raise clock then wait for half a cycle
+            SHADOWCHECK (sample);
+            if (shadow.r.state == Shadow::FETCH2) {
+                // keep IR LEDs steady with old opcode instead of turning all on
+                // cosmetic only, otherwise can use the else's writegpio()
+                gpio->writegpio (true, G_CLOCK | syncintreq | shadow.r.ir * G_DATA0);
+            } else {
+                gpio->writegpio (false, G_CLOCK | syncintreq);
+            }
+            gpio->halfcycle (shadow.aluadd ());
 
-        // we are now halfway through the cycle with the clock still high
+            // we are now halfway through the cycle with the clock still high
 
-        // process the signal sample from just before raising clock
+            // process the signal sample from just before raising clock
 
-        // - jump instruction (last cycle was either JMP1 or JMS1)
-        //   if there was a pending change in iframe, get the new iframe now
-        //   so the address presented by the JMP1 or JMS1 is interpreted in new iframe
-        //   if it just finished JMP1, we probably have G_READ and the target address in the new iframe,
-        //     so we want the new iframe set up before we fetch the instruction below
-        //   likewise if it just finished JMS1, we have G_WRITE and the target address in the new iframe,
-        //     so we want the new iframe set up before we write the return address below
-        if (sample & G_JUMP) {
-            memext.doingjump ();
-        }
-
-        // - interrupt acknowledge (turns off interrupt enable and other such flab)
-        //   sets iframe to 0 so subsequent saving of the PC gets saved in 0.0000
-        //   it just finished INTAK1 so we have G_WRITE at address 0 for frame 0
-        //     so we have to change to iframe 0 before doing the write below
-        if (sample & G_IAK) {
-            memext.intack ();
-        }
-
-        // - memory access
-        if (sample & (G_READ | G_WRITE)) {
-            uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
-            ASSERT (addr < MEMSIZE);
-
-            if (addr == stopataddr) {
-                fprintf (stderr, "raspictl: stopat %05o\n", addr);
-                dumpregs ();
-                return 2;
+            // - jump instruction (last cycle was either JMP1 or JMS1)
+            //   if there was a pending change in iframe, get the new iframe now
+            //   so the address presented by the JMP1 or JMS1 is interpreted in new iframe
+            //   if it just finished JMP1, we probably have G_READ and the target address in the new iframe,
+            //     so we want the new iframe set up before we fetch the instruction below
+            //   likewise if it just finished JMS1, we have G_WRITE and the target address in the new iframe,
+            //     so we want the new iframe set up before we write the return address below
+            if (sample & G_JUMP) {
+                memext.doingjump ();
             }
 
-            if (sample & G_READ) {
-
-                // read memory contents
-                if (initcount > 0) {
-                    lastreaddata = initreads[--initcount];
-                } else if (randmem) {
-                    lastreaddata = randuint16 () & 07777;
-                } else if (os8zap && (lastreadaddr == 007424) && (lastreaddata == 02351) && (addr == 007551) && (memarray[007425] == 05224)) {
-                    lastreaddata = 07777;   // patch 07424: ISZ 07551 / JMP 07424 to read value 07777
-                } else {
-                    lastreaddata = memarray[addr];
-                }
-
-                // save last address being read from
-                lastreadaddr = addr;
-
-                // maybe stop if a 'JMP .' instruction
-                if (infloopstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
-                    uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
-                    if (ea == addr) {
-                        fprintf (stderr, "raspictl: JMP . at PC=%05o\n", lastreadaddr);
-                        dumpregs ();
-                        return 2;
-                    }
-                }
-
-                // interrupts might have been turned on by the previous instruction
-                // but the enable gets blocked until the fetch of the next instruction
-                // so this read might be such a fetch
-                memext.doingread (lastreaddata);
-
-                // if interrupts were just turned on by memext.doingread(),
-                // recompute syncintreq before dropping clock so processor
-                // will see the new interrupt request before deciding if it
-                // will take the interrupt by the end of the instruciton
-                syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
-
-                // send data to processor
-                senddata (lastreaddata);
+            // - interrupt acknowledge (turns off interrupt enable and other such flab)
+            //   sets iframe to 0 so subsequent saving of the PC gets saved in 0.0000
+            //   it just finished INTAK1 so we have G_WRITE at address 0 for frame 0
+            //     so we have to change to iframe 0 before doing the write below
+            if (sample & G_IAK) {
+                memext.intack ();
             }
 
-            if (sample & G_WRITE) {
-                uint16_t data = recvdata () & 07777;
-                if (addr == watchwrite) {
-                    fprintf (stderr, "raspictl: watch write addr %05o data %04o\n", addr, data);
+            // - memory access
+            if (sample & (G_READ | G_WRITE)) {
+                uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
+                ASSERT (addr < MEMSIZE);
+
+                if (addr == stopataddr) {
+                    fprintf (stderr, "raspictl: stopat %05o\n", addr);
                     dumpregs ();
+                    return 2;
                 }
-                memarray[addr] = data;
-                if (randmem) {
-                    uint16_t r = randuint16 ();
-                    intreqmask = (r & 1) * IRQ_RANDMEM;
-                    if ((r & 14) == 0) {
-                        if (shadow.printinstr | shadow.printstate) {
-                            printf ("%9llu randmem enabling interrupts\n", (LLU) shadow.getcycles ());
+
+                if (sample & G_READ) {
+
+                    // read memory contents
+                    if (initcount > 0) {
+                        lastreaddata = initreads[--initcount];
+                    } else if (randmem) {
+                        lastreaddata = randuint16 () & 07777;
+                    } else if (os8zap && (lastreadaddr == 007424) && (lastreaddata == 02351) && (addr == 007551) && (memarray[007425] == 05224)) {
+                        lastreaddata = 07777;   // patch 07424: ISZ 07551 / JMP 07424 to read value 07777
+                    } else {
+                        lastreaddata = memarray[addr];
+                    }
+
+                    // save last address being read from
+                    lastreadaddr = addr;
+
+                    // maybe stop if a 'JMP .' instruction
+                    if (infloopstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
+                        uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
+                        if (ea == addr) {
+                            fprintf (stderr, "raspictl: JMP . at PC=%05o\n", lastreadaddr);
+                            dumpregs ();
+                            return 2;
                         }
-                        memext.ioinstr (06001, 0);
+                    }
+
+                    // interrupts might have been turned on by the previous instruction
+                    // but the enable gets blocked until the fetch of the next instruction
+                    // so this read might be such a fetch
+                    memext.doingread (lastreaddata);
+
+                    // if interrupts were just turned on by memext.doingread(),
+                    // recompute syncintreq before dropping clock so processor
+                    // will see the new interrupt request before deciding if it
+                    // will take the interrupt by the end of the instruciton
+                    syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
+
+                    // send data to processor
+                    senddata (lastreaddata);
+                }
+
+                if (sample & G_WRITE) {
+                    uint16_t data = recvdata () & 07777;
+                    if (addr == watchwrite) {
+                        fprintf (stderr, "raspictl: watch write addr %05o data %04o\n", addr, data);
+                        dumpregs ();
+                    }
+                    memarray[addr] = data;
+                    if (randmem) {
+                        uint16_t r = randuint16 ();
+                        intreqmask = (r & 1) * IRQ_RANDMEM;
+                        if ((r & 14) == 0) {
+                            if (shadow.printinstr | shadow.printstate) {
+                                printf ("%9llu randmem enabling interrupts\n", (LLU) shadow.getcycles ());
+                            }
+                            memext.ioinstr (06001, 0);
+                        }
                     }
                 }
             }
-        }
 
-        // - io instruction (incl group 3 eae)
-        //   last cycle was IOT1 and now in middle of IOT2
-        //   lastreaddata contains i/o opcode
-        //   sample contains AC,link
-        //   processor waiting for updated AC,link and skip signal
-        if (sample & G_IOIN) {
-            ASSERT (G_LINK == G_DATA + G_DATA0);
-            uint16_t linkac = (sample / G_DATA0) & 017777;
-            // - in middle of IOT2 clock high
-            uint16_t skplac = UNSUPIO;
-            if ((lastreaddata & 07000) == 06000) {
-                skplac = ioinstr (lastreaddata, linkac);          // a real i/o instruction
-            } else if ((lastreaddata & 07401) == 07401) {
-                skplac = extarith.ioinstr (lastreaddata, linkac); // group 3 (eae)
-            } else if ((lastreaddata & 07401) == 07400) {
-                skplac = group2io (lastreaddata, linkac);         // group 2 with OSR and/or HLT
-            }
-            if (skplac == UNSUPIO) {
-                if (! quiet) {
-                    fprintf (stderr, "raspictl: unsupported i/o opcode %04o at %05o\n", lastreaddata, lastreadaddr);
-                    dumpregs ();
+            // - io instruction (incl group 3 eae)
+            //   last cycle was IOT1 and now in middle of IOT2
+            //   lastreaddata contains i/o opcode
+            //   sample contains AC,link
+            //   processor waiting for updated AC,link and skip signal
+            if (sample & G_IOIN) {
+                ASSERT (G_LINK == G_DATA + G_DATA0);
+                uint16_t linkac = (sample / G_DATA0) & 017777;
+                // - in middle of IOT2 clock high
+                uint16_t skplac = UNSUPIO;
+                if ((lastreaddata & 07000) == 06000) {
+                    skplac = ioinstr (lastreaddata, linkac);          // a real i/o instruction
+                } else if ((lastreaddata & 07401) == 07401) {
+                    skplac = extarith.ioinstr (lastreaddata, linkac); // group 3 (eae)
+                } else if ((lastreaddata & 07401) == 07400) {
+                    skplac = group2io (lastreaddata, linkac);         // group 2 with OSR and/or HLT
                 }
-                skplac = linkac;
+                if (skplac == UNSUPIO) {
+                    if (! quiet) {
+                        fprintf (stderr, "raspictl: unsupported i/o opcode %04o at %05o\n", lastreaddata, lastreadaddr);
+                        dumpregs ();
+                    }
+                    skplac = linkac;
+                }
+                syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
+                                                                // currently in middle of IOT2 state
+                                                                // update irq in case i/o instr updates it
+                                                                // should be time for it to soak in for processor
+                                                                // ...to decide FETCH1 or INTAK1 state next
+                // - in middle of IOT2 clock high
+                //   for LINC, we are in DEFER2 and so are sending updated PC
+                senddata (skplac);                              // we send SKIP,LINK,AC in final cycle
+                // - in middle of FETCH1/INTAK1 clock high
             }
-            syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
-                                                            // currently in middle of IOT2 state
-                                                            // update irq in case i/o instr updates it
-                                                            // should be time for it to soak in for processor
-                                                            // ...to decide FETCH1 or INTAK1 state next
-            // - in middle of IOT2 clock high
-            //   for LINC, we are in DEFER2 and so are sending updated PC
-            senddata (skplac);                              // we send SKIP,LINK,AC in final cycle
-            // - in middle of FETCH1/INTAK1 clock high
+
+            // update irq pin in middle of cycle so it has time to soak in by the next clock up time
+            bool intenabd = memext.intenabd ();
+            syncintreq = (intreqmask && intenabd) ? G_IRQ : 0;
+
+            // drop the clock and enable link,data bus read
+            // then wait half a clock cycle while clock is low
+            gpio->writegpio (false, syncintreq);
+            gpio->halfcycle (shadow.aluadd ());
+
+            // maybe reached cycle limit
+            uint64_t cc;
+            if ((cyclelimit != 0) && ((cc = shadow.getcycles ()) > cyclelimit)) {
+                fprintf (stderr, "raspictl: cycle count %llu reached limit %u\n", (LLU) cc, cyclelimit);
+                ABORT ();
+            }
         }
-
-        // update irq pin in middle of cycle so it has time to soak in by the next clock up time
-        bool intenabd = memext.intenabd ();
-        syncintreq = (intreqmask && intenabd) ? G_IRQ : 0;
-
-        // drop the clock and enable link,data bus read
-        // then wait half a clock cycle while clock is low
-        gpio->writegpio (false, syncintreq);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // maybe reached cycle limit
-        uint64_t cc;
-        if ((cyclelimit != 0) && ((cc = shadow.getcycles ()) > cyclelimit)) {
-            fprintf (stderr, "raspictl: cycle count %llu reached limit %u\n", (LLU) cc, cyclelimit);
-            ABORT ();
+    }
+    catch (Shadow::StateMismatchException& sme) {
+        if (resetonerr) {
+            fprintf (stderr, "\nraspictl: resetting everything...\n");
+            initcount = 1;
+            initreads[0] = 07300;   // CLA CLL
+            goto reseteverything;
         }
+        exit (1);
     }
 }
 

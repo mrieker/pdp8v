@@ -247,7 +247,7 @@ static uint32_t randuint32 (int nbits)
 static void sighandler (int signum)
 {
     if ((signum == SIGINT) && ! pauseit) {
-        write (0, "\n", 1); // after the "^C"
+        int ignored __attribute__ ((unused)) = write (0, "\n", 1); // after the "^C"
         pauseit   = true;
         stepcount = 0;
         verbose   = true;

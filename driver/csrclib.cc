@@ -68,7 +68,7 @@ CSrcLib::CSrcLib (char const *modname)
     char const *sonamestr = soname.c_str ();
     if (access (sonamestr, R_OK) < 0) {
         if (errno != ENOENT) {
-            fprintf (stderr, "CSrcLib::CSrcLib: error accessing %s\n", sonamestr);
+            fprintf (stderr, "CSrcLib::CSrcLib: error accessing %s: %m\n", sonamestr);
             ABORT ();
         }
         std::string makecmd;
@@ -81,7 +81,8 @@ CSrcLib::CSrcLib (char const *modname)
             makecmd.append (mach);
         }
         fprintf (stderr, "CSrcLib::CSrcLib: %s\n", makecmd.c_str ());
-        system (makecmd.c_str ());
+        int rc = system (makecmd.c_str ());
+        if (rc != 0) fprintf (stderr, "CSrcLib::CSrcLib: - make status %d, errno %d\n", rc, errno);
     }
 
     // now try to open it
