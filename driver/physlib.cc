@@ -172,20 +172,20 @@ void PhysLib::writegpio (bool wdata, uint32_t value)
     uint32_t mask = wdata ? G_OUTS | G_LINK | G_DATA : G_OUTS;
     if ((gpiomask != mask) || (value & G_RESET)) {
         gpiomask = mask;
-        ASSERT (G_OUTS == 0x3A000C);
+        ASSERT (G_OUTS == 0x3E000C);
         ASSERT ((G_LINK|G_DATA) == 0x001FFF0);
         if (wdata) {
 
             // about to write link,data bits
             gpiopage[GPIO_FSEL0+0] = IGO * 01111111100;     // enable data<05:00>,reset,clock outputs
-            gpiopage[GPIO_FSEL0+1] = IGO * 01011111111;     // enable qena,ios,link,data<11:06> outputs
+            gpiopage[GPIO_FSEL0+1] = IGO * 01111111111;     // enable qena,trig,ios,link,data<11:06> outputs
             gpioreadflip = (G_REVIS & G_INS) | G_REVOS;     // on read, flip any permanent input pins that need flipping
                                                             //          flip any permanent or temporary output pins that need flipping
         } else {
 
             // allow link,data bits to be read
             gpiopage[GPIO_FSEL0+0] = IGO * 00000001100;     // enable reset,clock outputs, data<05:00> are inputs
-            gpiopage[GPIO_FSEL0+1] = IGO * 01010000000;     // enable qena,ioskip outputs, link,data<11:06> are inputs
+            gpiopage[GPIO_FSEL0+1] = IGO * 01110000000;     // enable qena,trig,ios outputs, link,data<11:06> are inputs
             gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // on read, flip any permanent or temporary input pins that need flipping
                                                             //          flip any permanent output pins that need flipping
         }
@@ -293,9 +293,9 @@ trylk:;
 
     gpiomask = G_OUTS;                          // just drive output pins, not data pins, to start with
     gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);  // these pins get flipped on read to show active high
-    ASSERT (G_OUTS == 0x3A000C);
+    ASSERT (G_OUTS == 0x3E000C);
     gpiopage[GPIO_FSEL0+0] = IGO * 00000001100; // gpio<09:00> = data<05:00>, reset, clock, unused<1:0>
-    gpiopage[GPIO_FSEL0+1] = IGO * 01010000000; // gpio<19:10> = qena, unused, ioskip, link, data<11:06>
+    gpiopage[GPIO_FSEL0+1] = IGO * 01110000000; // gpio<19:10> = qena, trig, ioskip, link, data<11:06>
     gpiopage[GPIO_FSEL0+2] = IGO * 00000000011; // gpio<27:20> = intak, write, read, dfrm, ioinst, jump, dena, intrq
     gpiovalu = 0;                               // make sure gpio pin state matches what we have cached
     gpiopage[GPIO_CLR0] = ~ G_REVOS & G_ALL;

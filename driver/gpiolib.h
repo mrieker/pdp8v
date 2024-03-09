@@ -34,6 +34,7 @@
 #define G_DATA     0xFFF0   // GPIO[15:04] bi: data bus bits
 #define G_LINK    0x10000   // GPIO[16]    bi: link bus bit
 #define G_IOS     0x20000   // GPIO[17]   out: skip next instruction (valid in IOT.2 only)
+#define G_TRIG    0x40000   // GPIO[18]   out: trigger scope
 #define G_QENA    0x80000   // GPIO[19]   out: we are sending data out to cpu
 #define G_IRQ    0x100000   // GPIO[20]   out: send interrupt request to cpu
 #define G_DENA   0x200000   // GPIO[21]   out: we are receiving data from cpu
@@ -44,10 +45,10 @@
 #define G_WRITE 0x4000000   // GPIO[26]    in: cpu wants to write to us
 #define G_IAK   0x8000000   // GPIO[27]    in: interrupt acknowledge
 
-#define G_OUTS  (G_CLOCK|G_RESET|G_IOS|G_IRQ|G_DENA|G_QENA) // these are always output pins
-#define G_INS   (G_IOIN|G_DFRM|G_JUMP|G_READ|G_WRITE|G_IAK) // these are always input pins
-#define G_DATA0 (G_DATA & -G_DATA)                          // low-order data pin
-#define G_ALL   (G_OUTS | G_INS | G_DATA | G_LINK)          // all the gpio bits we care about
+#define G_OUTS  (G_CLOCK|G_RESET|G_IOS|G_IRQ|G_DENA|G_QENA|G_TRIG)  // these are always output pins
+#define G_INS   (G_IOIN|G_DFRM|G_JUMP|G_READ|G_WRITE|G_IAK)         // these are always input pins
+#define G_DATA0 (G_DATA & -G_DATA)                                  // low-order data pin
+#define G_ALL   (G_OUTS | G_INS | G_DATA | G_LINK)                  // all the gpio bits we care about
 
 #define G_REVIS (G_IOIN)                                    // reverse these input pins when reading GPIO connector so app sees only active high signals
             // G_DATA  = _MD = _aluq: active low by alu.mod -> inverted by level converter -> active high to gpio connector -> active high to app
@@ -224,6 +225,7 @@ private:
 
 struct ZynqLib : TimedLib {
     ZynqLib ();
+    ZynqLib (char const *modnames);
     virtual ~ZynqLib ();
     virtual void open ();
     virtual void close ();
@@ -234,6 +236,7 @@ struct ZynqLib : TimedLib {
 
 private:
     int memfd;
+    uint32_t boardena;
     uint32_t gpiomask;
     uint32_t gpioreadflip;
     uint32_t volatile *gpiopage;

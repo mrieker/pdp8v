@@ -19,12 +19,13 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 /**
- * Program runs on the RasPI or a PC to test a single board via the ABCD paddles.
+ * Program runs on the RasPI or a PC to test one or more boards via the ABCD paddles.
  * For the RPI board, it must be run on a RasPI plugged into the GPIO connector along with the paddles.
+ * It generates random inputs and checks the outputs.
  *
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
- *  ./autoboardtest [-mult] [-page] [-pause] [-pipelib] [-verbose] <boards>...
+ *  ./autoboardtest [-mult] [-page] [-pause] [-pipelib] [-verbose] [-zynqlib] <boards>...
  *
  *      <boards> : all or any combination of acl alu ma pc rpi seq
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
@@ -34,6 +35,7 @@
  *         -page : paginate -verbose output
  *        -pause : pause at end of each cycle
  *      -verbose : print progress messages
+ *      -zynqlib : test zynq instead of tubes
  */
 
 #include <errno.h>
@@ -132,6 +134,7 @@ int main (int argc, char **argv)
 {
     bool multflag = false;
     bool pipelib = false;
+    bool zynqlib = false;
 
     setlinebuf (stdout);
 
@@ -153,10 +156,16 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-pipelib") == 0) {
             pipelib = true;
+            zynqlib = false;
             continue;
         }
         if (strcasecmp (argv[i], "-verbose") == 0) {
             verbose = true;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-zynqlib") == 0) {
+            pipelib = false;
+            zynqlib = true;
             continue;
         }
         if (argv[i][0] == '-') {
@@ -216,7 +225,9 @@ int main (int argc, char **argv)
     atexit (exithandler);
 
     // access tube circuitry and simulator
-    hardware = pipelib ? (GpioLib *) new PipeLib (pipelibmodcst) : (GpioLib *) new PhysLib ();
+    hardware = zynqlib ? (GpioLib *) new ZynqLib (pipelibmodcst) :
+               pipelib ? (GpioLib *) new PipeLib (pipelibmodcst) :
+                         (GpioLib *) new PhysLib ();
     simulatr = new CSrcLib (csrclibmodcst);
     hardware->open ();
     simulatr->open ();
@@ -451,7 +462,7 @@ static void writebits (uint32_t acon, uint32_t bcon, uint32_t ccon, uint32_t dco
 
 // it is end of a cycle, the board signal connector pins should match what the simulator has
 // if not, print differences and enable pause mode
-static void checkendcycle ()
+static bool checkendcycle ()
 {
     // read values from hardware via IOW56s
     // if -pipelib, get bits via pipe from netgen simulator
@@ -487,7 +498,9 @@ static void checkendcycle ()
         printf ("  hwccon=%08X  smccon=%08X  diff=%08X  %s\n", hwccon, smccon, cdiff, pinstring (cdiff, cpindefs).c_str ());
         printf ("  hwdcon=%08X  smdcon=%08X  diff=%08X  %s\n", hwdcon, smdcon, ddiff, pinstring (ddiff, dpindefs).c_str ());
         gotanerror ();
+        return true;
     }
+    return false;
 }
 
 // give tubes time to process whatever was just written to the connectors
@@ -589,8 +602,8 @@ static void mainloop_mult ()
     bool intrequest = false;
     bool sendrandata = false;
 
-    bool *sim_fetch2d = simulatr->getvarbool ("_fetch2d/seqcirc", 0);
-    bool *sim_fetch2q = simulatr->getvarbool ("_fetch2q/seqcirc", 0);
+    bool const *sim_fetch2d = simulatr->getvarbool ("_fetch2d/seqcirc", 0);
+    bool const *sim_fetch2q = simulatr->getvarbool ("_fetch2q/seqcirc", 0);
     std::string str;
 
     while (true) {
@@ -883,6 +896,8 @@ static void mainloop_acl ()
 
         // send out random values to its input pins
         // also negate clock, leave reset negated, leave _ac_aluq alone
+        // _ac_aluq gets sampled on fall8ng edge of clock
+        // - if low (asserted), AC and possibly LINK get written at next rising clock edge
 
         nextrands ();
         writebits (arand, brand, crand, (drand & ~ C__ac_aluq) | c__ac_aluq);
@@ -890,23 +905,32 @@ static void mainloop_acl ()
         // wait for end of cycle and compare with what simulator thinks
 
         halfcycle ();
-        checkendcycle ();
+        bool err = checkendcycle ();
 
         if (verbose) {
-            ABCD abcd;
-            abcd.acon = hwacon;
-            abcd.bcon = hwbcon;
-            abcd.ccon = hwccon;
-            abcd.dcon = hwdcon;
-            abcd.decode ();
+            for (int i = 0; i < 2; i ++) {
+                ABCD abcd;
+                abcd.acon = i ? hwacon : smacon;
+                abcd.bcon = i ? hwbcon : smbcon;
+                abcd.ccon = i ? hwccon : smccon;
+                abcd.dcon = i ? hwdcon : smdcon;
+                abcd.decode ();
 
-            uint32_t rotq;
-            if (simulatr->examine ("rotq/aclcirc", &rotq) != 12) ABORT ();
-
-            printf ("%10u: _ac_aluq=%o _ln_wrt=%o _ac_sc=%o _aluq=%04o maq[6:1]=%02o _maq[3:1]=%o rotq=%04o => acq=%04o acqzero=%o _lnq=%o lnq=%o grpb_skip=%o\n",
-                    cycleno,
-                    abcd._ac_aluq, abcd._ln_wrt, abcd._ac_sc, abcd._aluq, (abcd.maq >> 1) & 63, (abcd._maq >> 1) & 7, rotq,
-                    abcd.acq, abcd.acqzero, abcd._lnq, abcd.lnq, abcd.grpb_skip);
+                if (!i) {
+                    uint32_t _lnq, rotq;
+                    if (simulatr->examine ("_lnq/aclcirc", &_lnq) !=  1) ABORT ();
+                    if (simulatr->examine ("rotq/aclcirc", &rotq) != 12) ABORT ();
+                    printf ("%10u %s: _ac_aluq=%o _ln_wrt=%o _ac_sc=%o _aluq=%04o maq[6:1]=%02o _maq[3:1]=%o _newlink=%o _lnq=%o rotq=%04o => acq=%04o acqzero=%o _lnq=%o lnq=%o grpb_skip=%o\n",
+                            cycleno, (err ? "sim" : "   "),
+                            abcd._ac_aluq, abcd._ln_wrt, abcd._ac_sc, abcd._aluq, (abcd.maq >> 1) & 63, (abcd._maq >> 1) & 7, abcd._newlink, _lnq, rotq,
+                            abcd.acq, abcd.acqzero, abcd._lnq, abcd.lnq, abcd.grpb_skip);
+                    if (! err) break;
+                } else {
+                    printf ("           hdw: _ac_aluq=%o _ln_wrt=%o _ac_sc=%o _aluq=%04o maq[6:1]=%02o _maq[3:1]=%o _newlink=%o                  => acq=%04o acqzero=%o _lnq=%o lnq=%o grpb_skip=%o\n",
+                            abcd._ac_aluq, abcd._ln_wrt, abcd._ac_sc, abcd._aluq, (abcd.maq >> 1) & 63, (abcd._maq >> 1) & 7, abcd._newlink,
+                            abcd.acq, abcd.acqzero, abcd._lnq, abcd.lnq, abcd.grpb_skip);
+                }
+            }
 
             maybepause ();
         }
@@ -914,6 +938,7 @@ static void mainloop_acl ()
         // if next clock up will load AC, AC bits will be known so check them from then on
 
         if (! c__ac_aluq) {
+            if (aouts == 0) printf ("ac will be checked starting next cycle\n");
             aouts = A_acq_11 | A_acq_10 | A_acq_09 | A_acq_08 | A_acq_07;
             bouts = B_acq_06 | B_acq_05 | B_acq_04 | B_acqzero | B_acq_03;
             couts = C_acq_02 | C_acq_01 | C_acq_00;
@@ -921,6 +946,7 @@ static void mainloop_acl ()
             // link gets written along with AC when clock raised if _ln_wrt is asserted
 
             if (! (drand & D__ln_wrt)) {
+                if (douts == 0) printf ("link will be checked starting next cycle\n");
                 douts = D_grpb_skip | D__lnq | D_lnq;
             }
         }
@@ -928,7 +954,8 @@ static void mainloop_acl ()
         // about to start a new cycle
         inccycleno ();
 
-        // raise clock then wait half a cycle, possibly changing _ac_aluq for the new cycle
+        // raise clock then wait half a cycle, possibly changing _ac_aluq for the new cycle (sampled on falling edge of clock)
+        // keep _aluq, _newlink inputs steady so they get clocked in if _ac_aluq was asserted last cycle
 
         writebits (arand, brand, crand, drand | D_clok2);
         halfcycle ();

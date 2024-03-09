@@ -1,5 +1,5 @@
 
-module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
+module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC, ga, gb, gc, gd, ge, gf);
     input   U;
     output  Q;
     output _Q;
@@ -36,20 +36,22 @@ module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
 
     ///*
     // edge-triggered using 6 nand gate standcells
-    wire a, b, c, d, e, f;
+    output ga, gb, gc, gd, ge, gf;
 
-    assign _Q = e;
-    assign  Q = f;
+    assign _Q = ge;
+    assign  Q = gf;
 
-    StandCell anand (U, a, x & b & _PC);
-    StandCell bnand (U, b, a & T & c);
-    StandCell cnand (U, c, T & d & _PC);
-    StandCell dnand (U, d, c & a & _PS);
-    StandCell enand (U, e, b & f & _PC);
-    StandCell fnand (U, f, c & e & _PS);
+    StandCell anand (U, ga, x  & gb & _PC);
+    StandCell bnand (U, gb, ga & T  & gc);
+    StandCell cnand (U, gc, T  & gd & _PC);
+    StandCell dnand (U, gd, gc & ga & _PS);
+    StandCell enand (U, ge, gb & gf & _PC);
+    StandCell fnand (U, gf, gc & ge & _PS);
     //*/
 
     /*
+    reg lastD, lastT, Q, _Q;
+
     always @(posedge U) begin
         if (~ _PC | ~ _PS) begin
              Q <= ~ _PS;
@@ -58,20 +60,8 @@ module DFFModule (U, Q, _Q, T, D, _PC, _PS, _SC);
              Q <=   lastD;
             _Q <= ~ lastD;
         end
-        lastD <= dat;
+        lastD <= x;
         lastT <= T;
-    end
-    */
-
-    /*
-    always @(posedge T or negedge _PC or negedge _PS) begin
-        if (~ _PC | ~ _PS) begin
-             Q <= ~ _PS;
-            _Q <= ~ _PC;
-        end else if (T) begin
-             Q <=   dat;
-            _Q <= ~ dat;
-        end
     end
     */
 endmodule

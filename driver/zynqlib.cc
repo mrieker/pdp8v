@@ -32,12 +32,24 @@
 #include "rdcyc.h"
 
 ZynqLib::ZynqLib ()
+    : ZynqLib ("aclalumapcrpiseq")
+{ }
+
+ZynqLib::ZynqLib (char const *modnames)
 {
     this->memfd  = -1;
     this->memptr = NULL;
 
     gpiomask = 0;
     gpiopage = NULL;
+
+    boardena =
+        ((strstr (modnames, "acl") != NULL) ? 001 : 0) |
+        ((strstr (modnames, "alu") != NULL) ? 002 : 0) |
+        ((strstr (modnames, "ma")  != NULL) ? 004 : 0) |
+        ((strstr (modnames, "pc")  != NULL) ? 010 : 0) |
+        ((strstr (modnames, "rpi") != NULL) ? 020 : 0) |
+        ((strstr (modnames, "seq") != NULL) ? 040 : 0);
 }
 
 ZynqLib::~ZynqLib ()
@@ -124,38 +136,13 @@ void ZynqLib::writegpio (bool wdata, uint32_t value)
 
     // maybe update gpio pin direction
     uint32_t mask = wdata ? G_OUTS | G_LINK | G_DATA : G_OUTS;
-    if (gpiomask != mask) {
-        gpiomask = mask;
-        if (wdata) {
-            gpioreadflip = (G_REVIS & G_INS) | G_REVOS;     // on read, flip any permanent input pins that need flipping
-                                                            //          flip any permanent or temporary output pins that need flipping
-        } else {
-            gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // on read, flip any permanent or temporary input pins that need flipping
-                                                            //          flip any permanent output pins that need flipping
-        }
-    }
-
-#if 000
-    printf ("ZynqLib::writegpio*: pins<%08X", value);
-    printf ("      ");
-    printf ("        ");
-    printf ("       ");
-    printf ("       ");
-    printf ("       ");
-    printf (" QENA<%u",    (value / G_QENA)  & 1);
-    printf (" DENA<%u",    (value / G_DENA)  & 1);
-    printf (" IRQ<%u",     (value / G_IRQ)   & 1);
-    printf (" IOS<%u",     (value / G_IOS)   & 1);
     if (wdata) {
-        printf (" LINK<%u",    (value / G_LINK) & 1);
-        printf (" DATA<%04o",  (value / G_DATA0) & 07777);
+        gpioreadflip = (G_REVIS & G_INS) | G_REVOS;     // on read, flip any permanent input pins that need flipping
+                                                        //          flip any permanent or temporary output pins that need flipping
     } else {
-        printf ("       ");
-        printf ("          ");
+        gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // on read, flip any permanent or temporary input pins that need flipping
+                                                        //          flip any permanent output pins that need flipping
     }
-    printf (" RESET<%u",   (value / G_RESET) & 1);
-    printf (" CLOCK<%u\n", (value / G_CLOCK) & 1);
-#endif
 
     // flip some bits going outbound
     value ^= G_REVOS;
@@ -213,6 +200,21 @@ trylk:;
     gpiopage = (uint32_t volatile *) memptr;
     fprintf (stderr, "ZynqLib::open: zynq fpga version %08X\n", gpiopage[3]);
 
+    gpiopage[4] = boardena;
+    uint32_t berb = gpiopage[4];
+    std::string best;
+    if (berb & 001) best.append ("acl ");
+    if (berb & 002) best.append ("alu ");
+    if (berb & 004) best.append ("ma ");
+    if (berb & 010) best.append ("pc ");
+    if (berb & 020) best.append ("rpi ");
+    if (berb & 040) best.append ("seq ");
+    fprintf (stderr, "ZynqLib::open: boardena %02o=%s\n", berb, best.c_str ());
+    if (berb != boardena) {
+        fprintf (stderr, "ZynqLib::open: boardena %02o read back as %02o\n", boardena, berb);
+        ABORT ();
+    }
+
     gpiomask = G_OUTS;                              // just drive output pins, not data pins, to start with
     gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // these pins get flipped on read to show active high
 }
@@ -222,15 +224,26 @@ trylk:;
 //    returns pins read from connectors
 void ZynqLib::readpads (uint32_t *pinss)
 {
-    pinss[0] = gpiopage[4];
-    pinss[1] = gpiopage[5];
-    pinss[2] = gpiopage[6];
-    pinss[3] = gpiopage[7];
+    if (gpiopage == NULL) {
+        opengpio ();
+    }
+    pinss[0] = gpiopage[ 8];
+    pinss[1] = gpiopage[ 9];
+    pinss[2] = gpiopage[10];
+    pinss[3] = gpiopage[11];
 }
 
-// write abcd connector pins - zynq paddle pins are read-only
+// write abcd connector pins
 //  input:
 //    masks = which pins are output pins (others are inputs or not connected)
 //    pinss = values for the pins listed in mask (others are don't care)
 void ZynqLib::writepads (uint32_t const *masks, uint32_t const *pinss)
-{ }
+{
+    if (gpiopage == NULL) {
+        opengpio ();
+    }
+    gpiopage[12] = pinss[0];
+    gpiopage[13] = pinss[1];
+    gpiopage[14] = pinss[2];
+    gpiopage[15] = pinss[3];
+}

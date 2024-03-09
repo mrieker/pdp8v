@@ -1,0 +1,22 @@
+
+Patch ACL 2023-09-04 to 2024-03-07
+
+1) delete LNT gate
+
+    a) cut plate and gate traces for J95 (16.9,8.6)
+
+2) add AND section to _LND gate J93 (16.9,7.1)
+
+    a) cut traces off D380 cathode to gate & to D382 below it
+    b) cut trace from D383 to R126
+    c) connect wire from D383 anode to D380 anode (D383 cathode already goes to _LN_WRT)
+    d) pull up D381 cathode (leave existing traces as they are)
+    e) connect D381 cathode to nearby trace for LNQ coming from J91 (14.9,10.0)
+    f) connect D380 cathode to D377 cathode (just above it)
+
+3) change LNREG to clock off ACTC instead of LNT
+    D391 (14.1,5.8) and D394 (14.1,7.1)
+
+    a) connect cathode D391 to wire just above it - ACTC J110 (15.9,5.6)
+    b) cut old trace from D394 going to J95 (16.9,8.6)
+

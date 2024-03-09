@@ -22,6 +22,7 @@
         }
       },
       "SyncReset_0": "",
+      "system_ila_0": "",
       "Zynq_0": ""
     },
     "interface_ports": {
@@ -1284,16 +1285,16 @@
               }
             },
             "interface_nets": {
-              "auto_us_to_s00_couplers": {
-                "interface_ports": [
-                  "M_AXI",
-                  "auto_us/M_AXI"
-                ]
-              },
               "auto_pc_to_auto_us": {
                 "interface_ports": [
                   "auto_pc/M_AXI",
                   "auto_us/S_AXI"
+                ]
+              },
+              "auto_us_to_s00_couplers": {
+                "interface_ports": [
+                  "M_AXI",
+                  "auto_us/M_AXI"
                 ]
               },
               "s00_couplers_to_auto_pc": {
@@ -1587,6 +1588,27 @@
           },
           "SYNCRES_N": {
             "direction": "O"
+          }
+        }
+      },
+      "system_ila_0": {
+        "vlnv": "xilinx.com:ip:system_ila:1.1",
+        "xci_name": "myboard_system_ila_0_0",
+        "parameters": {
+          "C_DATA_DEPTH": {
+            "value": "131072"
+          },
+          "C_MON_TYPE": {
+            "value": "NATIVE"
+          },
+          "C_NUM_OF_PROBES": {
+            "value": "2"
+          },
+          "C_PROBE1_WIDTH": {
+            "value": "14"
+          },
+          "C_PROBE_WIDTH_PROPAGATION": {
+            "value": "MANUAL"
           }
         }
       },
@@ -2148,8 +2170,13 @@
             "left": "7",
             "right": "0"
           },
-          "CLOK2_DBG": {
+          "TRIGGR": {
             "direction": "O"
+          },
+          "DEBUGS": {
+            "direction": "O",
+            "left": "13",
+            "right": "0"
           }
         },
         "addressing": {
@@ -2163,10 +2190,10 @@
       }
     },
     "interface_nets": {
-      "axi_interconnect_0_M00_AXI": {
+      "processing_system7_0_FIXED_IO": {
         "interface_ports": [
-          "axi_interconnect_0/M00_AXI",
-          "processing_system7_0/S_AXI_HP0"
+          "FIXED_IO",
+          "processing_system7_0/FIXED_IO"
         ]
       },
       "processing_system7_0_M_AXI_GP0": {
@@ -2175,16 +2202,16 @@
           "axi_interconnect_1/S00_AXI"
         ]
       },
-      "processing_system7_0_DDR": {
+      "S00_AXI_1": {
         "interface_ports": [
-          "DDR",
-          "processing_system7_0/DDR"
+          "axi_interconnect_0/S00_AXI",
+          "Zynq_0/M00_AXI"
         ]
       },
-      "processing_system7_0_FIXED_IO": {
+      "axi_interconnect_0_M00_AXI": {
         "interface_ports": [
-          "FIXED_IO",
-          "processing_system7_0/FIXED_IO"
+          "axi_interconnect_0/M00_AXI",
+          "processing_system7_0/S_AXI_HP0"
         ]
       },
       "axi_interconnect_1_M00_AXI": {
@@ -2193,10 +2220,10 @@
           "Zynq_0/S00_AXI"
         ]
       },
-      "S00_AXI_1": {
+      "processing_system7_0_DDR": {
         "interface_ports": [
-          "axi_interconnect_0/S00_AXI",
-          "Zynq_0/M00_AXI"
+          "DDR",
+          "processing_system7_0/DDR"
         ]
       }
     },
@@ -2213,6 +2240,7 @@
           "axi_interconnect_1/S00_ACLK",
           "axi_interconnect_1/M00_ACLK",
           "SyncReset_0/CLOCK",
+          "system_ila_0/clk",
           "Zynq_0/CLOCK"
         ]
       },
@@ -2256,6 +2284,18 @@
         "ports": [
           "processing_system7_0/FCLK_RESET0_N",
           "SyncReset_0/RESET_N"
+        ]
+      },
+      "Zynq_0_TRIGGR": {
+        "ports": [
+          "Zynq_0/TRIGGR",
+          "system_ila_0/probe0"
+        ]
+      },
+      "Zynq_0_DEBUGS": {
+        "ports": [
+          "Zynq_0/DEBUGS",
+          "system_ila_0/probe1"
         ]
       }
     },

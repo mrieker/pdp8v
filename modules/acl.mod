@@ -6,7 +6,7 @@ module aclcirc (
     in iot2q, in _ln_wrt, out _lnq, out lnq, in _maq[11:00], in maq[11:00], in mql,
     in _newlink, in reset, in tad3q)
 {
-    wire _acg, acta, actb, actc, lnt, acqzer2;
+    wire _acg, acta, actb, actc, acqzer2;
     wire _lnd, _acq[11:00], ac_sca, _ac_sca;
     wire _clok1, _reset;
     wire grpa1q, grpb_skip_base, grpb_skip_nand;
@@ -71,30 +71,15 @@ module aclcirc (
      ac_sca = ~ _ac_sc;
     _ac_sca = ~ ac_sca;
 
-    //  _ac_aluq   _ln_wrt   _acg   _clok1  =>  lnt
-    //      1        1         1       1         0                      2nd half of cycle not writing AC
-    //      1        1         1       0         0                      start of new cycle that writes L,AC
-    //      x        x         1       0         0                      still in first half, _ac_aluq, _ln_wrt in transition
-    //      0        0         1       0         0                      still in first half, _ac_aluq, _ln_wrt settled
-    //      0        0         1       1         0                      start 2nd half of cycle
-    //      0        0         0       1         0                      still in second half, _acg updated
-    //      0        0         0       0         0      t=0             start new cycle
-    //      0        0         0       0         1      t=1*tg          start writing link
-    //      x        1         0       0         1      t=3*tg+1*td     new cycle does not write link
-    //      x        1         0       0         0      t=4*tg+1*td     quickly stop writing link
-    //      1        1         0       0         0                      new cycle does not write accum
-    //      1        1         0       1         0                      start 2nd half of cycle
-    //      1        1         1       1         0                      _acg updated
-    lnt = ~ (_acg | _ln_wrt | _clok1);
-
     _lnd = ~ (tad3q & rotcout |         // TAD
               grpa1q & rotcout |        // group 1
-              iot2q & mql);             // iot (for group 3 EAE)
+              iot2q & mql |             // iot (for group 3 EAE)
+              _ln_wrt & lnq);           // keep link the same
 
     aclo:  DFF 4 _SC (_PC:1, _PS:1, D:rotq[03:00], Q:acq[03:00], _Q:_acq[03:00], T:acta, _SC:_ac_sc);
     acmid: DFF 4 _SC (_PC:1, _PS:1, D:rotq[07:04], Q:acq[07:04], _Q:_acq[07:04], T:actb, _SC:_ac_sca);
     achi:  DFF 4 _SC (_PC:1, _PS:1, D:rotq[11:08], Q:acq[11:08], _Q:_acq[11:08], T:actc, _SC:_ac_sca);
-    lnreg: DFF       (_PC:1, _PS:1, D:_lnd, Q:_lnq, _Q:lnq, T:lnt);
+    lnreg: DFF       (_PC:1, _PS:1, D:_lnd, Q:_lnq, _Q:lnq, T:actc);
 
     // group 2 skip
     //  [3] = reverse sense

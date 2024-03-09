@@ -254,7 +254,6 @@ public class GenCtx {
             }
             topy += rowheight;
         }
-        System.out.println ("GenCtx.autoPlace*: topy=" + topy);
     }
 
     private static int wholeRowWidth (ArrayList<ArrayList<Placeable>> columns)

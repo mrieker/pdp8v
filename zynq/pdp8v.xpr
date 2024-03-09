@@ -82,7 +82,35 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/proc-synth.v">
+      <File Path="$PPRDIR/aclcirc.v">
+        <FileInfo>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/alucirc.v">
+        <FileInfo>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/macirc.v">
+        <FileInfo>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/pccirc.v">
+        <FileInfo>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
+      <File Path="$PPRDIR/seqcirc.v">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
@@ -107,14 +135,14 @@
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
-        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_SyncReset_0_0/myboard_SyncReset_0_0.xci">
-          <Proxy FileSetName="myboard_SyncReset_0_0"/>
-        </CompFileExtendedInfo>
         <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_Zynq_0_0/myboard_Zynq_0_0.xci">
           <Proxy FileSetName="myboard_Zynq_0_0"/>
         </CompFileExtendedInfo>
-        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_processing_system7_0_0/myboard_processing_system7_0_0.xci">
-          <Proxy FileSetName="myboard_processing_system7_0_0"/>
+        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_SyncReset_0_0/myboard_SyncReset_0_0.xci">
+          <Proxy FileSetName="myboard_SyncReset_0_0"/>
+        </CompFileExtendedInfo>
+        <CompFileExtendedInfo CompFileName="myboard.bd" FileRelPathName="ip/myboard_system_ila_0_0/myboard_system_ila_0_0.xci">
+          <Proxy FileSetName="myboard_system_ila_0_0"/>
         </CompFileExtendedInfo>
       </File>
       <File Path="$PPRDIR/myboard/hdl/myboard_wrapper.vhd">
@@ -160,15 +188,15 @@
         <Option Name="TopAutoSet" Val="TRUE"/>
       </Config>
     </FileSet>
-    <FileSet Name="myboard_processing_system7_0_0" Type="BlockSrcs" RelSrcDir="$PSRCDIR/myboard_processing_system7_0_0">
-      <Config>
-        <Option Name="TopModule" Val="myboard_processing_system7_0_0"/>
-        <Option Name="UseBlackboxStub" Val="1"/>
-      </Config>
-    </FileSet>
     <FileSet Name="myboard_SyncReset_0_0" Type="BlockSrcs" RelSrcDir="$PSRCDIR/myboard_SyncReset_0_0">
       <Config>
         <Option Name="TopModule" Val="myboard_SyncReset_0_0"/>
+        <Option Name="UseBlackboxStub" Val="1"/>
+      </Config>
+    </FileSet>
+    <FileSet Name="myboard_system_ila_0_0" Type="BlockSrcs" RelSrcDir="$PSRCDIR/myboard_system_ila_0_0">
+      <Config>
+        <Option Name="TopModule" Val="myboard_system_ila_0_0"/>
         <Option Name="UseBlackboxStub" Val="1"/>
       </Config>
     </FileSet>
@@ -213,7 +241,7 @@
       <ReportStrategy Name="Vivado Synthesis Default Reports" Flow="Vivado Synthesis 2018"/>
       <Report Name="ROUTE_DESIGN.REPORT_METHODOLOGY" Enabled="1"/>
     </Run>
-    <Run Id="myboard_processing_system7_0_0_synth_1" Type="Ft3:Synth" SrcSet="myboard_processing_system7_0_0" Part="xc7z020clg400-1" ConstrsSet="myboard_processing_system7_0_0" Description="Vivado Synthesis Defaults" AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" Dir="$PRUNDIR/myboard_processing_system7_0_0_synth_1" IncludeInArchive="true">
+    <Run Id="myboard_SyncReset_0_0_synth_1" Type="Ft3:Synth" SrcSet="myboard_SyncReset_0_0" Part="xc7z020clg400-1" ConstrsSet="myboard_SyncReset_0_0" Description="Vivado Synthesis Defaults" AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" Dir="$PRUNDIR/myboard_SyncReset_0_0_synth_1" IncludeInArchive="true">
       <Strategy Version="1" Minor="2">
         <StratHandle Name="Vivado Synthesis Defaults" Flow="Vivado Synthesis 2018"/>
         <Step Id="synth_design"/>
@@ -222,7 +250,7 @@
       <ReportStrategy Name="Vivado Synthesis Default Reports" Flow="Vivado Synthesis 2018"/>
       <Report Name="ROUTE_DESIGN.REPORT_METHODOLOGY" Enabled="1"/>
     </Run>
-    <Run Id="myboard_SyncReset_0_0_synth_1" Type="Ft3:Synth" SrcSet="myboard_SyncReset_0_0" Part="xc7z020clg400-1" ConstrsSet="myboard_SyncReset_0_0" Description="Vivado Synthesis Defaults" AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" Dir="$PRUNDIR/myboard_SyncReset_0_0_synth_1" IncludeInArchive="true">
+    <Run Id="myboard_system_ila_0_0_synth_1" Type="Ft3:Synth" SrcSet="myboard_system_ila_0_0" Part="xc7z020clg400-1" ConstrsSet="myboard_system_ila_0_0" Description="Vivado Synthesis Defaults" AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" Dir="$PRUNDIR/myboard_system_ila_0_0_synth_1" IncludeInArchive="true">
       <Strategy Version="1" Minor="2">
         <StratHandle Name="Vivado Synthesis Defaults" Flow="Vivado Synthesis 2018"/>
         <Step Id="synth_design"/>
@@ -259,7 +287,7 @@
       <ReportStrategy Name="Vivado Implementation Default Reports" Flow="Vivado Implementation 2018"/>
       <Report Name="ROUTE_DESIGN.REPORT_METHODOLOGY" Enabled="1"/>
     </Run>
-    <Run Id="myboard_processing_system7_0_0_impl_1" Type="Ft2:EntireDesign" Part="xc7z020clg400-1" ConstrsSet="myboard_processing_system7_0_0" Description="Default settings for Implementation." AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" SynthRun="myboard_processing_system7_0_0_synth_1" IncludeInArchive="false" GenFullBitstream="true">
+    <Run Id="myboard_SyncReset_0_0_impl_1" Type="Ft2:EntireDesign" Part="xc7z020clg400-1" ConstrsSet="myboard_SyncReset_0_0" Description="Default settings for Implementation." AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" SynthRun="myboard_SyncReset_0_0_synth_1" IncludeInArchive="false" GenFullBitstream="true">
       <Strategy Version="1" Minor="2">
         <StratHandle Name="Vivado Implementation Defaults" Flow="Vivado Implementation 2018"/>
         <Step Id="init_design"/>
@@ -275,7 +303,7 @@
       <ReportStrategy Name="Vivado Implementation Default Reports" Flow="Vivado Implementation 2018"/>
       <Report Name="ROUTE_DESIGN.REPORT_METHODOLOGY" Enabled="1"/>
     </Run>
-    <Run Id="myboard_SyncReset_0_0_impl_1" Type="Ft2:EntireDesign" Part="xc7z020clg400-1" ConstrsSet="myboard_SyncReset_0_0" Description="Default settings for Implementation." AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" SynthRun="myboard_SyncReset_0_0_synth_1" IncludeInArchive="false" GenFullBitstream="true">
+    <Run Id="myboard_system_ila_0_0_impl_1" Type="Ft2:EntireDesign" Part="xc7z020clg400-1" ConstrsSet="myboard_system_ila_0_0" Description="Default settings for Implementation." AutoIncrementalCheckpoint="false" WriteIncrSynthDcp="false" SynthRun="myboard_system_ila_0_0_synth_1" IncludeInArchive="false" GenFullBitstream="true">
       <Strategy Version="1" Minor="2">
         <StratHandle Name="Vivado Implementation Defaults" Flow="Vivado Implementation 2018"/>
         <Step Id="init_design"/>
