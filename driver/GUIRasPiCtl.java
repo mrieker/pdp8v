@@ -29,4 +29,5 @@ public class GUIRasPiCtl {
     public native static String disassemble (int ir, int pc);
     public native static int rdmem (int addr);
     public native static int wrmem (int addr, int data);
+    public native static void reset (int addr);
 }

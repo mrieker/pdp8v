@@ -62,6 +62,13 @@ MemExt::MemExt ()
     this->iframeafterjump = 0;                  // stay in iframe 0 after jump
 }
 
+void MemExt::setdfif (uint32_t frame)
+{
+    this->iframe = frame << 12;                 // use by GUI console to set frame
+    this->iframeafterjump = frame << 12;
+    this->dframe = frame << 12;
+}
+
 // reset to power-on state
 void MemExt::ioreset ()
 {

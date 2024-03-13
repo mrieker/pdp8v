@@ -10,6 +10,6 @@
 export iodevptaperdr=
 export iodevtty_cps=10
 export iodevtty_debug=1
-export iodevtty=iodevtty.`hostname`
+export iodevtty='-|-'
 export switchregister=0
 exec ../driver/raspictl -binloader -haltstop -startpc 0200 $MAINDECOPTS bins/08-DHKEA.bin

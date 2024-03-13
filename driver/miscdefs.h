@@ -57,4 +57,20 @@ void setintreqmask (uint16_t mask);
 uint16_t getintreqmask ();
 char *getexedir (char *buf, int buflen);
 
+#define HF_HALTED  1
+#define HF_HALTIT  2
+#define HF_RESETIT 4
+
+extern pthread_cond_t haltcond;
+extern pthread_cond_t haltcond2;
+extern pthread_mutex_t haltmutex;
+extern uint32_t haltflags;
+extern uint32_t haltsample;
+
+#include <exception>
+
+struct ResetProcessorException : std::exception {
+    virtual char const *what ();
+};
+
 #endif

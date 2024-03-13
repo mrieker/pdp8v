@@ -44,6 +44,7 @@ public class GUI extends JPanel {
     public final static byte CB_SETSR  = 5;
     public final static byte CB_RDMEM  = 6;
     public final static byte CB_WRMEM  = 7;
+    public final static byte CB_RESET  = 8;
 
     public final static int G_CLOCK =       0x4;   // GPIO[02]   out: send clock signal to cpu
     public final static int G_RESET =       0x8;   // GPIO[03]   out: send reset signal to cpu
@@ -79,6 +80,7 @@ public class GUI extends JPanel {
         public abstract void setsr (int sr);
         public abstract int rdmem (int addr);
         public abstract int wrmem (int addr, int data);
+        public abstract void reset (int addr);
     }
 
     // run the GUI with the given processor access
@@ -148,6 +150,23 @@ public class GUI extends JPanel {
         else {
             access = new DirectAccess (args);
         }
+
+        // set initial SR contents from envar
+        String srenv = System.getenv ("switchregister");
+        int srint = 0;
+        if (srenv != null) {
+            try {
+                srint = Integer.parseInt (srenv, 8);
+            } catch (NumberFormatException nfe) {
+                System.err.println ("bad switchregister envar value " + srenv);
+                System.exit (1);
+            }
+        }
+        writeswitches (srint);
+        access.setsr (srint);
+
+        // update initial display
+        updisplay.actionPerformed (null);
 
         // update display at UPDMS rate when processor is running
         updatetimer = new Timer (UPDMS, updisplay);
@@ -248,6 +267,11 @@ public class GUI extends JPanel {
                     sample[2] = (byte)(rc >> 16);
                     sample[3] = (byte)(rc >> 24);
                     ostream.write (sample, 0, 4);
+                    break;
+                }
+                case CB_RESET: {
+                    int addr = readShort (istream);
+                    access.reset ((short) addr);
                     break;
                 }
                 default: {
@@ -421,6 +445,18 @@ public class GUI extends JPanel {
             }
             return ((samplebytes[3] & 0xFF) << 24) | ((samplebytes[2] & 0xFF) << 16) | ((samplebytes[1] & 0xFF) << 8) | (samplebytes[0] & 0xFF);
         }
+
+        @Override
+        public void reset (int addr)
+        {
+            byte[] msg = { CB_RESET, (byte) addr, (byte) (addr >> 8) };
+            try {
+                ostream.write (msg);
+            } catch (Exception e) {
+                e.printStackTrace ();
+                System.exit (1);
+            }
+        }
     }
 
     /////////////////////
@@ -439,6 +475,9 @@ public class GUI extends JPanel {
             RasPiCtlThread raspictlthread = new RasPiCtlThread ();
             raspictlthread.args = args;
             raspictlthread.start ();
+
+            // wait for raspictl to start up, including loading memory and initializing PC
+            GUIRasPiCtl.sethalt (true);
         }
 
         @Override
@@ -488,6 +527,12 @@ public class GUI extends JPanel {
         {
             return GUIRasPiCtl.wrmem (addr, data);
         }
+
+        @Override
+        public void reset (int addr)
+        {
+            GUIRasPiCtl.reset (addr);
+        }
     }
 
     // run the raspictl program in its own thread
@@ -512,8 +557,6 @@ public class GUI extends JPanel {
     //  GUI ELEMENTS  //
     ////////////////////
 
-    public static int  lastir = -1;
-    public static int  lastpc = -1;
     public static long lastcc = -1;
 
     public static LED gpioiakled;
@@ -599,11 +642,7 @@ public class GUI extends JPanel {
                     cyclecntlabel.setText (String.format ("%,9d   ", cycs));
                 }
 
-                if ((lastir != ir) || (lastpc != pc)) {
-                    lastir = ir;
-                    lastpc = pc;
-                    disassemlabel.setText (padDisasm ("   " + GUIRasPiCtl.disassemble (ir, pc)));
-                }
+                disassemlabel.setText (st == 0 ? nulldisasm : padDisasm ("   " + GUIRasPiCtl.disassemble (ir, pc)));
             }
         };
 
@@ -732,9 +771,9 @@ public class GUI extends JPanel {
         bit_1.add (new JLabel ("SR"));
 
         // row 7 - IR and state bits
-        bits1412.add (new LDAButton ());
-        bits1412.add (new ExmButton ());
-        bits1412.add (new DepButton ());
+        bits1412.add (new JLabel (""));
+        bits1412.add (new JLabel (""));
+        bits1412.add (new JLabel (""));
         for (int i =  0; i <  3; i ++) bits1109.add (irleds[i] = new LED ());
         bits0806.add (new JLabel (""));
         for (int i = 0; i < 2; i ++) bits0806.add (stleds[i] = new LED ());
@@ -761,21 +800,33 @@ public class GUI extends JPanel {
         bit_1.add (centeredLabel ("IAK"));
 
         // buttons along the bottom
-        JPanel buttonbox = new JPanel ();
-        buttonbox.setLayout (new BoxLayout (buttonbox, BoxLayout.X_AXIS));
-        add (buttonbox);
+        JPanel buttonbox1 = new JPanel ();
+        buttonbox1.setLayout (new BoxLayout (buttonbox1, BoxLayout.X_AXIS));
+        add (buttonbox1);
 
         cyclecntlabel = new JLabel (" ");
         cyclecntlabel.setFont (new Font (Font.MONOSPACED, Font.PLAIN, cyclecntlabel.getFont ().getSize ()));
-        buttonbox.add (cyclecntlabel);
+        buttonbox1.add (cyclecntlabel);
 
-        buttonbox.add (haltrunbutton = new HaltRunButton ());
-        buttonbox.add (stepcyclebutton = new StepCycleButton ());
-        buttonbox.add (stepinstrbutton = new StepInstrButton ());
+        buttonbox1.add (haltrunbutton = new HaltRunButton ());
+        buttonbox1.add (stepcyclebutton = new StepCycleButton ());
+        buttonbox1.add (stepinstrbutton = new StepInstrButton ());
 
-        disassemlabel = new JLabel (padDisasm (""));
+        nulldisasm = padDisasm ("");
+        disassemlabel = new JLabel (nulldisasm);
         disassemlabel.setFont (new Font (Font.MONOSPACED, Font.PLAIN, disassemlabel.getFont ().getSize ()));
-        buttonbox.add (disassemlabel);
+        buttonbox1.add (disassemlabel);
+
+        // 2nd row of buttons along bottom
+        JPanel buttonbox2 = new JPanel ();
+        buttonbox2.setLayout (new BoxLayout (buttonbox2, BoxLayout.X_AXIS));
+        add (buttonbox2);
+
+        buttonbox2.add (new LdAddrButton ());
+        buttonbox2.add (new ExamButton ());
+        buttonbox2.add (new DepButton ());
+        buttonbox2.add (new ResetButton ());
+        buttonbox2.add (new LdIFPCButton ());
     }
 
     public static JLabel centeredLabel (String label)
@@ -786,6 +837,7 @@ public class GUI extends JPanel {
     }
 
     public static int disasmlen = 20;
+    public static String nulldisasm;
 
     public static String padDisasm (String disasm)
     {
@@ -807,6 +859,14 @@ public class GUI extends JPanel {
             if (sw.ison) sr |= 040000 >> i;
         }
         return sr;
+    }
+
+    public static void writeswitches (int sr)
+    {
+        for (int i = 0; i < 15; i ++) {
+            Switch sw = switches[i];
+            sw.setOn ((sr & (040000 >> i)) != 0);
+        }
     }
 
     public static void writemaleds (int maval)
@@ -881,7 +941,7 @@ public class GUI extends JPanel {
             access.setsr (readswitches () & 07777);
         }
 
-        private void setOn (boolean on)
+        public void setOn (boolean on)
         {
             if (ison != on) {
                 ison = on;
@@ -980,10 +1040,10 @@ public class GUI extends JPanel {
     private static int autoincloadedaddress;
 
     // - load address button
-    private static class LDAButton extends MemButton {
-        public LDAButton ()
+    private static class LdAddrButton extends MemButton {
+        public LdAddrButton ()
         {
-            super ("LDA");
+            super ("LD ADDR");
         }
 
         @Override  // MemButton
@@ -996,10 +1056,10 @@ public class GUI extends JPanel {
     }
 
     // - examine button
-    private static class ExmButton extends MemButton {
-        public ExmButton ()
+    private static class ExamButton extends MemButton {
+        public ExamButton ()
         {
-            super ("EXM");
+            super ("EXAM");
         }
 
         @Override  // MemButton
@@ -1036,37 +1096,46 @@ public class GUI extends JPanel {
         }
     }
 
+    // - reset I/O devices and processor, set IF/PC to -startpc, or as given by .BIN/.RIM file, or 0
+    private static class ResetButton extends MemButton {
+        private ResetButton ()
+        {
+            super ("RESET");
+        }
+
+        @Override  // MemButton
+        public void actionPerformed (ActionEvent ae)
+        {
+            if (! haltrunbutton.halted) haltrunbutton.actionPerformed (ae);
+            access.reset (-1);
+            updisplay.actionPerformed (null);
+        }
+    }
+
+    // - reset I/O devices and processor, set IF/PC to 15-bit value in switchregister
+    private static class LdIFPCButton extends MemButton {
+        private LdIFPCButton ()
+        {
+            super ("LD IF/PC");
+        }
+
+        @Override  // MemButton
+        public void actionPerformed (ActionEvent ae)
+        {
+            if (! haltrunbutton.halted) haltrunbutton.actionPerformed (ae);
+            access.reset (readswitches () & 077777);
+            updisplay.actionPerformed (null);
+        }
+    }
+
     private static abstract class MemButton extends JButton implements ActionListener {
-        public final static int P = 5;
-        public final static int D = 20;
-
-        private String label;
-
         public MemButton (String lbl)
         {
-            label = lbl;
-
-            Dimension d = new Dimension (P + D + P, P + D + P);
-            setMaximumSize (d);
-            setMinimumSize (d);
-            setPreferredSize (d);
-            setSize (d);
+            super (lbl);
             addActionListener (this);
         }
 
         @Override  // ActionListener
         public abstract void actionPerformed (ActionEvent ae);
-
-        @Override
-        public void paint (Graphics g)
-        {
-            g.setColor (Color.GRAY);
-            g.fillArc (P - 3, P - 3, D + 6, D + 6, 0, 360);
-            g.setColor (Color.BLACK);
-            g.fillArc (P, P, D, D, 0, 360);
-            g.setColor (Color.RED);
-            g.drawString (label, 0, D);
-        }
     }
-
 }

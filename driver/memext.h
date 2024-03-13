@@ -14,6 +14,7 @@ struct MemExt : IODev {
     uint16_t saveddframe;           // dframe saved at beginning of last interrupt
 
     MemExt ();
+    void setdfif (uint32_t frame);
     void doingjump ();
     void doingread (uint16_t data);
     void intack ();

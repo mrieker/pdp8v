@@ -26,9 +26,6 @@
 #include "gpiolib.h"
 #include "miscdefs.h"
 
-#define HF_HALTED 1
-#define HF_HALTIT 2
-
 #define NSAVEREGS 16
 
 struct Shadow {
@@ -82,10 +79,7 @@ struct Shadow {
     uint64_t getcycles ();
     uint32_t readgpio (bool irq);
 
-    pthread_cond_t haltcond;
-    pthread_cond_t haltcond2;
-    pthread_mutex_t haltmutex;
-    uint32_t haltflags;
+    static char const *statestr (State s);
 
 private:
     bool acknown;
@@ -105,7 +99,6 @@ private:
     State endOfInst (bool irq);
 
     static char const *boolstr (bool b);
-    static char const *statestr (State s);
 };
 
 extern Shadow shadow;

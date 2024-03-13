@@ -1387,8 +1387,8 @@ public class NetGen {
             }
             ps.println (") {");
         } else {
-            ps.println ("// " + genmod.name);
-            ps.print ("module proc (uclk");
+            ps.println ("");
+            ps.print ("module " + genmod.name + " (uclk");
             for (int i = 0; i < genmod.params.length; i ++) {
                 ps.print (", " + genmod.params[i].name);
             }

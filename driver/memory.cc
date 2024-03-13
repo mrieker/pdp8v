@@ -417,6 +417,11 @@ uint16_t MemPar::ioinstr (uint16_t opcode, uint16_t input)
             break;
         }
 
+        // skip on power low
+        case 06102: {
+            break;
+        }
+
         // enable parity error interrupt
         case 06103: {
             break;

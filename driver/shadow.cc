@@ -40,9 +40,6 @@ Shadow::Shadow ()
 {
     printinstr = false;
     printstate = false;
-    pthread_cond_init (&haltcond, NULL);
-    pthread_cond_init (&haltcond2, NULL);
-    pthread_mutex_init (&haltmutex, NULL);
 }
 
 // gpiolib = instance of PhysLib: verify physical cpu board
@@ -75,31 +72,6 @@ void Shadow::reset ()
 //   sample = gpio pins
 void Shadow::clock (uint32_t sample)
 {
-    // maybe GUI.java wants processor to halt
-    // we halt at end of cycle
-    if (haltflags & HF_HALTIT) {
-        pthread_mutex_lock (&haltmutex);
-
-        // see if GUI wants processor to halt
-        if (haltflags & HF_HALTIT) {
-
-            // IR is a latch so should now have memory contents
-            if (r.state == FETCH2) {
-                r.ir = (sample & G_DATA) / G_DATA0;
-            }
-
-            // tell GUI.java that we have halted
-            haltflags |= HF_HALTED;
-            pthread_cond_broadcast (&haltcond2);
-
-            // wait for GUI.java to tell us to resume
-            while (haltflags & HF_HALTED) {
-                pthread_cond_wait (&haltcond, &haltmutex);
-            }
-        }
-        pthread_mutex_unlock (&haltmutex);
-    }
-
     // decode what we need from the sample
     uint16_t mq = (sample & G_DATA) / G_DATA0;  // memory data sent to CPU during last cycle
     bool irq = (sample & G_IRQ) != 0;           // interrupt request line sent to CPU during last cycle

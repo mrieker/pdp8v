@@ -87,14 +87,6 @@
 #include "scncall.h"
 #include "shadow.h"
 
-// verify CPU state and update shadow state
-// should be called just before raising clock
-//  input:
-//   sample = value just read from gpio pins
-// update shadow state to match what CPU will be after is sees clock raised
-// ...based on what state it is in now and what we last sent out on GPIO
-#define SHADOWCHECK(samp) shadow.clock (samp)
-
 #define ever (;;)
 
 bool lincenab;
@@ -110,14 +102,22 @@ uint16_t lastreadaddr;
 uint32_t watchwrite = 0xFFFFFFFF;
 uint16_t *memory;
 
+pthread_cond_t haltcond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t haltcond2 = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t haltmutex = PTHREAD_MUTEX_INITIALIZER;
+uint32_t haltflags;
+uint32_t haltsample;
+
 static bool haltcont;
 static bool haltprint;
 static bool haltstop;
 static bool infloopstop;
 static uint16_t intreqmask;
+static uint16_t lastreaddata;
 static uint32_t syncintreq;
 
 static void *mintimesthread (void *dummy);
+static void haltcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
 static uint16_t randuint16 ();
 static void dumpregs ();
@@ -144,6 +144,7 @@ int main (int argc, char **argv)
     char *p;
     int initcount = 0;
     uint16_t initreads[4];
+    uint32_t initdfif = 0;
     uint32_t stopataddr = -1;
     uint32_t cyclelimit = 0;
 
@@ -256,10 +257,12 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -startpc\n");
                 return 1;
             }
+            uint16_t startpc = strtoul (argv[i], NULL, 8);
+            initdfif = (startpc >> 12) & 7;
             initcount = 3;
             initreads[2] = 07300;   // CLA CLL
             initreads[1] = 05400;   // JMP @0
-            initreads[0] = strtoul (argv[i], NULL, 8);
+            initreads[0] = startpc & 07777;
             continue;
         }
         if (strcasecmp (argv[i], "-stopat") == 0) {
@@ -347,14 +350,10 @@ int main (int argc, char **argv)
             int rc = binloader (loadname, loadfile, &start);
             if (rc != 0) return rc;
 
-            // maybe a start address was given
-            if (! (start & 0x8000)) {
-                if (start & 070000) {
-                    initcount = 4;
-                    initreads[3] = 06203 | ((start >> 9) & 070);    // change both I & D fields
-                } else {
-                    initcount = 3;
-                }
+            // maybe a start address was given but don't override -startpc
+            if ((initcount == 0) && ! (start & 0x8000)) {
+                initdfif = (start >> 12) & 7;
+                initcount = 3;
                 initreads[2] = 07300;           // CLA CLL
                 initreads[1] = 05400;           // JMP @0
                 initreads[0] = start & 07777;
@@ -366,14 +365,10 @@ int main (int argc, char **argv)
             int rc = rimloader (loadname, loadfile, &start);
             if (rc != 0) return rc;
 
-            // maybe a start address was given
-            if (! (start & 0x8000)) {
-                if (start & 070000) {
-                    initcount = 4;
-                    initreads[3] = 06203 | ((start >> 9) & 070);    // change both I & D fields
-                } else {
-                    initcount = 3;
-                }
+            // maybe a start address was given but don't override -startpc
+            if ((initcount == 0) && ! (start & 0x8000)) {
+                initdfif = (start >> 12) & 7;
+                initcount = 3;
                 initreads[2] = 07300;           // CLA CLL
                 initreads[1] = 05400;           // JMP @0
                 initreads[0] = start & 07777;
@@ -383,13 +378,9 @@ int main (int argc, char **argv)
             // linker format
             int rc = linkloader (loadname, loadfile);
             if (rc < 0) return -rc;
-            if (rc > 0) {
-                if (rc & 070000) {
-                    initcount = 4;
-                    initreads[3] = 06203 | ((rc >> 9) & 070);    // change both I & D fields
-                } else {
-                    initcount = 3;
-                }
+            if ((initcount == 0) && (rc > 0)) {
+                initdfif = (rc >> 12) & 7;
+                initcount = 3;
                 initreads[2] = 07300;           // CLA CLL
                 initreads[1] = 05400;           // JMP @0
                 initreads[0] = rc & 07777;
@@ -442,14 +433,51 @@ reseteverything:;
 
     // tell shadowing that cpu has been reset
     shadow.reset ();
-    if (guihalt) shadow.haltflags |= HF_HALTIT;
 
     // reset things we keep state of
     ioreset ();
 
+    // do any initialization cycles
+    // ignore HF_HALTIT, GUI is waiting for us to initialize
+    if (initcount > 0) {
+        if ((initcount == 3) && (initreads[1] == 05400) && (initreads[2] == 07300)) {
+            fprintf (stderr, "raspictl: startpc=%o%04o\n", initdfif, initreads[0]);
+        }
+        memext.setdfif (initdfif);
+        int ic = initcount;
+        while (true) {
+            // clock has been low for half cycle, just about to drive lock high
+            uint32_t sample = gpio->readgpio ();
+            if ((sample & G_READ) && (ic == 0)) break;
+            shadow.clock (sample);
+            gpio->writegpio (false, G_CLOCK);
+            gpio->halfcycle (shadow.aluadd ());
+            if (sample & G_READ) {
+                sample = initreads[--ic] * G_DATA0;
+                gpio->writegpio (true, sample);
+                gpio->halfcycle (shadow.aluadd ());
+                shadow.clock (gpio->readgpio ());
+                gpio->writegpio (true, sample | G_CLOCK);
+                gpio->halfcycle (shadow.aluadd ());
+            }
+            gpio->writegpio (false, 0);
+            gpio->halfcycle (shadow.aluadd ());
+        }
+        // if we stopped on JMP1 state, that will be the reading of the opcode at the target PC
+        // so set the shadow PC to the target in case of guihalt, so it will see target PC
+        if (shadow.r.state == Shadow::JMP1) {
+            shadow.r.pc = initreads[0];
+        }
+    }
+
+    // if running from GUI, halt processor in next shadow.clock() call
+    if (guihalt) haltflags = HF_HALTIT;
+
     try {
-        uint16_t lastreaddata = 0;
         for ever {
+
+            // maybe GUI is requesting halt at end of cycle
+            haltcheck ();
 
             // invariant:
             //  clock has been low for half cycle
@@ -459,7 +487,7 @@ reseteverything:;
             uint32_t sample = gpio->readgpio ();
 
             // raise clock then wait for half a cycle
-            SHADOWCHECK (sample);
+            shadow.clock (sample);
             if (shadow.r.state == Shadow::FETCH2) {
                 // keep IR LEDs steady with old opcode instead of turning all on
                 // cosmetic only, otherwise can use the else's writegpio()
@@ -506,9 +534,7 @@ reseteverything:;
                 if (sample & G_READ) {
 
                     // read memory contents
-                    if (initcount > 0) {
-                        lastreaddata = initreads[--initcount];
-                    } else if (randmem) {
+                    if (randmem) {
                         lastreaddata = randuint16 () & 07777;
                     } else if (os8zap && (lastreadaddr == 007424) && (lastreaddata == 02351) && (addr == 007551) && (memarray[007425] == 05224)) {
                         lastreaddata = 07777;   // patch 07424: ISZ 07551 / JMP 07424 to read value 07777
@@ -616,14 +642,58 @@ reseteverything:;
             }
         }
     }
+    catch (ResetProcessorException& rpe) {
+        fprintf (stderr, "\nraspictl: resetting everything...\n");
+        goto reseteverything;
+    }
     catch (Shadow::StateMismatchException& sme) {
         if (resetonerr) {
             fprintf (stderr, "\nraspictl: resetting everything...\n");
-            initcount = 1;
-            initreads[0] = 07300;   // CLA CLL
             goto reseteverything;
         }
         exit (1);
+    }
+}
+
+// check to see if GUI.java is requesting halt
+// call at end of cycle with clock still low
+// call just before taking gpio sample at end of cycle
+// ...in case of halt where GUI alters what the sample would get
+static void haltcheck ()
+{
+    if (haltflags & HF_HALTIT) {
+        bool resetit = false;
+        pthread_mutex_lock (&haltmutex);
+
+        // re-check haltflags now that we have mutex
+        if (haltflags & HF_HALTIT) {
+
+            // IR is a latch so should now have memory contents
+            if (shadow.r.state == Shadow::FETCH2) {
+                shadow.r.ir = lastreaddata;
+            }
+
+            // tell GUI.java that we have halted
+            haltflags |= HF_HALTED;
+            pthread_cond_broadcast (&haltcond2);
+
+            // wait for GUI.java to tell us to resume
+            while (haltflags & HF_HALTED) {
+                pthread_cond_wait (&haltcond, &haltmutex);
+            }
+
+            // maybe GUI is resetting us
+            if (haltflags & HF_RESETIT) {
+                resetit = true;
+                haltflags = 0;
+            }
+        }
+
+        pthread_mutex_unlock (&haltmutex);
+        if (resetit) {
+            ResetProcessorException rpe;
+            throw rpe;
+        }
     }
 }
 
@@ -828,9 +898,12 @@ static void senddata (uint16_t data)
     // let data soak into cpu (giving it a setup time)
     gpio->halfcycle (shadow.aluadd ());
 
+    // maybe GUI is requesting halt at end of cycle
+    haltcheck ();
+
     // tell cpu data is ready to be read by raising the clock
     // hold data steady and keep sending data to cpu so it will be clocked in correctly
-    SHADOWCHECK (gpio->readgpio ());
+    shadow.clock (gpio->readgpio ());
     gpio->writegpio (true, G_CLOCK | sample);
 
     // wait for cpu to clock data in (giving it a hold time)
@@ -861,10 +934,13 @@ static uint16_t recvdata (void)
     gpio->writegpio (false, syncintreq);
     gpio->halfcycle (shadow.aluadd ());
 
+    // maybe GUI is requesting halt at end of cycle
+    haltcheck ();
+
     // read data being sent by cpu just before raising clock
     // then raise clock and wait a half cycle to be at same timing as when called
     uint32_t sample = gpio->readgpio ();
-    SHADOWCHECK (sample);
+    shadow.clock (sample);
     gpio->writegpio (false, G_CLOCK | syncintreq);
     gpio->halfcycle (shadow.aluadd ());
 
@@ -897,4 +973,9 @@ static void exithandler ()
 
     // close gpio access
     gpio->close ();
+}
+
+char const *ResetProcessorException::what ()
+{
+    return "processor reset requested";
 }

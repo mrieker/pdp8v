@@ -21,7 +21,7 @@ module StandCell (U, _Q, D);
             tplh <= 0;
             if (tphl != 7) begin
                 _Q <= 1;
-                tphl <= tphl + 1;
+                tphl <= tphl + 3'b1;
             end else begin
                 _Q <= 0;
             end
@@ -29,7 +29,7 @@ module StandCell (U, _Q, D);
             tphl <= 0;
             if (tplh != 31) begin
                 _Q <= 0;
-                tplh <= tplh + 1;
+                tplh <= tplh + 5'b1;
             end else begin
                 _Q <= 1;
             end
