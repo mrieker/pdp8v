@@ -18,11 +18,9 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-#ifndef _LINKLOADER_H
-#define _LINKLOADER_H
+#ifndef _SCRIPT_H
+#define _SCRIPT_H
 
-#include <stdio.h>
-
-int linkloader (char const *loadname, FILE *loadfile);
+void runscript (char const *argv0, char const *filename);
 
 #endif

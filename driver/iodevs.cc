@@ -1,3 +1,22 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
 
 // standard i/o port assignments
 // from pdp-12 p 153 v 5-43
@@ -41,8 +60,7 @@
 #include "miscdefs.h"
 #include "scncall.h"
 
-pthread_cond_t  intreqcond = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t intreqlock = PTHREAD_MUTEX_INITIALIZER;
+IODev *alliodevs;
 
 static bool initted;
 static IODev *iodevs[64];
@@ -79,13 +97,9 @@ uint16_t ioinstr (uint16_t opcode, uint16_t input)
 // reset all IO devices
 void ioreset ()
 {
-    extarith.ioreset ();
-    iodevptape.ioreset ();
-    iodevrk8je.ioreset ();
-    iodevrtc.ioreset ();
-    iodevtty.ioreset ();
-    memext.ioreset ();
-    scncall.ioreset ();
+    for (IODev *iodev = alliodevs; iodev != NULL; iodev = iodev->nextiodev) {
+        iodev->ioreset ();
+    }
 }
 
 // disassemble IO instruction
@@ -134,6 +148,14 @@ static void initiodevs ()
             if (lincenab) iodevs[014] = &linc;
             iodevs[030] = &scncall;
             iodevs[031] = &scncall2;
+            iodevs[040] = &iodevtty40;
+            iodevs[041] = &iodevtty40;
+            iodevs[042] = &iodevtty42;
+            iodevs[043] = &iodevtty42;
+            iodevs[044] = &iodevtty44;
+            iodevs[045] = &iodevtty44;
+            iodevs[046] = &iodevtty46;
+            iodevs[047] = &iodevtty46;
             iodevs[074] = &iodevrk8je;
             //iodevs[073] = &iodevrk8;
             //iodevs[074] = &iodevrk8;
@@ -148,4 +170,27 @@ IODev::IODev ()
 {
     opscount = 0;
     opsarray = NULL;
+
+    iodevname = NULL;
+
+    nextiodev = alliodevs;
+    alliodevs = this;
+}
+
+IODev::~IODev ()
+{
+    IODev **liodev, *iodev;
+
+    for (liodev = &alliodevs; (iodev = *liodev) != NULL;) {
+        if (iodev == this) {
+            *liodev = iodev->nextiodev;
+        } else {
+            liodev = &iodev->nextiodev;
+        }
+    }
+}
+
+SCRet *IODev::scriptcmd (int argc, char const *const *argv)
+{
+    return new SCRetErr ("device %s does not support script commands", iodevname);
 }

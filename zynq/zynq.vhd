@@ -1,3 +1,27 @@
+--    Copyright (C) Mike Rieker, Beverly, MA USA
+--    www.outerworldapps.com
+--
+--    This program is free software; you can redistribute it and/or modify
+--    it under the terms of the GNU General Public License as published by
+--    the Free Software Foundation; version 2 of the License.
+--
+--    This program is distributed in the hope that it will be useful,
+--    but WITHOUT ANY WARRANTY; without even the implied warranty of
+--    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--    GNU General Public License for more details.
+--
+--    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+--
+--    You should have received a copy of the GNU General Public License
+--    along with this program; if not, write to the Free Software
+--    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+--
+--    http://www.gnu.org/licenses/gpl-2.0.html
+
+-- main program for the zynq implementation
+-- contains gpio-like and paddle registers accessed via the axi bus
+-- also contains a dma circuit just for testing dma code (not used for pdp-8)
+--  and contains a led pwm circuit just for testing led (not used for pdp-8)
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -144,7 +168,7 @@ architecture rtl of Zynq is
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WUSER: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WUSER";
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WVALID: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WVALID";
 
-    constant VERSION : std_logic_vector (31 downto 0) := x"00000151";
+    constant VERSION : std_logic_vector (31 downto 0) := x"00000152";
 
     constant BURSTLEN : natural := 10;
 

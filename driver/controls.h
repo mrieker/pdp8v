@@ -18,11 +18,14 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-#ifndef _LINKLOADER_H
-#define _LINKLOADER_H
+#ifndef _CONTROLS_H
+#define _CONTROLS_H
 
-#include <stdio.h>
-
-int linkloader (char const *loadname, FILE *loadfile);
+bool ctl_halt ();
+bool ctl_reset (int addr);
+bool ctl_run ();
+bool ctl_stepcyc ();
+bool ctl_stepins ();
+void ctl_wait ();
 
 #endif

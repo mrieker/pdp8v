@@ -1,13 +1,35 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
 
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <unistd.h>
 
 #include "iodevptape.h"
+#include "miscdefs.h"
+#include "shadow.h"
 
 IODevPTape iodevptape;
 
@@ -29,18 +51,32 @@ IODevPTape::IODevPTape ()
     opscount = sizeof iodevops / sizeof iodevops[0];
     opsarray = iodevops;
 
+    iodevname = "ptape";
+
     pthread_cond_init (&this->puncond, NULL);
     pthread_cond_init (&this->rdrcond, NULL);
     pthread_mutex_init (&this->lock, NULL);
-    this->punrun = false;
-    this->rdrrun = false;
-    this->punfd = -1;
-    this->rdrfd = -1;
+
+    this->punfd   = -1;
+    this->punrun  = false;
+    this->puntid  = 0;
+    this->punwarn = false;
+    this->rdrfd   = -1;
+    this->rdrrun  = false;
+    this->rdrtid  = 0;
+    this->rdrwarn = false;
+}
+
+IODevPTape::~IODevPTape ()
+{
+    pthread_mutex_lock (&this->lock);
+    stoprdrthread ();
+    stoppunthread ();
+    pthread_mutex_unlock (&this->lock);
 }
 
 // reset the device
 // - clear flags
-// - kill threads
 // http://homepage.divms.uiowa.edu/~jones/pdp8/man/papertape.html
 void IODevPTape::ioreset ()
 {
@@ -50,83 +86,87 @@ void IODevPTape::ioreset ()
     this->punflag = false;
     this->punfull = false;
     clrintreqmask (IRQ_PTAPE);
-    pthread_cond_broadcast (&this->rdrcond);
-
-    if (this->rdrfd >= 0) {
-
-        // tell existing thread to stop looping
-        this->rdrrun = false;
-
-        // prevent any new read() calls from blocking
-        // ...whilst preserving this->rdrfd
-        int nullfd = open ("/dev/null", O_RDWR);
-        if (nullfd < 0) ABORT ();
-        dup2 (nullfd, this->rdrfd);
-        close (nullfd);
-
-        // break rdrthread() out of any read() call it may be in
-        pthread_kill (this->rdrtid, SIGCHLD);
-
-        pthread_mutex_unlock (&this->lock);
-
-        // wait for thread to terminate
-        pthread_join (this->rdrtid, NULL);
-        this->rdrtid = 0;
-
-        // all done with the now /dev/null fd
-        close (this->rdrfd);
-        this->rdrfd = -1;
-
-        pthread_mutex_lock (&this->lock);
-    }
-
-    if (this->punfd >= 0) {
-
-        // tell existing thread to stop looping
-        this->punrun = false;
-
-        // prevent any new read() calls from blocking
-        // ...whilst preserving this->punfd
-        int nullfd = open ("/dev/null", O_RDWR);
-        if (nullfd < 0) ABORT ();
-        dup2 (nullfd, this->punfd);
-        close (nullfd);
-
-        pthread_mutex_unlock (&this->lock);
-
-        // wait for thread to terminate
-        pthread_join (this->puntid, NULL);
-        this->puntid = 0;
-
-        // all done with the now /dev/null fd
-        close (this->punfd);
-        this->punfd = -1;
-
-        pthread_mutex_lock (&this->lock);
-    }
-
     pthread_mutex_unlock (&this->lock);
 }
 
-// 03: teletype keyboard (p257)
-// 04: teletype printer (p257)
-// http://homepage.divms.uiowa.edu/~jones/pdp8/man/tty.html
+// load/unload files
+SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
+{
+    // load reader/punch <filename>
+    if (strcmp (argv[0], "load") == 0) {
+        if (argc == 3) {
+
+            // load reader <filename>
+            if (strcmp (argv[1], "reader") == 0) {
+                int fd = open (argv[2], O_RDONLY);
+                if (fd < 0) return new SCRetErr (strerror (errno));
+                pthread_mutex_lock (&this->lock);
+                stoprdrthread ();
+                startrdrthread (fd);
+                pthread_mutex_unlock (&this->lock);
+                return NULL;
+            }
+
+            // load punch <filename>
+            if (strcmp (argv[1], "punch") == 0) {
+                int fd = open (argv[2], O_WRONLY | O_CREAT, 0666);
+                if (fd < 0) return new SCRetErr (strerror (errno));
+                pthread_mutex_lock (&this->lock);
+                stoppunthread ();
+                startpunthread (fd);
+                pthread_mutex_unlock (&this->lock);
+                return NULL;
+            }
+        }
+
+        return new SCRetErr ("iodev ptape load reader/punch <filename>");
+    }
+
+    // unload reader/punch
+    if (strcmp (argv[0], "unload") == 0) {
+        if (argc == 2) {
+
+            // unload reader
+            if (strcmp (argv[1], "reader") == 0) {
+                pthread_mutex_lock (&this->lock);
+                stoprdrthread ();
+                pthread_mutex_unlock (&this->lock);
+                return NULL;
+            }
+
+            // unload punch
+            if (strcmp (argv[1], "punch") == 0) {
+                pthread_mutex_lock (&this->lock);
+                stoppunthread ();
+                pthread_mutex_unlock (&this->lock);
+                return NULL;
+            }
+        }
+
+        return new SCRetErr ("iodev ptape unload reader/punch");
+    }
+
+    return new SCRetErr ("unknown ptape command %s", argv[0]);
+}
+
+// process paper tape I/O instruction
 uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
 {
+    pthread_mutex_lock (&this->lock);
+
     // process opcode
     switch (opcode) {
 
         // RPI: interrupt enable
         case 06010: {
-            pthread_mutex_lock (&this->lock);
             this->intenab = true;
             updintreq ();
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // RSF: skip if there is a reader byte to be read
         case 06011: {
+            this->rdrstart ();
             if (this->rdrflag) input |= IO_SKIP;
             break;
         }
@@ -134,113 +174,151 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
         // RRB: reader buffer ored with accumulator; clear reader flag
         case 06012: {
             input &= IO_LINK;
-            pthread_mutex_lock (&this->lock);
             input |= this->rdrbuff;
             this->rdrflag = false;
             updintreq ();
             pthread_cond_broadcast (&this->rdrcond);
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // RFC: clear reader flag and start reading next char from tape
         case 06014: {
-            if (! this->rdrrun) this->rdrstart ();
-            pthread_mutex_lock (&this->lock);
+            this->rdrstart ();
             this->rdrflag = false;
+            this->rdrnext = true;
             updintreq ();
             pthread_cond_broadcast (&this->rdrcond);
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // RRB RFC: reader buffer ored into accumulator; reader flag cleared; start reading next character
         case 06016: {
-            if (! this->rdrrun) this->rdrstart ();
-            pthread_mutex_lock (&this->lock);
+            this->rdrstart ();
             input |= this->rdrbuff;
             this->rdrflag = false;
+            this->rdrnext = true;
             updintreq ();
             pthread_cond_broadcast (&this->rdrcond);
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // PCE: clear interrupt enable
         case 06020: {
-            pthread_mutex_lock (&this->lock);
             this->intenab = false;
             updintreq ();
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // PSF: skip if punch ready to accept next byte
         case 06021: {
+            this->punstart ();
             if (this->punflag) input |= IO_SKIP;
             break;
         }
 
         // PCF: clear punch flag, pretending punch is busy
         case 06022: {
-            pthread_mutex_lock (&this->lock);
             this->punflag = false;
             updintreq ();
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // PPC: start punching a byte
         case 06024: {
-            if (! this->punrun) this->punstart ();
-            pthread_mutex_lock (&this->lock);
+            this->punstart ();
             this->punbuff = input & 0177;
             this->punfull = true;
             pthread_cond_broadcast (&this->puncond);
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         // PLS: punch load sequence = PCF + PPC
         //      copy accum to punch buffer, initiate output, reset punch flag
         case 06026: {
-            if (! this->punrun) this->punstart ();
-            pthread_mutex_lock (&this->lock);
+            this->punstart ();
             this->punbuff = input & 0177;
             this->punfull = true;
             this->punflag = false;
             pthread_cond_broadcast (&this->puncond);
-            pthread_mutex_unlock (&this->lock);
             break;
         }
 
         default: input = UNSUPIO;
     }
+    pthread_mutex_unlock (&this->lock);
     return input;
 }
 
-// start thread running
+// processor attempting to read when no ptape file loaded
 void IODevPTape::rdrstart ()
 {
+    if (! this->rdrrun && ! this->rdrwarn) {
+        fprintf (stderr, "IODevPTape::rdrstart: waiting for ptape load - iodev ptape load reader <filename>\n");
+        this->rdrwarn = true;
+    }
+}
+
+// kill reader thread and close file
+// call and returns with mutex locked
+void IODevPTape::stoprdrthread ()
+{
+    if (this->rdrrun) {
+
+        // tell rdrthread to exit
+        this->rdrrun = false;
+
+        // break it out of 'waiting for rdrnext' loop
+        pthread_cond_broadcast (&this->rdrcond);
+
+        // swap fd for /dev/null so select() will complete immediately if it hasn't quite started yet
+        int nullfd = open ("/dev/null", O_RDONLY);
+        if (nullfd < 0) ABORT ();
+        if (dup2 (nullfd, this->rdrfd) < 0) ABORT ();
+        close (nullfd);
+
+        // break it out of select() if it is already in it
+        pthread_kill (this->rdrtid, SIGCHLD);
+
+        // wait for thread to terminate
+        pthread_mutex_unlock (&this->lock);
+        pthread_join (this->rdrtid, NULL);
+
+        // remember thread has exited
+        pthread_mutex_lock (&this->lock);
+        this->rdrtid = 0;
+
+        // make sure file is closed
+        close (this->rdrfd);
+        this->rdrfd = -1;
+
+        // in case some other thread is waiting for close
+        pthread_cond_broadcast (&this->rdrcond);
+    } else {
+
+        // wait if some other thread is doing stoprdrthread()
+        // it will set rdrtid = 0 and rdrfd = -1 when done
+        while ((this->rdrtid != 0) || (this->rdrfd >= 0)) {
+            pthread_cond_wait (&this->rdrcond, &this->lock);
+        }
+    }
+}
+
+// open file and start reader thread
+// call and returns with mutex locked
+void IODevPTape::startrdrthread (int fd)
+{
+    ASSERT (! this->rdrrun);
+    ASSERT (this->rdrfd < 0);
+    ASSERT (this->rdrtid == 0);
+
     this->rdrrun = true;
-
-    char const *rdrname = getenv ("iodevptaperdr");
-    if (rdrname == NULL) {
-        fprintf (stderr, "IODevPTape::rdrstart: envar iodevptaperdr not defined\n");
-        ABORT ();
-    }
-    this->rdrfd = open (rdrname, O_RDONLY);
-    if (this->rdrfd < 0) {
-        fprintf (stderr, "IODevPTape::rdrstart: error opening %s: %m\n", rdrname);
-        ABORT ();
-    }
-
-    char const *env = getenv ("iodevptaperdr_debug");
-    this->rdrdebug = (env != NULL) && (env[0] & 1);
-    if (this->rdrdebug) printf ("IODevPTape::rdrstart: starting file %s\n", rdrname);
+    this->rdrfd  = fd;
 
     int rc = pthread_create (&this->rdrtid, NULL, rdrthreadwrap, this);
     if (rc != 0) ABORT ();
+    ASSERT (this->rdrtid != 0);
+
+    this->rdrwarn = false;
 }
 
 void *IODevPTape::rdrthreadwrap (void *zhis)
@@ -252,74 +330,122 @@ void *IODevPTape::rdrthreadwrap (void *zhis)
 void IODevPTape::rdrthread ()
 {
     fd_set readfds;
-    int index = 0;
     uint64_t lastreadat = 0;
     FD_ZERO (&readfds);
 start:;
     pthread_mutex_lock (&this->lock);
     while (this->rdrrun) {
 
-        // wait for buffer emptied before reading another byte
-        if (this->rdrflag) {
+        // wait until told to read next char
+        if (! this->rdrnext) {
             pthread_cond_wait (&this->rdrcond, &this->lock);
             continue;
         }
-        pthread_mutex_unlock (&this->lock);
 
         // make sure it has been 5mS since last read to give processor time to handle previous char
         struct timeval nowtv;
-        gettimeofday (&nowtv, NULL);
+        if (gettimeofday (&nowtv, NULL) < 0) ABORT ();
         uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
         uint64_t nextreadat = lastreadat + 1000000/200;  // 200 chars/sec
         if (nextreadat > now) {
+            pthread_mutex_unlock (&this->lock);
             usleep (nextreadat - now);
             goto start;
         }
         lastreadat = now;
 
         // read char, waiting for one if necessary
-        // allow IODevPTape::ioreset() to abort the read by using a select()
+        // allow IODevPTape::stoprdrthread() to abort the read by using a select()
         FD_SET (this->rdrfd, &readfds);
-        int rc;
+        int en, rc;
         do {
+            pthread_mutex_unlock (&this->lock);
             rc = select (this->rdrfd + 1, &readfds, NULL, NULL, NULL);
-            if (! this->rdrrun) return;
-        } while ((rc < 0) && (errno == EINTR));
+            en = errno;
+            pthread_mutex_lock (&this->lock);
+            if (! this->rdrrun) goto done;
+        } while ((rc < 0) && (en == EINTR));
+        errno = en;
         if (rc > 0) rc = read (this->rdrfd, &this->rdrbuff, 1);
-        if (rc <= 0) {
-            if (rc == 0) errno = EPIPE;
+        if (rc < 0) {
             fprintf (stderr, "IODevPTape::rdrthread: read error: %m\n");
             ABORT ();
-        } else if (this->rdrdebug) {
-            printf ("IODevPTape::rdrthread: [%6d] read %03o\n", index ++, this->rdrbuff);
+        }
+        if (rc == 0) {
+            fprintf (stderr, "IODevPTape::rdrthread: end of ptape file reached\n");
+            close (this->rdrfd);
+            pthread_detach (this->rdrtid);
+            this->rdrfd  = -1;
+            this->rdrtid = 0;
+            this->rdrrun = false;
+            break;
         }
 
         // set flag saying there is a character ready and maybe request interrupt
-        pthread_mutex_lock (&this->lock);
+        this->rdrnext = false;
         this->rdrflag = true;
         updintreq ();
     }
+done:;
     pthread_mutex_unlock (&this->lock);
 }
 
-// start punch thread running
+// processor attempting to punch when no ptape file loaded
 void IODevPTape::punstart ()
 {
+    if (! this->punrun && ! this->punwarn) {
+        fprintf (stderr, "IODevPTape::punstart: waiting for ptape load - iodev ptape load punch <filename>\n");
+        this->punwarn = true;
+    }
+}
+
+// stop punch thread and close file
+void IODevPTape::stoppunthread ()
+{
+    if (this->punrun) {
+
+        // tell existing thread to stop looping
+        this->punrun = false;
+
+        // wake it up
+        pthread_cond_broadcast (&this->puncond);
+
+        // wait for thread to terminate
+        pthread_mutex_unlock (&this->lock);
+        pthread_join (this->puntid, NULL);
+
+        pthread_mutex_lock (&this->lock);
+        this->puntid = 0;
+
+        // all done with the fd
+        close (this->punfd);
+        this->punfd = -1;
+
+        pthread_cond_broadcast (&this->puncond);
+    } else {
+
+        // wait if some other thread is doing stoppunthread()
+        // it will set puntid = 0 and punfd = -1 when done
+        while ((this->puntid != 0) || (this->punfd >= 0)) {
+            pthread_cond_wait (&this->puncond, &this->lock);
+        }
+    }
+}
+
+void IODevPTape::startpunthread (int fd)
+{
+    ASSERT (! this->punrun);
+    ASSERT (this->punfd < 0);
+    ASSERT (this->puntid == 0);
+
     this->punrun = true;
+    this->punfd  = fd;
 
-    char const *punname = getenv ("iodevptapepun");
-    if (punname == NULL) {
-        fprintf (stderr, "IODevPTape::startitup: envar iodevptapepun not defined\n");
-        ABORT ();
-    }
-    this->punfd = open (punname, O_WRONLY);
-    if (this->punfd < 0) {
-        fprintf (stderr, "IODevPTape::startitup: error opening %s: %m\n", punname);
-        ABORT ();
-    }
-
-    int rc = pthread_create (&this->rdrtid, NULL, punthreadwrap, this);
+    int rc = pthread_create (&this->puntid, NULL, punthreadwrap, this);
     if (rc != 0) ABORT ();
+    ASSERT (this->puntid != 0);
+
+    this->punwarn = false;
 }
 
 void *IODevPTape::punthreadwrap (void *zhis)
@@ -337,6 +463,10 @@ start:;
 
         // wait for processor to put a character in buffer
         if (! this->punfull) {
+
+            // nothing to punch, say we are ready to punch
+            this->punflag = true;
+            updintreq ();
             pthread_cond_wait (&this->puncond, &this->lock);
         } else {
             pthread_mutex_unlock (&this->lock);
@@ -360,11 +490,9 @@ start:;
                 ABORT ();
             }
 
-            // set flag saying punch able to accept another char and maybe request interrupt
+            // clear flag saying we are punching something
             pthread_mutex_lock (&this->lock);
             this->punfull = false;
-            this->punflag = true;
-            updintreq ();
         }
     }
     pthread_mutex_unlock (&this->lock);

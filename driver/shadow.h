@@ -24,6 +24,7 @@
 #include <exception>
 
 #include "gpiolib.h"
+#include "iodevs.h"
 #include "miscdefs.h"
 
 #define NSAVEREGS 16
@@ -78,6 +79,8 @@ struct Shadow {
     bool aluadd ();
     uint64_t getcycles ();
     uint32_t readgpio (bool irq);
+
+    SCRet *scriptcmd (int argc, char const *const *argv);
 
     static char const *statestr (State s);
 

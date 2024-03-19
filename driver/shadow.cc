@@ -66,6 +66,53 @@ void Shadow::reset ()
     }
 }
 
+// process script 'cpu' commands
+SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
+{
+    // get [ac/cycle/ir/link/ma/pc/prin/prst/state]
+    if (strcmp (argv[0], "get") == 0) {
+        if (argc == 1) return new SCRetStr ("ac=%05o;cycle=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;prin=%o;prst=%o;state=%s",
+            this->r.ac, (LLU) this->getcycles (), this->r.ir, this->r.link, this->r.ma, this->r.pc, this->printinstr,
+            this->printstate, statestr (this->r.state));
+
+        if (argc == 2) {
+            if (strcmp (argv[1], "ac")    == 0) return new SCRetInt (this->r.ac);
+            if (strcmp (argv[1], "cycle") == 0) return new SCRetInt (this->getcycles ());
+            if (strcmp (argv[1], "ir")    == 0) return new SCRetInt (this->r.ir);
+            if (strcmp (argv[1], "link")  == 0) return new SCRetInt (this->r.link);
+            if (strcmp (argv[1], "ma")    == 0) return new SCRetInt (this->r.ma);
+            if (strcmp (argv[1], "pc")    == 0) return new SCRetInt (this->r.pc);
+            if (strcmp (argv[1], "prin")  == 0) return new SCRetInt (this->printinstr);
+            if (strcmp (argv[1], "prst")  == 0) return new SCRetInt (this->printstate);
+            if (strcmp (argv[1], "state") == 0) return new SCRetStr (statestr (this->r.state));
+        }
+
+        return new SCRetErr ("cpu get [ac/cycle/ir/link/ma/pc/prin/prst/state]");
+    }
+
+    // set prin/prst <value>
+    if (strcmp (argv[0], "set") == 0) {
+        if (argc == 3) {
+            char *p;
+            int value = strtol (argv[2], &p, 0);
+            if (strcmp (argv[1], "prin") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("prin value %s not in range 0..1", argv[2]);
+                this->printinstr = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "prst") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("prst value %s not in range 0..1", argv[2]);
+                this->printstate = value;
+                return NULL;
+            }
+        }
+
+        return new SCRetErr ("cpu set prin/prst <value>");
+    }
+
+    return new SCRetErr ("unknown cpu command %s", argv[1]);
+}
+
 // clock to next state
 // call at end of cycle just before raising clock
 //  input:

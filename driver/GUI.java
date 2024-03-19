@@ -844,6 +844,7 @@ public class GUI extends JPanel {
         int len = disasm.length ();
         if (disasmlen <= len) {
             disasmlen = len;
+            nulldisasm = padDisasm ("");
         } else {
             do disasm += ' ';
             while (++ len < disasmlen);

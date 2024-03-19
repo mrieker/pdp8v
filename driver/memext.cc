@@ -1,5 +1,27 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
 
+// process extended memory I/O opcodes
 // page numbers in small-computer-handbook-1972.pdf
+
+#include <string.h>
 
 #include "extarith.h"
 #include "memext.h"
@@ -54,6 +76,8 @@ MemExt::MemExt ()
     opscount = sizeof iodevops / sizeof iodevops[0];
     opsarray = iodevops;
 
+    iodevname = "memext";
+
     // according to DHMCA, these are not cleared by clear-all-flags (CAF 6007)
     this->savediframe = 0;                      // no instruction frame saved
     this->saveddframe = 0;                      // no data frame saved
@@ -79,6 +103,101 @@ void MemExt::ioreset ()
     this->intenabled = false;                   // interrupts disabled
     this->userflag = false;                     // start in execmode
     clrintreqmask (IRQ_USERINT);                // no usermode fault
+}
+
+// process script 'iodev memext' commands
+SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
+{
+    // get [df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj]
+    if (strcmp (argv[0], "get") == 0) {
+        if (argc == 1) return new SCRetStr ("df=%o;iduj=%o;ie=%o;ieaf=%o;if=%o;ifaj=%o;sdf=%o;sif=%o;suf=%o;uf=%o;ufaj=%o",
+            this->dframe >> 12, this->intdisableduntiljump, this->intenabled, this->intenableafterfetch, this->iframe >> 12,
+            this->iframeafterjump >> 12, this->saveddframe >> 12, this->savediframe >> 12, this->saveduserflag,
+            this->userflag, this->userflagafterjump);
+
+        if (argc == 2) {
+            if (strcmp (argv[1], "df")   == 0) return new SCRetInt (this->dframe >> 12);
+            if (strcmp (argv[1], "iduj") == 0) return new SCRetInt (this->intdisableduntiljump);
+            if (strcmp (argv[1], "ie")   == 0) return new SCRetInt (this->intenabled);
+            if (strcmp (argv[1], "ieaf") == 0) return new SCRetInt (this->intenableafterfetch);
+            if (strcmp (argv[1], "if")   == 0) return new SCRetInt (this->iframe >> 12);
+            if (strcmp (argv[1], "ifaj") == 0) return new SCRetInt (this->iframeafterjump >> 12);
+            if (strcmp (argv[1], "sdf")  == 0) return new SCRetInt (this->saveddframe >> 12);
+            if (strcmp (argv[1], "sif")  == 0) return new SCRetInt (this->savediframe >> 12);
+            if (strcmp (argv[1], "suf")  == 0) return new SCRetInt (this->saveduserflag);
+            if (strcmp (argv[1], "uf")   == 0) return new SCRetInt (this->userflag);
+            if (strcmp (argv[1], "ufaj") == 0) return new SCRetInt (this->userflagafterjump);
+        }
+
+        return new SCRetErr ("iodev memext get [df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj]");
+    }
+
+    // set df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj <value>
+    if (strcmp (argv[0], "set") == 0) {
+        if (argc == 3) {
+            char *p;
+            int value = strtol (argv[2], &p, 0);
+            if (strcmp (argv[1], "df")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 7)) return new SCRetErr ("df value %s not in range 0..7", argv[2]);
+                this->dframe = value << 12;
+                return NULL;
+            }
+            if (strcmp (argv[1], "iduj") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("iduj value %s not in range 0..1", argv[2]);
+                this->intdisableduntiljump = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "ie")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("ie value %s not in range 0..1", argv[2]);
+                this->intenabled = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "ieaf") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("ieaf value %s not in range 0..1", argv[2]);
+                this->intenableafterfetch = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "if")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 7)) return new SCRetErr ("if value %s not in range 0..7", argv[2]);
+                this->iframe = value << 12;
+                return NULL;
+            }
+            if (strcmp (argv[1], "ifaj") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 7)) return new SCRetErr ("ifaj value %s not in range 0..7", argv[2]);
+                this->iframeafterjump = value << 12;
+                return NULL;
+            }
+            if (strcmp (argv[1], "sdf")  == 0) {
+                if ((*p != 0) || (value < 0) || (value > 7)) return new SCRetErr ("sdf value %s not in range 0..7", argv[2]);
+                this->saveddframe = value << 12;
+                return NULL;
+            }
+            if (strcmp (argv[1], "sif")  == 0) {
+                if ((*p != 0) || (value < 0) || (value > 7)) return new SCRetErr ("sif value %s not in range 0..7", argv[2]);
+                this->savediframe = value << 12;
+                return NULL;
+            }
+            if (strcmp (argv[1], "suf")  == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("suf value %s not in range 0..1", argv[2]);
+                this->saveduserflag = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "uf")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("uf value %s not in range 0..1", argv[2]);
+                this->userflag = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "ufaj") == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("ufaj value %s not in range 0..1", argv[2]);
+                this->userflagafterjump = value;
+                return NULL;
+            }
+        }
+
+        return new SCRetErr ("iodev memext set df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj <value>");
+    }
+
+    return new SCRetErr ("unknown memext command %s", argv[1]);
 }
 
 // called in INTAK1 when acknowledging interrupt request

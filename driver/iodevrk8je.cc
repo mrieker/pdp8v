@@ -1,3 +1,22 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
 
 // RK8JE Disk System (minicomputer handbook 1976, p 9-115..120)
 // envars iodevrk8je_0,1,2,3 = disk file name (or softlink)
@@ -43,6 +62,8 @@ IODevRK8JE::IODevRK8JE ()
     opscount = sizeof iodevops / sizeof iodevops[0];
     opsarray = iodevops;
 
+    iodevname = "rk8je";
+
     pthread_cond_init (&this->cond, NULL);
     pthread_cond_init (&this->cond2, NULL);
     pthread_mutex_init (&this->lock, NULL);
@@ -54,6 +75,15 @@ IODevRK8JE::IODevRK8JE ()
 
     char const *env = getenv ("iodevrk8je_debug");
     this->debug = (env != NULL) && (env[0] & 1);
+}
+
+IODevRK8JE::~IODevRK8JE ()
+{
+    close (this->fds[0]);
+    close (this->fds[1]);
+    close (this->fds[2]);
+    close (this->fds[3]);
+    memset (this->fds, -1, sizeof this->fds);
 }
 
 // reset the device
@@ -81,11 +111,6 @@ void IODevRK8JE::ioreset ()
     }
     pthread_cond_broadcast (&this->cond);
 
-    close (this->fds[0]);
-    close (this->fds[1]);
-    close (this->fds[2]);
-    close (this->fds[3]);
-    memset (this->fds, -1, sizeof this->fds);
     memset (this->lastdas, 0, sizeof this->lastdas);
 
     this->command  = 0;
@@ -103,6 +128,56 @@ void IODevRK8JE::ioreset ()
     }
 
     this->resetting = false;
+}
+
+// load/unload files
+SCRet *IODevRK8JE::scriptcmd (int argc, char const *const *argv)
+{
+    // loadro/loadrw <drivenumber> <filename>
+    bool loadro = (strcmp (argv[0], "loadro") == 0);
+    bool loadrw = (strcmp (argv[0], "loadrw") == 0);
+    if (loadro | loadrw) {
+        if (argc == 3) {
+            char *p;
+            int driveno = strtol (argv[1], &p, 0);
+            if ((*p != 0) || (driveno < 0) || (driveno > 3)) return new SCRetErr ("drivenumber %s not in range 0..3", argv[1]);
+            int fd = open (argv[2], loadrw ? O_RDWR : O_RDONLY);
+            if (fd < 0) return new SCRetErr (strerror (errno));
+            if (flock (fd, (loadrw ? LOCK_EX : LOCK_SH) | LOCK_NB) < 0) {
+                SCRetErr *err = new SCRetErr (strerror (errno));
+                close (fd);
+                return err;
+            }
+            fprintf (stderr, "IODevRK8JE::scriptcmd: drive %d loaded with read%s file %s\n", driveno, (loadro ? "-only" : "/write"), argv[2]);
+            pthread_mutex_lock (&this->lock);
+            close (this->fds[driveno]);
+            this->fds[driveno] = fd;
+            this->ros[driveno] = loadro;
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
+
+        return new SCRetErr ("iodev rk8je loadro/loadrw <drivenumber> <filename>");
+    }
+
+    // unload <drivenumber>
+    if (strcmp (argv[0], "unload") == 0) {
+        if (argc == 2) {
+            char *p;
+            int driveno = strtol (argv[1], &p, 0);
+            if ((*p != 0) || (driveno < 0) || (driveno > 3)) return new SCRetErr ("drivenumber %s not in range 0..3", argv[1]);
+            fprintf (stderr, "IODevRK8JE::scriptcmd: drive %d unloaded\n", driveno);
+            pthread_mutex_lock (&this->lock);
+            close (this->fds[driveno]);
+            this->fds[driveno] = -1;
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
+
+        return new SCRetErr ("iodev rk8je unload <drivenumber>");
+    }
+
+    return new SCRetErr ("unknown rk8je command %s", argv[0]);
 }
 
 // perform i/o instruction
@@ -245,8 +320,6 @@ void IODevRK8JE::thread ()
             int rc = pthread_cond_wait (&this->cond, &this->lock);
             if (rc != 0) ABORT ();
         } else {
-            char fnvar[16];
-            char const *fnenv;
             int cyldiff, fd, rc;
             struct timespec endts, nowts;
             uint16_t blknum, diskno, icnt, len, *ptr, wcnt, xma;
@@ -297,37 +370,11 @@ void IODevRK8JE::thread ()
             SETST (04000);                                                  // clear head in motion, leave busy set
             this->lastdas[diskno] = blknum;                                 // remember head position for next seek time calculation
 
-            // get file fd and open if not already
+            // error if no file loaded
             fd = this->fds[diskno];
             if (fd < 0) {
-                this->ros[diskno] = false;
-                sprintf (fnvar, "iodevrk8je_%u", diskno);
-                fnenv = getenv (fnvar);
-                if (fnenv == NULL) {
-                    fprintf (stderr, "IODevRK8JE::thread: undefined envar %s\n", fnvar);
-                    SETST (00002);                                          // select error
-                    goto rwdone;
-                }
-                int lkmode = LOCK_EX | LOCK_NB;
-                fd = open (fnenv, O_RDWR);
-                if ((fd < 0) && (errno == EACCES)) {
-                    this->ros[diskno] = true;
-                    lkmode = LOCK_SH | LOCK_NB;
-                    fd = open (fnenv, O_RDONLY);
-                }
-                if (fd < 0) {
-                    fprintf (stderr, "IODevRK8JE::thread: error opening %s: %m\n", fnenv);
-                    SETST (00002);                                          // select error
-                    goto rwdone;
-                }
-                if (flock (fd, lkmode) < 0) {
-                    fprintf (stderr, "IODevRK8JE::thread: error locking %s: %m\n", fnenv);
-                    close (fd);
-                    SETST (00002);                                          // select error
-                    goto rwdone;
-                }
-                fprintf (stderr, "IODevRK8JE::thread: accessing %s (%s)\n", fnenv, (lkmode == (LOCK_SH | LOCK_NB)) ? "read-only" : "read/write");
-                this->fds[diskno] = fd;
+                SETST (00002);                                              // select error
+                goto rwdone;
             }
 
             // perform the read or write

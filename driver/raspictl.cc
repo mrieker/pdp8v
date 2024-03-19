@@ -25,7 +25,8 @@
  *  export cpuhz=<cpuhz>
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guihalt] [-haltcont]
  *          [-haltprint] [-haltstop] [-infloopstop] [-linc] [-mintimes] [-nohw] [-os8zap] [-paddles] [-pipelib] [-printinstr]
- *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-startpc <address>] [-stopat <address>] [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-startpc <address>] [-stopat <address>]
+ *          [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -51,6 +52,7 @@
  *      -randmem     : supply random opcodes and data for testing
  *      -resetonerr  : reset if error is detected
  *      -rimloader   : load file is in rimloader format
+ *      -script      : load file is a TCL script
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
  *      -watchwrite  : print message if the given address is written to
@@ -71,7 +73,6 @@
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/time.h>
-#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -85,6 +86,7 @@
 #include "rdcyc.h"
 #include "rimloader.h"
 #include "scncall.h"
+#include "script.h"
 #include "shadow.h"
 
 #define ever (;;)
@@ -92,6 +94,7 @@
 bool lincenab;
 bool quiet;
 bool randmem;
+bool scriptmode;
 char **cmdargv;
 ExtArith extarith;
 GpioLib *gpio;
@@ -153,7 +156,9 @@ int main (int argc, char **argv)
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-binloader") == 0) {
             binldr = true;
+            randmem = false;
             rimldr = false;
+            scriptmode = false;
             continue;
         }
         if (strcasecmp (argv[i], "-corefile") == 0) {
@@ -237,7 +242,10 @@ int main (int argc, char **argv)
             continue;
         }
         if ((strcasecmp (argv[i], "-randmem") == 0) && (loadname == NULL)) {
+            binldr = false;
             randmem = true;
+            rimldr = false;
+            scriptmode = false;
             quiet = true;
             initcount = 1;
             initreads[0] = 07300;   // CLA CLL
@@ -249,7 +257,16 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-rimloader") == 0) {
             binldr = false;
+            randmem = false;
             rimldr = true;
+            scriptmode = false;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-script") == 0) {
+            binldr = false;
+            randmem = false;
+            rimldr = false;
+            scriptmode = true;
             continue;
         }
         if (strcasecmp (argv[i], "-startpc") == 0) {
@@ -291,7 +308,7 @@ int main (int argc, char **argv)
             zynqlib = true;
             continue;
         }
-        if (argv[i][0] == '-') {
+        if ((argv[i][0] == '-') && (argv[i][1] != 0)) {
             fprintf (stderr, "raspictl: unknown option %s\n", argv[i]);
             return 1;
         }
@@ -306,6 +323,7 @@ int main (int argc, char **argv)
         cmdargv  = argv + i;
         break;
     }
+
     if ((corename == NULL) && (loadname == NULL) && ! randmem) {
         fprintf (stderr, "raspictl: missing loadfile parameter\n");
         return 1;
@@ -338,56 +356,51 @@ int main (int argc, char **argv)
 
     // read loadfile contents into memory
     if (loadname != NULL) {
-        FILE *loadfile = fopen (loadname, "r");
-        if (loadfile == NULL) {
-            fprintf (stderr, "raspictl: error opening loadfile %s: %m\n", loadname);
-            return 1;
-        }
-        if (binldr) {
-
-            // pdp-8 binloader format
-            uint16_t start;
-            int rc = binloader (loadname, loadfile, &start);
-            if (rc != 0) return rc;
-
-            // maybe a start address was given but don't override -startpc
-            if ((initcount == 0) && ! (start & 0x8000)) {
-                initdfif = (start >> 12) & 7;
-                initcount = 3;
-                initreads[2] = 07300;           // CLA CLL
-                initreads[1] = 05400;           // JMP @0
-                initreads[0] = start & 07777;
-            }
-        } else if (rimldr) {
-
-            // pdp-8 rimloader format
-            uint16_t start;
-            int rc = rimloader (loadname, loadfile, &start);
-            if (rc != 0) return rc;
-
-            // maybe a start address was given but don't override -startpc
-            if ((initcount == 0) && ! (start & 0x8000)) {
-                initdfif = (start >> 12) & 7;
-                initcount = 3;
-                initreads[2] = 07300;           // CLA CLL
-                initreads[1] = 05400;           // JMP @0
-                initreads[0] = start & 07777;
-            }
+        if (scriptmode) {
+            // -script, run script that can do loading or whatever
+            runscript (argv[0], loadname);
         } else {
-
-            // linker format
-            int rc = linkloader (loadname, loadfile);
-            if (rc < 0) return -rc;
-            if ((initcount == 0) && (rc > 0)) {
-                initdfif = (rc >> 12) & 7;
-                initcount = 3;
-                initreads[2] = 07300;           // CLA CLL
-                initreads[1] = 05400;           // JMP @0
-                initreads[0] = rc & 07777;
+            FILE *loadfile = fopen (loadname, "r");
+            if (loadfile == NULL) {
+                fprintf (stderr, "raspictl: error opening loadfile %s: %m\n", loadname);
+                return 1;
             }
-        }
+            if (binldr) {
 
-        fclose (loadfile);
+                // pdp-8 binloader format
+                uint16_t start;
+                int rc = binloader (loadname, loadfile, &start);
+                if (rc != 0) return rc;
+
+                // maybe a start address was given but don't override -startpc
+                if ((initcount == 0) && ! (start & 0x8000)) {
+                    initdfif = (start >> 12) & 7;
+                    initcount = 3;
+                    initreads[2] = 07300;           // CLA CLL
+                    initreads[1] = 05400;           // JMP @0
+                    initreads[0] = start & 07777;
+                }
+            } else if (rimldr) {
+
+                // pdp-8 rimloader format
+                int rc = rimloader (loadname, loadfile);
+                if (rc != 0) return rc;
+            } else {
+
+                // linker format
+                int rc = linkloader (loadname, loadfile);
+                if (rc < 0) return -rc;
+                if ((initcount == 0) && (rc > 0)) {
+                    initdfif = (rc >> 12) & 7;
+                    initcount = 3;
+                    initreads[2] = 07300;           // CLA CLL
+                    initreads[1] = 05400;           // JMP @0
+                    initreads[0] = rc & 07777;
+                }
+            }
+
+            fclose (loadfile);
+        }
     }
 
     // print cpu cyclecount once per minute
@@ -470,7 +483,7 @@ reseteverything:;
         }
     }
 
-    // if running from GUI, halt processor in next shadow.clock() call
+    // if running from GUI, halt processor in next haltcheck() call
     if (guihalt) haltflags = HF_HALTIT;
 
     try {
@@ -685,7 +698,7 @@ static void haltcheck ()
             // maybe GUI is resetting us
             if (haltflags & HF_RESETIT) {
                 resetit = true;
-                haltflags = 0;
+                haltflags &= ~ HF_RESETIT;
             }
         }
 
@@ -760,8 +773,8 @@ uint16_t readswitches (char const *swvar)
 // decide what to do
 void haltinstr (char const *fmt, ...)
 {
-    pthread_mutex_lock (&intreqlock);
-    if (intreqmask == 0) {
+    pthread_mutex_lock (&haltmutex);
+    if ((intreqmask == 0) && ! (haltflags & HF_HALTIT)) {
 
         // -haltprint means print a message
         if (haltprint | haltstop) {
@@ -773,18 +786,18 @@ void haltinstr (char const *fmt, ...)
 
         // -haltstop means print a message and exit
         if (haltstop) {
-            pthread_mutex_unlock (&intreqlock);
+            pthread_mutex_unlock (&haltmutex);
             fprintf (stderr, "raspictl: haltstop\n");
             exit (0);
         }
 
         // wait for an interrupt request
         if (! randmem && ! haltcont) {
-            do pthread_cond_wait (&intreqcond, &intreqlock);
-            while (intreqmask == 0);
+            do pthread_cond_wait (&haltcond, &haltmutex);
+            while ((intreqmask == 0) && ! (haltflags & HF_HALTIT));
         }
     }
-    pthread_mutex_unlock (&intreqlock);
+    pthread_mutex_unlock (&haltmutex);
 }
 
 // generate a random number
@@ -815,17 +828,17 @@ static void dumpregs ()
 // set the interrupt request bits
 void setintreqmask (uint16_t mask)
 {
-    pthread_mutex_lock (&intreqlock);
+    pthread_mutex_lock (&haltmutex);
     intreqmask |= mask;
-    pthread_cond_broadcast (&intreqcond);
-    pthread_mutex_unlock (&intreqlock);
+    pthread_cond_broadcast (&haltcond);
+    pthread_mutex_unlock (&haltmutex);
 }
 
 void clrintreqmask (uint16_t mask)
 {
-    pthread_mutex_lock (&intreqlock);
+    pthread_mutex_lock (&haltmutex);
     intreqmask &= ~ mask;
-    pthread_mutex_unlock (&intreqlock);
+    pthread_mutex_unlock (&haltmutex);
 }
 
 uint16_t getintreqmask ()
@@ -958,6 +971,18 @@ static void nullsighand (int signum)
 // signal that terminates process, do exit() so exithandler() gets called
 static void sighandler (int signum)
 {
+    // if control-C with -script, halt the processor getting clocked
+    // this will eventually wake script out of 'wait' command if it is in one
+    // ...when it sees HF_HALTED set
+    if ((signum == SIGINT) && scriptmode) {
+        pthread_mutex_lock (&haltmutex);
+        haltflags |= HF_HALTIT;
+        pthread_cond_broadcast (&haltcond);
+        pthread_mutex_unlock (&haltmutex);
+        return;
+    }
+
+    // something else, die
     fprintf (stderr, "raspictl: terminated for signal %d\n", signum);
     exit (1);
 }

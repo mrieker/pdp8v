@@ -1,3 +1,23 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
+
 #ifndef _IODEVRK8JE_H
 #define _IODEVRK8JE_H
 
@@ -8,8 +28,10 @@
 
 struct IODevRK8JE : IODev {
     IODevRK8JE ();
-    void ioreset ();
-    uint16_t ioinstr (uint16_t opcode, uint16_t input);
+    virtual ~IODevRK8JE ();
+    virtual void ioreset ();
+    virtual SCRet *scriptcmd (int argc, char const *const *argv);
+    virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
     bool debug;

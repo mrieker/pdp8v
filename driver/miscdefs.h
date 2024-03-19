@@ -44,6 +44,7 @@ typedef unsigned long long LLU; // for printf %llu format
 extern bool lincenab;
 extern bool quiet;
 extern bool randmem;
+extern bool scriptmode;
 extern char **cmdargv;
 extern GpioLib *gpio;
 extern int cmdargc;

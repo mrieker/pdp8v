@@ -1,9 +1,10 @@
 CFLAGS ?= -O2 -Werror
 MACH   := $(shell uname -m)
-GPP    := g++ $(CFLAGS) -std=c++11 -g -Wall -fPIC
+TCLINC := -I/usr/include/tcl8.6
+GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
-LNKFLG := -ldl -lm -lpthread -lreadline
+LNKFLG := -ldl -lm -lpthread -lreadline -ltcl
 RDCYC  := rdcyc-$(MACH).cc
 
 ifeq ($(MACH),armv6l)
@@ -27,6 +28,7 @@ default: autoboardtest.$(MACH) gpioudpserver.$(MACH) loopedboardtest.$(MACH) \
 lib.a.$(MACH): \
 		abcd.o.$(MACH) \
 		binloader.o.$(MACH) \
+		controls.o.$(MACH) \
 		csrclib.o.$(MACH) \
 		disassemble.o.$(MACH) \
 		extarith.o.$(MACH) \
@@ -51,8 +53,9 @@ lib.a.$(MACH): \
 		rdcyc.o.$(MACH) \
 		readprompt.o.$(MACH) \
 		rimloader.o.$(MACH) \
-		shadow.o.$(MACH) \
 		scncall.o.$(MACH) \
+		script.o.$(MACH) \
+		shadow.o.$(MACH) \
 		strprintf.o.$(MACH) \
 		timedlib.o.$(MACH) \
 		zynqlib.o.$(MACH)

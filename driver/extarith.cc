@@ -1,5 +1,29 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
+
+// handle extended arithmetic instructions
+// the tubes decode them as an I/O instruction
+// ...so this module looks like an I/O device emulator
 
 #include <stdio.h>
+#include <string.h>
 
 #include "extarith.h"
 #include "memory.h"
@@ -20,6 +44,11 @@ void ExtArith::setgtflag (bool gt)
     gtflag = modeb & gt;
 }
 
+ExtArith::ExtArith ()
+{
+    iodevname = "extarith";
+}
+
 // reset to power-on state
 void ExtArith::ioreset ()
 {
@@ -27,6 +56,58 @@ void ExtArith::ioreset ()
     modeb     = false;
     multquot  = 0;
     stepcount = 0;
+}
+
+// process script 'iodev extarith' commands
+SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
+{
+    // get [mq/gt/mode/sc]
+    if (strcmp (argv[0], "get") == 0) {
+        if (argc == 1) return new SCRetStr ("mq=%05o;gt=%o;mode=%c;sc=0%o", this->multquot, this->gtflag, (this->modeb ? 'B' : 'A'), this->stepcount);
+        if (argc == 2) {
+            if (strcmp (argv[1], "mq")   == 0) return new SCRetInt (this->multquot);
+            if (strcmp (argv[1], "gt")   == 0) return new SCRetInt (this->gtflag ? 1 : 0);
+            if (strcmp (argv[1], "mode") == 0) return new SCRetStr (this->modeb ? "B" : "A");
+            if (strcmp (argv[1], "sc")   == 0) return new SCRetInt (this->stepcount);
+        }
+        return new SCRetErr ("iodev extarith get [mq/gt/mode/sc]");
+    }
+
+    // set mq/gt/mode/sc <value>
+    if (strcmp (argv[0], "set") == 0) {
+        if (argc == 3) {
+            char *p;
+            int value = strtol (argv[2], &p, 0);
+            if (strcmp (argv[1], "mq")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 4095)) return new SCRetErr ("mq value %s not in range 0..4095", argv[2]);
+                this->multquot = value;
+                return NULL;
+            }
+            if (strcmp (argv[1], "gt")   == 0) {
+                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("gt value %s not in range 0..1", argv[2]);
+                this->gtflag = value != 0;
+                return NULL;
+            }
+            if (strcmp (argv[1], "mode") == 0) {
+                if ((argv[2][0] | ('A' ^ 'a')) == ('A' | 'a')) {
+                    this->modeb = false;
+                    return NULL;
+                }
+                if ((argv[2][0] | ('B' ^ 'b')) == ('B' | 'b')) {
+                    this->modeb = true;
+                    return NULL;
+                }
+                return new SCRetErr ("mode %s not A or B", argv[2]);
+            }
+            if (strcmp (argv[1], "sc")   == 0) {
+                this->stepcount = value & 077;
+                return NULL;
+            }
+        }
+        return new SCRetErr ("iodev extarith get [mq/gt/mode/sc]");
+    }
+
+    return new SCRetErr ("unknown extarith command %s", argv[1]);
 }
 
 // process an EAE instruction
