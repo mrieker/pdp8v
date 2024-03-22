@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "abcd.h"
+#include "controls.h"
 #include "disassemble.h"
 #include "gpiolib.h"
 #include "iodevs.h"
@@ -40,6 +41,7 @@ Shadow::Shadow ()
 {
     printinstr = false;
     printstate = false;
+    cycle = 0;
 }
 
 // gpiolib = instance of PhysLib: verify physical cpu board
@@ -53,8 +55,8 @@ void Shadow::open (GpioLib *gpiolib)
 void Shadow::reset ()
 {
     r.state = FETCH1;
-    cycle   = 0;
     r.pc    = 0;
+    r.reset = true;     // this FETCH1 cycle is from a reset
     acknown = false;
     irknown = false;
     lnknown = false;
@@ -69,48 +71,87 @@ void Shadow::reset ()
 // process script 'cpu' commands
 SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
 {
-    // get [ac/cycle/ir/link/ma/pc/prin/prst/state]
+    // get [ac/cycle/ir/link/ma/pc/state/disas]
     if (strcmp (argv[0], "get") == 0) {
-        if (argc == 1) return new SCRetStr ("ac=%05o;cycle=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;prin=%o;prst=%o;state=%s",
-            this->r.ac, (LLU) this->getcycles (), this->r.ir, this->r.link, this->r.ma, this->r.pc, this->printinstr,
-            this->printstate, statestr (this->r.state));
+        if (argc == 1) {
+            char const *dis;
+            std::string dsm;
+            if (this->r.state != FETCH1) {
+                dis = iodisas (this->r.ir);
+                if (dis == NULL) {
+                    dsm = disassemble (this->r.ir, this->r.irpc);
+                    dis = dsm.c_str ();
+                }
+            } else {
+                dis = this->r.reset ? "RESET" : "";
+            }
+            return new SCRetStr ("ac=%05o;cycle=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;state=%s;disas=%s",
+                this->r.ac, (LLU) this->getcycles (), this->r.ir, this->r.link, this->r.ma, this->r.pc,
+                statestr (this->r.state), dis);
+        }
 
         if (argc == 2) {
-            if (strcmp (argv[1], "ac")    == 0) return new SCRetInt (this->r.ac);
-            if (strcmp (argv[1], "cycle") == 0) return new SCRetInt (this->getcycles ());
-            if (strcmp (argv[1], "ir")    == 0) return new SCRetInt (this->r.ir);
-            if (strcmp (argv[1], "link")  == 0) return new SCRetInt (this->r.link);
-            if (strcmp (argv[1], "ma")    == 0) return new SCRetInt (this->r.ma);
-            if (strcmp (argv[1], "pc")    == 0) return new SCRetInt (this->r.pc);
-            if (strcmp (argv[1], "prin")  == 0) return new SCRetInt (this->printinstr);
-            if (strcmp (argv[1], "prst")  == 0) return new SCRetInt (this->printstate);
-            if (strcmp (argv[1], "state") == 0) return new SCRetStr (statestr (this->r.state));
-        }
-
-        return new SCRetErr ("cpu get [ac/cycle/ir/link/ma/pc/prin/prst/state]");
-    }
-
-    // set prin/prst <value>
-    if (strcmp (argv[0], "set") == 0) {
-        if (argc == 3) {
-            char *p;
-            int value = strtol (argv[2], &p, 0);
-            if (strcmp (argv[1], "prin") == 0) {
-                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("prin value %s not in range 0..1", argv[2]);
-                this->printinstr = value;
-                return NULL;
-            }
-            if (strcmp (argv[1], "prst") == 0) {
-                if ((*p != 0) || (value < 0) || (value > 1)) return new SCRetErr ("prst value %s not in range 0..1", argv[2]);
-                this->printstate = value;
-                return NULL;
+            if (strcmp (argv[1], "ac")    == 0) return new SCRetInt  (this->r.ac);
+            if (strcmp (argv[1], "cycle") == 0) return new SCRetLong (this->getcycles ());
+            if (strcmp (argv[1], "ir")    == 0) return new SCRetInt  (this->r.ir);
+            if (strcmp (argv[1], "link")  == 0) return new SCRetInt  (this->r.link);
+            if (strcmp (argv[1], "ma")    == 0) return new SCRetInt  (this->r.ma);
+            if (strcmp (argv[1], "pc")    == 0) return new SCRetInt  (this->r.pc);
+            if (strcmp (argv[1], "state") == 0) return new SCRetStr  (statestr (this->r.state));
+            if (strcmp (argv[1], "disas") == 0) {
+                char const *dis;
+                std::string dsm;
+                if (this->r.state != FETCH1) {
+                    dis = iodisas (this->r.ir);
+                    if (dis == NULL) {
+                        dsm = disassemble (this->r.ir, this->r.irpc);
+                        dis = dsm.c_str ();
+                    }
+                } else {
+                    dis = this->r.reset ? "RESET" : "";
+                }
+                return new SCRetStr (dis);
             }
         }
 
-        return new SCRetErr ("cpu set prin/prst <value>");
+        return new SCRetErr ("cpu get [ac/cycle/ir/link/ma/pc/state/disas]");
     }
 
-    return new SCRetErr ("unknown cpu command %s", argv[1]);
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  get            - return all registers as a string");
+        puts ("  get <register> - return specific register as a value");
+        puts ("  history        - print out previous cycles");
+        puts ("");
+        puts ("registers:");
+        puts ("");
+        puts ("  ac    - accumulator");
+        puts ("  cycle - cycle count");
+        puts ("  ir    - instruction register (full 12 bits)");
+        puts ("  link  - link bit");
+        puts ("  ma    - memory address");
+        puts ("  pc    - program counter");
+        puts ("  state - current state as a string (if halted, processor is at end of this state)");
+        puts ("  disas - disassembly of instruction register");
+        puts ("");
+        puts ("this get command shows shadow state, ie, what the tubes *should* be");
+        puts ("- use gpio get to see what the tubes actually are");
+        puts ("");
+        return NULL;
+    }
+
+    // print out previous cycles
+    if (strcmp (argv[0], "history") == 0) {
+        if (! ctl_ishalted ()) return new SCRetErr ("processor not halted");
+        puts ("");
+        this->history (stdout, "  ", 1);
+        puts ("");
+        return NULL;
+    }
+
+    return new SCRetErr ("unknown cpu command %s - valid: get help history", argv[0]);
 }
 
 // clock to next state
@@ -130,12 +171,14 @@ void Shadow::clock (uint32_t sample)
         case FETCH1: {
             checkgpio (sample, G_DENA | G_READ | r.pc * G_DATA0);
             r.state = FETCH2;
+            r.reset = false;
             break;
         }
 
         // sending opcode to processor
         case FETCH2: {
-            r.ir = mq;
+            r.ir    = mq;
+            r.irpc  = r.pc;
             irknown = true;
             checkgpio (sample, G_QENA);
             r.ma = mq & 00177;                                // always get low 7 bits from memory
@@ -515,7 +558,7 @@ bool Shadow::doesgrpbskip ()
 //     don't verify those as they are data coming from the raspberry pi (they contain memory or i/o data coming from raspi)
 void Shadow::checkgpio (uint32_t sample, uint32_t expect)
 {
-    // save registers in case of error
+    // save registers in case of error or for 'cpu history' command
     saveregs[cycle%NSAVEREGS] = r;
 
     // check all the input and output pins except the G_IOS pin
@@ -687,15 +730,43 @@ void Shadow::checkgpio (uint32_t sample, uint32_t expect)
     return;
 
 printsavedregs:;
-    for (unsigned i = 0; (i < NSAVEREGS) && (i <= cycle); i ++) {
-        uint64_t c = cycle - i;
-        Regs const *p = &saveregs[c%NSAVEREGS];
-        fprintf (stderr, "Shadow::checkgpio:  %12llu  %-6s  L.AC=%o.%04o IR=%04o MA=%04o PC=%04o  %s\n",
-            (LLU) c, statestr (p->state), p->link, p->ac, p->ir, p->ma, p->pc,
-            (p->state == FETCH1) ? "" : disassemble (p->ir, p->pc).c_str ());
-    }
+    this->history (stderr, "Shadow::checkgpio: ", 0);
     StateMismatchException sme;
     throw sme;
+}
+
+// print cycle history
+//  input:
+//   out = file to write history to
+//   pfx = prefix for lines
+//   offset = 0: saveregs[cycle%NSAVEREGS] has current cycle
+//            1: saveregs[cycle%NSAVEREGS] has an old cycle
+void Shadow::history (FILE *out, char const *pfx, unsigned offset)
+{
+    char const *distc = NULL;
+    std::string distr;
+    uint16_t disir = 0xFFFFU;
+    uint16_t dispc = 0xFFFFU;
+
+    for (unsigned i = offset; (i < NSAVEREGS + offset) && (i <= cycle); i ++) {
+        uint64_t c = cycle - i;
+        Regs const *p = &saveregs[c%NSAVEREGS];
+        if (p->state == FETCH1) {
+            distc = p->reset ? "RESET" : "";
+            disir = 0xFFFFU;
+            dispc = 0xFFFFU;
+        } else if ((disir != p->ir) || (dispc != p->irpc)) {
+            disir = p->ir;
+            dispc = p->irpc;
+            distc = iodisas (p->ir);
+            if (distc == NULL) {
+                distr = disassemble (p->ir, p->irpc);
+                distc = distr.c_str ();
+            }
+        }
+        fprintf (out, "%s%12llu  %-6s  L.AC=%o.%04o IR=%04o MA=%04o PC=%04o  %s\n",
+            pfx, (LLU) c, statestr (p->state), p->link, p->ac, p->ir, p->ma, p->pc, distc);
+    }
 }
 
 char const *Shadow::StateMismatchException::what ()

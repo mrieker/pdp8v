@@ -23,11 +23,13 @@ public class GUIRasPiCtl {
     public native static int getst ();
     public native static int getgpio ();
     public native static long getcycs ();
+    public native static int getsr ();
     public native static void setsr (int sr);
-    public native static void sethalt (boolean halt);
-    public native static void stepcyc ();
+    public native static boolean gethalt ();
+    public native static boolean sethalt (boolean halt);
+    public native static boolean stepcyc ();
     public native static String disassemble (int ir, int pc);
     public native static int rdmem (int addr);
     public native static int wrmem (int addr, int data);
-    public native static void reset (int addr);
+    public native static boolean reset (int addr);
 }

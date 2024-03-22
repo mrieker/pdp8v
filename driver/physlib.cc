@@ -50,6 +50,8 @@
 
 PhysLib::PhysLib ()
 {
+    libname = "physlib";
+
     sigemptyset (&sigintmask);
     sigaddset (&sigintmask, SIGINT);
     sigaddset (&sigintmask, SIGTERM);
@@ -637,45 +639,6 @@ static uint64_t const vfyoutmask100 =
         (1ULL << 074) |    // OUT 31
         (1ULL << 070);     // OUT 32
 
-// paddles aren't going to be used, make sure they are all floating
-// but maybe they don't exist
-void PhysLib::floatpaddles ()
-{
-    blocksigint ();
-    IowKit::list (floateach, NULL);
-    allowsigint ();
-}
-void PhysLib::floateach (void *ctx, char const *dn, int pipe, char const *sn, int pid, int rev)
-{
-    if (pipe == 0) {
-        IowKit iow;
-
-        iow.openbysn (sn);
-
-        // initialize to open-drain all 32 pins
-        switch (pid) {
-
-            case IOWKIT_PRODUCT_ID_IOW56: {
-
-                // set up to write zeroes to all the latches so the 2N7000s will be open-drained
-                write56 (&iow, ~ vfyoutmask56);   // all LOADs = 0, all OUTs = 0, all other pins = 1
-
-                // clock the LOADs to 1 to kerchunk zeroes into all the latches which will open-drain all the output 2N7000s
-                write56 (&iow, ~ vfyoutmask56 | (1ULL << LOAD1) | (1ULL << LOAD2) | (1ULL << LOAD3) | (1ULL << LOAD4));
-                break;
-            }
-
-            case IOWKIT_PRODUCT_ID_IOW100: {
-
-                // write zeroes to open-drain all the output 2N7000s
-                // write ones to all input pins to open drain the iow inputs
-                write100 (&iow, ~ vfyoutmask100);
-                break;
-            }
-        }
-    }
-}
-
 // read abcd connector pins
 //  output:
 //    returns pins read from connectors
@@ -969,8 +932,13 @@ void PhysLib::write32 (int pad, uint32_t mask, uint32_t pins)
 // set all the outputs to 1s to open the open drain outputs so we can read the pins
 void PhysLib::openpaddles ()
 {
+    if (! paddlesopen && ! haspads ()) ABORT ();
+}
+
+// see if we have all 4 paddles, open and open the open collector outputs if so
+bool PhysLib::haspads ()
+{
     if (! paddlesopen) {
-        paddlesopen = true;
 
         memset (iowhandles, 0, sizeof iowhandles);
         blocksigint ();
@@ -980,12 +948,12 @@ void PhysLib::openpaddles ()
             char const *esn = getenv (env);
             if (esn == NULL) {
                 fprintf (stderr, "PhysLib::openpaddles: missing envar %s\n", env);
-                ABORT ();
+                goto failed;
             }
             IOWKIT_HANDLE iowh = new IowKit ();
             if (! iowh->openbysn (esn)) {
-                fprintf (stderr, "PhysLib::openpaddles: missing device %s sn %s\n", env, esn);
-                ABORT ();
+                fprintf (stderr, "PhysLib::openpaddles: missing paddle %s sn %s\n", env, esn);
+                goto failed;
             }
             iowhandles[i] = iowh;
 
@@ -1015,11 +983,57 @@ void PhysLib::openpaddles ()
 
                 default: {
                     fprintf (stderr, "PhysLib::openpaddles: io-warrior %s sn %s is not an io-warrior-56 or io-warrior-100 but is product-id 0x%X\n", env, esn, prodid);
-                    ABORT ();
+                    goto failed;
                 }
             }
         }
         allowsigint ();
+        paddlesopen = true;
+    }
+    return true;
+
+failed:;
+    for (int i = 0; i < NPADS; i ++) {
+        IOWKIT_HANDLE iowh = iowhandles[i];
+        if (iowh != NULL) {
+            iowh->close ();
+            iowhandles[i] = NULL;
+        }
+    }
+    IowKit::list (floateach, NULL);
+    allowsigint ();
+    return false;
+}
+
+// make sure all paddles are floating if any exist
+void PhysLib::floateach (void *ctx, char const *dn, int pipe, char const *sn, int pid, int rev)
+{
+    if (pipe == 0) {
+        IowKit iow;
+
+        iow.openbysn (sn);
+
+        // initialize to open-drain all 32 pins
+        switch (pid) {
+
+            case IOWKIT_PRODUCT_ID_IOW56: {
+
+                // set up to write zeroes to all the latches so the 2N7000s will be open-drained
+                write56 (&iow, ~ vfyoutmask56);   // all LOADs = 0, all OUTs = 0, all other pins = 1
+
+                // clock the LOADs to 1 to kerchunk zeroes into all the latches which will open-drain all the output 2N7000s
+                write56 (&iow, ~ vfyoutmask56 | (1ULL << LOAD1) | (1ULL << LOAD2) | (1ULL << LOAD3) | (1ULL << LOAD4));
+                break;
+            }
+
+            case IOWKIT_PRODUCT_ID_IOW100: {
+
+                // write zeroes to open-collector all the output 2N3904s
+                // write ones to all input pins to open drain the iow inputs
+                write100 (&iow, ~ vfyoutmask100);
+                break;
+            }
+        }
     }
 }
 

@@ -92,6 +92,18 @@ void IODevPTape::ioreset ()
 // load/unload files
 SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
 {
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  load punch <filename>  - load file to be written as paper tape");
+        puts ("  load reader <filename> - load file to be read as paper tape");
+        puts ("  unload punch           - unload file being written as paper tape");
+        puts ("  unload reader          - unload file being read as paper tape");
+        puts ("");
+        return NULL;
+    }
+
     // load reader/punch <filename>
     if (strcmp (argv[0], "load") == 0) {
         if (argc == 3) {
@@ -146,7 +158,7 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev ptape unload reader/punch");
     }
 
-    return new SCRetErr ("unknown ptape command %s", argv[0]);
+    return new SCRetErr ("unknown ptape command %s - valid: load unload", argv[0]);
 }
 
 // process paper tape I/O instruction
@@ -372,7 +384,7 @@ start:;
             ABORT ();
         }
         if (rc == 0) {
-            fprintf (stderr, "IODevPTape::rdrthread: end of ptape file reached\n");
+            fprintf (stderr, "IODevPTape::rdrthread: end of ptape file reached, unloading\n");
             close (this->rdrfd);
             pthread_detach (this->rdrtid);
             this->rdrfd  = -1;

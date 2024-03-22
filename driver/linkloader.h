@@ -23,6 +23,6 @@
 
 #include <stdio.h>
 
-int linkloader (char const *loadname, FILE *loadfile);
+int linkloader (FILE *loadfile);
 
 #endif

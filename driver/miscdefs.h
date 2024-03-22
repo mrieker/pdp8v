@@ -41,18 +41,27 @@ typedef unsigned long long LLU; // for printf %llu format
 
 #include "gpiolib.h"
 
+extern bool ctrlcflag;
+extern bool haltstop;
+extern bool jmpdotstop;
 extern bool lincenab;
+extern bool os8zap;
 extern bool quiet;
 extern bool randmem;
 extern bool scriptmode;
 extern char **cmdargv;
+extern char const *haltreason;
 extern GpioLib *gpio;
 extern int cmdargc;
+extern int stopataddr;
+extern int watchwrite;
 extern uint16_t lastreadaddr;
-extern uint32_t watchwrite;
+extern uint16_t startpc;
+extern uint16_t switchregister;
 
 uint16_t readswitches (char const *swvar);
 void haltinstr (char const *fmt, ...);
+void haltordie (char const *reason);
 void clrintreqmask (uint16_t mask);
 void setintreqmask (uint16_t mask);
 uint16_t getintreqmask ();
@@ -67,6 +76,9 @@ extern pthread_cond_t haltcond2;
 extern pthread_mutex_t haltmutex;
 extern uint32_t haltflags;
 extern uint32_t haltsample;
+
+bool getmintimes ();
+void setmintimes (bool mintimes);
 
 #include <exception>
 

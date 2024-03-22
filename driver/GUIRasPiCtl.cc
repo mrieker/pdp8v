@@ -41,7 +41,7 @@ extern GpioLib *gpio;
 
 int main (int argc, char **argv);
 
-JNIEXPORT int JNICALL Java_GUIRasPiCtl_main (JNIEnv *env, jclass klass, jobjectArray args)
+JNIEXPORT jint JNICALL Java_GUIRasPiCtl_main (JNIEnv *env, jclass klass, jobjectArray args)
 {
     // see how many strings passed in args
     int argc = EXCKR (env->GetArrayLength (args));
@@ -111,26 +111,40 @@ JNIEXPORT jlong JNICALL Java_GUIRasPiCtl_getcycs (JNIEnv *env, jclass klass)
     return shadow.getcycles ();
 }
 
+JNIEXPORT jint JNICALL Java_GUIRasPiCtl_getsr (JNIEnv *env, jclass klass)
+{
+    return switchregister;
+}
+
 JNIEXPORT void JNICALL Java_GUIRasPiCtl_setsr (JNIEnv *env, jclass klass, jint sr)
 {
-    char stringbuffer[8];
-    sprintf (stringbuffer, "%o", sr & 4095);
-    setenv ("switchregister", stringbuffer, 1);
+    switchregister = sr & 32767;
 }
 
-JNIEXPORT void JNICALL Java_GUIRasPiCtl_sethalt (JNIEnv *env, jclass klass, jboolean halt)
+// returns true = processor is halted
+//        false = processor is running
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_gethalt (JNIEnv *env, jclass klass)
 {
-    if (halt) {
-        ctl_halt ();
-    } else {
-        ctl_run ();
-    }
+    return ctl_ishalted ();
 }
 
-JNIEXPORT void JNICALL Java_GUIRasPiCtl_stepcyc (JNIEnv *env, jclass klass)
+// input:
+//  halt = true: halt the processor
+//        false: run the processor
+// returns:
+//    true = was halted
+//   false = was running
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_sethalt (JNIEnv *env, jclass klass, jboolean halt)
 {
-    // processor assumed to already be halted
-    if (! ctl_stepcyc ()) ABORT ();
+    return halt ? ctl_halt () : ctl_run ();
+}
+
+// returns:
+//   true = was halted, stepped one cycle, now halted again
+//  false = was running, not stepped, still running
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepcyc (JNIEnv *env, jclass klass)
+{
+    return ctl_stepcyc ();
 }
 
 JNIEXPORT jstring JNICALL Java_GUIRasPiCtl_disassemble (JNIEnv *env, jclass klass, jint ir, jint pc)
@@ -160,8 +174,10 @@ JNIEXPORT jint JNICALL Java_GUIRasPiCtl_wrmem (JNIEnv *env, jclass klass, jint a
     return data;
 }
 
-JNIEXPORT void JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, jint addr)
+// returns:
+//   true = was halted, reset, now halted again
+//  false = failed
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, jint addr)
 {
-    // processor assumed to already be halted
-    if (! ctl_reset (addr)) ABORT ();
+    return ctl_reset (addr);
 }

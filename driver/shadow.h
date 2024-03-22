@@ -22,12 +22,13 @@
 #define _SHADOW_H
 
 #include <exception>
+#include <stdio.h>
 
 #include "gpiolib.h"
 #include "iodevs.h"
 #include "miscdefs.h"
 
-#define NSAVEREGS 16
+#define NSAVEREGS 32
 
 struct Shadow {
     enum State {
@@ -59,14 +60,15 @@ struct Shadow {
     struct Regs {
         State state;
         bool link;
-        uint16_t ac, ir, ma, pc;
+        bool reset;
+        uint16_t ac, ir, ma, pc, irpc;
     };
 
     struct StateMismatchException : std::exception {
         virtual char const *what ();
     };
 
-    Regs r;
+    Regs r;     // register contents at end of cycle
 
     bool paddles;
     bool printinstr;
@@ -96,6 +98,7 @@ private:
     Regs saveregs[NSAVEREGS];
 
     void checkgpio (uint32_t sample, uint32_t expect);
+    void history (FILE *out, char const *pfx, unsigned offset);
     uint16_t computegrpa (uint16_t *aluq);
     bool doesgrpbskip ();
     State firstexecstate ();

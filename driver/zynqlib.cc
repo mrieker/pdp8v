@@ -37,6 +37,8 @@ ZynqLib::ZynqLib ()
 
 ZynqLib::ZynqLib (char const *modnames)
 {
+    libname = "zynqlib";
+
     this->memfd  = -1;
     this->memptr = NULL;
 
@@ -217,6 +219,12 @@ trylk:;
 
     gpiomask = G_OUTS;                              // just drive output pins, not data pins, to start with
     gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // these pins get flipped on read to show active high
+}
+
+// we have paddles
+bool ZynqLib::haspads ()
+{
+    return true;
 }
 
 // read abcd connector pins

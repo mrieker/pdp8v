@@ -53,11 +53,18 @@ vsim -i -t ns work.de0
 ##add wave proc/Q_c_0_DLat_ireg09_seq
 ##add wave QENA
 
-set hc 10000
 set sv 1         ;# 0=quiet; 1=print states
 expr {srand (12345)}
 
 force -repeat 20ns FIFTYMHZ 1 0ns, 0 10ns
+
+proc HalfCyc {} {
+    run 10000
+}
+
+proc Echo {msg} {
+    echo $msg
+}
 
 # send value coming out of RASPI going into the processor
 proc ForceMQ {val} {
@@ -232,3 +239,8 @@ proc Error {msg} {
 # use common test script with modules
 #
 source ../../../modules/commontest.tcl
+
+TestInit
+for {set i 0} {1} {incr i} {
+    TestStep $i
+}

@@ -78,14 +78,16 @@ struct Shadow;
 
 #define NPADS 4  // number of paddles
 struct GpioLib {
+    char const *libname;
+
     virtual ~GpioLib ();
     virtual void open () = 0;
-    virtual void floatpaddles ();
     virtual void close () = 0;
     virtual void halfcycle ();
     virtual void halfcycle (bool aluadd);
     virtual uint32_t readgpio () = 0;
     virtual void writegpio (bool wdata, uint32_t valu) = 0;
+    virtual bool haspads () = 0;
     virtual void readpads (uint32_t *pinss) = 0;
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss) = 0;
     virtual int examine (char const *varname, uint32_t *value);
@@ -106,6 +108,7 @@ struct CSrcLib : GpioLib {
     virtual void halfcycle ();
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
+    virtual bool haspads ();
     virtual void readpads (uint32_t *pinss);
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
     virtual int examine (char const *varname, uint32_t *value);
@@ -129,6 +132,7 @@ struct NohwLib : GpioLib {
     void halfcycle ();
     uint32_t readgpio ();
     void writegpio (bool wdata, uint32_t valu);
+    virtual bool haspads ();
     void readpads (uint32_t *pinss);
     void writepads (uint32_t const *masks, uint32_t const *pinss);
 
@@ -144,6 +148,7 @@ struct PipeLib : GpioLib {
     virtual void halfcycle ();
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
+    virtual bool haspads ();
     virtual void readpads (uint32_t *pinss);
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
     virtual int examine (char const *varname, uint32_t *value);
@@ -175,10 +180,10 @@ struct PhysLib : TimedLib {
     PhysLib ();
     virtual ~PhysLib ();
     virtual void open ();
-    virtual void floatpaddles ();
     virtual void close ();
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
+    virtual bool haspads ();
     virtual void readpads (uint32_t *pinss);
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 
@@ -231,6 +236,7 @@ struct ZynqLib : TimedLib {
     virtual void close ();
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
+    virtual bool haspads ();
     virtual void readpads (uint32_t *pinss);
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 

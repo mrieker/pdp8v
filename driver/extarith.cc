@@ -46,7 +46,7 @@ void ExtArith::setgtflag (bool gt)
 
 ExtArith::ExtArith ()
 {
-    iodevname = "extarith";
+    iodevname = "eae";
 }
 
 // reset to power-on state
@@ -63,14 +63,32 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
 {
     // get [mq/gt/mode/sc]
     if (strcmp (argv[0], "get") == 0) {
-        if (argc == 1) return new SCRetStr ("mq=%05o;gt=%o;mode=%c;sc=0%o", this->multquot, this->gtflag, (this->modeb ? 'B' : 'A'), this->stepcount);
+        if (argc == 1) return new SCRetStr ("mq=%05o;gt=%o;mode=%c;sc=%03o", this->multquot, this->gtflag, (this->modeb ? 'B' : 'A'), this->stepcount);
         if (argc == 2) {
             if (strcmp (argv[1], "mq")   == 0) return new SCRetInt (this->multquot);
             if (strcmp (argv[1], "gt")   == 0) return new SCRetInt (this->gtflag ? 1 : 0);
             if (strcmp (argv[1], "mode") == 0) return new SCRetStr (this->modeb ? "B" : "A");
             if (strcmp (argv[1], "sc")   == 0) return new SCRetInt (this->stepcount);
         }
-        return new SCRetErr ("iodev extarith get [mq/gt/mode/sc]");
+        return new SCRetErr ("iodev eae get [mq/gt/mode/sc]");
+    }
+
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  get                    - return all registers as a string");
+        puts ("  get <register>         - return specific register as a value");
+        puts ("  set <register> <value> - set register to value");
+        puts ("");
+        puts ("registers:");
+        puts ("");
+        puts ("  mq   - multiplicand / quotient");
+        puts ("  gt   - greater than flag");
+        puts ("  mode - mode A or B");
+        puts ("  sc   - step count");
+        puts ("");
+        return NULL;
     }
 
     // set mq/gt/mode/sc <value>
@@ -100,14 +118,15 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
                 return new SCRetErr ("mode %s not A or B", argv[2]);
             }
             if (strcmp (argv[1], "sc")   == 0) {
-                this->stepcount = value & 077;
+                if ((*p != 0) || (value < 0) || (value > 31)) return new SCRetErr ("sc value %s not in range 0..31", argv[2]);
+                this->stepcount = value;
                 return NULL;
             }
         }
-        return new SCRetErr ("iodev extarith get [mq/gt/mode/sc]");
+        return new SCRetErr ("iodev eae set mq/gt/mode/sc <value>");
     }
 
-    return new SCRetErr ("unknown extarith command %s", argv[1]);
+    return new SCRetErr ("unknown eae command %s - valid: get set", argv[0]);
 }
 
 // process an EAE instruction

@@ -5,12 +5,19 @@
 #   ../netgen/netgen.sh whole.mod -sim proc.sim
 #
 
-set hc 250
 set sv 0         ;# 0=quiet; 1=print states
 expr {srand (12345)}
 
 module proc
 #monitor cin_inc_12/alu _oldlink/alu _newlink/alu
+
+proc HalfCyc {} {
+    run 250
+}
+
+proc Echo {msg} {
+    echo $msg
+}
 
 # send value coming out of RASPI going into the processor
 
@@ -90,3 +97,8 @@ proc Error {msg} {
 # use test script common with de0 testing
 #
 source "commontest.tcl"
+
+TestInit
+for {set i 0} {1} {incr i} {
+    TestStep $i
+}

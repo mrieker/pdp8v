@@ -65,13 +65,15 @@ public class GUI extends JPanel {
 
     // access the processor one way or another
     public abstract static class IAccess {
-        public int  acl;
-        public int  ma; // df in <14:12>
-        public int  pc; // if in <14:12>
-        public int  ir;
-        public int  st;
-        public int  gpio;
-        public long cycs;
+        public int     acl;
+        public int     ma; // df in <14:12>
+        public int     pc; // if in <14:12>
+        public int     ir;
+        public int     st;
+        public int     gpio;
+        public int     sr;
+        public long    cycs;
+        public boolean halt;
 
         public abstract void run ();
         public abstract void halt ();
@@ -85,7 +87,6 @@ public class GUI extends JPanel {
 
     // run the GUI with the given processor access
     public static IAccess access;
-    public static Timer updatetimer;
 
     public static void main (String[] args)
             throws Exception
@@ -165,11 +166,9 @@ public class GUI extends JPanel {
         writeswitches (srint);
         access.setsr (srint);
 
-        // update initial display
-        updisplay.actionPerformed (null);
-
-        // update display at UPDMS rate when processor is running
-        updatetimer = new Timer (UPDMS, updisplay);
+        // update display at UPDMS rate
+        Timer updatetimer = new Timer (UPDMS, updisplay);
+        updatetimer.start ();
     }
 
     //////////////
@@ -199,7 +198,7 @@ public class GUI extends JPanel {
         access = new DirectAccess (args);
 
         // read and process incoming command bytes
-        byte[] sample = new byte[22];
+        byte[] sample = new byte[25];
         for (int cmdbyte; (cmdbyte = istream.read ()) >= 0;) {
             switch (cmdbyte) {
                 case CB_RUN: {
@@ -239,6 +238,9 @@ public class GUI extends JPanel {
                     sample[19] = (byte)(access.cycs >> 40);
                     sample[20] = (byte)(access.cycs >> 48);
                     sample[21] = (byte)(access.cycs >> 56);
+                    sample[22] = (byte)(access.halt ? 1 : 0);
+                    sample[23] = (byte)(access.sr);
+                    sample[24] = (byte)(access.sr >> 8);
 
                     ostream.write (sample);
                     break;
@@ -318,7 +320,7 @@ public class GUI extends JPanel {
         public InputStream istream;
         public OutputStream ostream;
 
-        public byte[] samplebytes = new byte[22];
+        public byte[] samplebytes = new byte[25];
 
         public TCPAccess (Socket socket, String[] args)
             throws Exception
@@ -377,8 +379,8 @@ public class GUI extends JPanel {
         {
             try {
                 ostream.write (CB_SAMPLE);
-                for (int i = 0; i < 22;) {
-                    int rc = istream.read (samplebytes, i, 22 - i);
+                for (int i = 0; i < 25;) {
+                    int rc = istream.read (samplebytes, i, 25 - i);
                     if (rc <= 0) throw new EOFException ("eof reading network");
                     i += rc;
                 }
@@ -394,6 +396,8 @@ public class GUI extends JPanel {
             st   = ((samplebytes[9] & 0xFF) << 8) | (samplebytes[8] & 0xFF);
             gpio = ((samplebytes[13] & 0xFF) << 24) | ((samplebytes[12] & 0xFF) << 16) | ((samplebytes[11] & 0xFF) << 8) | (samplebytes[10] & 0xFF);
             cycs = ((samplebytes[21] & 0xFF) << 56) | ((samplebytes[20] & 0xFF) << 48) | ((samplebytes[19] & 0xFF) << 40) | ((samplebytes[18] & 0xFF) << 32) | ((samplebytes[17] & 0xFF) << 24) | ((samplebytes[16] & 0xFF) << 16) | ((samplebytes[15] & 0xFF) << 8) | (samplebytes[14] & 0xFF);
+            halt = samplebytes[22] != 0;
+            sr   = ((samplebytes[24] & 0xFF) << 8) | (samplebytes[23] & 0xFF);
         }
 
         @Override
@@ -495,7 +499,7 @@ public class GUI extends JPanel {
         @Override
         public void cycle ()
         {
-            GUIRasPiCtl.stepcyc ();
+            while (! GUIRasPiCtl.stepcyc ()) GUIRasPiCtl.sethalt (true);
         }
 
         @Override
@@ -508,6 +512,8 @@ public class GUI extends JPanel {
             st   = GUIRasPiCtl.getst   ();
             gpio = GUIRasPiCtl.getgpio ();
             cycs = GUIRasPiCtl.getcycs ();
+            halt = GUIRasPiCtl.gethalt ();
+            sr   = GUIRasPiCtl.getsr   ();
         }
 
         @Override
@@ -531,7 +537,7 @@ public class GUI extends JPanel {
         @Override
         public void reset (int addr)
         {
-            GUIRasPiCtl.reset (addr);
+            while (! GUIRasPiCtl.reset (addr)) GUIRasPiCtl.sethalt (true);
         }
     }
 
@@ -544,7 +550,7 @@ public class GUI extends JPanel {
         {
             String[] argv = new String[args.length+2];
             argv[0] = "GUIRasPiCtl";
-            argv[1] = "-guihalt";
+            argv[1] = "-guimode";
             for (int i = 0; i < args.length; i ++) {
                 argv[i+2] = args[i];
             }
@@ -578,6 +584,7 @@ public class GUI extends JPanel {
     public static LED[] maleds = new LED[15];
     public static LED[] pcleds = new LED[15];
     public static Switch[] switches = new Switch[15];
+    public static LED runled;
     public static LED[] irleds = new LED[3];
     public static LED[] stleds = new LED[9];
 
@@ -596,13 +603,15 @@ public class GUI extends JPanel {
 
                 // read values from raspictl (either directly or via tcp)
                 access.sample ();
-                int  acl  = access.acl;
-                int  ma   = access.ma;
-                int  pc   = access.pc;
-                int  ir   = access.ir;
-                int  st   = access.st;
-                int  gpio = access.gpio;
-                long cycs = access.cycs;
+                int     acl  = access.acl;
+                int     ma   = access.ma;
+                int     pc   = access.pc;
+                int     ir   = access.ir;
+                int     st   = access.st;
+                int     gpio = access.gpio;
+                long    cycs = access.cycs;
+                boolean halt = access.halt;
+                int     sr   = access.sr;
 
                 // update display LEDs
                 gpioiakled.setOn ((gpio & G_IAK)   != 0);
@@ -627,6 +636,10 @@ public class GUI extends JPanel {
                 for (int i = 0; i < 15; i ++) {
                     pcleds[i].setOn ((pc & (040000 >> i)) != 0);
                 }
+
+                writeswitches (sr);
+                runled.setOn (! halt);
+                haltrunbutton.setHalt (halt);
 
                 for (int i = 0; i < 3; i ++) {
                     irleds[i].setOn ((ir & (04000 >> i)) != 0);
@@ -693,38 +706,38 @@ public class GUI extends JPanel {
         // row 0 - gpio labels
         bits1412.add (centeredLabel (""));
         bits1412.add (centeredLabel (""));
-        bits1412.add (centeredLabel ("IAK"));
+        bits1412.add (centeredLabel (""));
         bits1109.add (centeredLabel ("RD"));
         bits1109.add (centeredLabel ("WR"));
         bits1109.add (centeredLabel ("DF"));
         bits0806.add (centeredLabel ("IO"));
         bits0806.add (centeredLabel ("JMP"));
-        bits0806.add (centeredLabel (""));
+        bits0806.add (centeredLabel ("IAK"));
         bits0503.add (centeredLabel ("DE"));
         bits0503.add (centeredLabel ("QE"));
         bits0503.add (centeredLabel ("IRQ"));
         bits0200.add (centeredLabel ("IOS"));
-        bits0200.add (centeredLabel (""));
         bits0200.add (centeredLabel ("RES"));
-        bit_1.add (centeredLabel ("CLK"));
+        bits0200.add (centeredLabel ("CLK"));
+        bit_1.add (centeredLabel (""));
 
         // row 1 - gpio control bits
         bits1412.add (new JLabel (""));
         bits1412.add (new JLabel (""));
-        bits1412.add (gpioiakled = new LED ());
+        bits1412.add (new JLabel (""));
         bits1109.add (gpiordled  = new LED ());
         bits1109.add (gpiowrled  = new LED ());
         bits1109.add (gpiodfled  = new LED ());
         bits0806.add (gpioioled  = new LED ());
         bits0806.add (gpiojmpled = new LED ());
-        bits0806.add (new JLabel (""));
+        bits0806.add (gpioiakled = new LED ());
         bits0503.add (gpiodenled = new LED ());
         bits0503.add (gpioqenled = new LED ());
         bits0503.add (gpioirqled = new LED ());
         bits0200.add (gpioiosled = new LED ());
-        bits0200.add (new JLabel (""));
         bits0200.add (gpioresled = new LED ());
-        bit_1.add (gpioclkled = new LED ());
+        bits0200.add (gpioclkled = new LED ());
+        bit_1.add (new JLabel (""));
 
         // row 2 - gpio link/data bits
         bits1412.add (new JLabel (""));
@@ -771,24 +784,24 @@ public class GUI extends JPanel {
         bit_1.add (new JLabel ("SR"));
 
         // row 7 - IR and state bits
-        bits1412.add (new JLabel (""));
+        bits1412.add (runled = new LED ());
         bits1412.add (new JLabel (""));
         bits1412.add (new JLabel (""));
         for (int i =  0; i <  3; i ++) bits1109.add (irleds[i] = new LED ());
-        bits0806.add (new JLabel (""));
+        bits0806.add (stleds[8] = new LED ());
         for (int i = 0; i < 2; i ++) bits0806.add (stleds[i] = new LED ());
         for (int i = 2; i < 5; i ++) bits0503.add (stleds[i] = new LED ());
         for (int i = 5; i < 8; i ++) bits0200.add (stleds[i] = new LED ());
-        bit_1.add (stleds[8] = new LED ());
+        bit_1.add (new JLabel (""));
 
         // row 8 - state bit labels
-        bits1412.add (centeredLabel (""));
+        bits1412.add (centeredLabel ("RUN"));
         bits1412.add (centeredLabel (""));
         bits1412.add (centeredLabel (""));
         bits1109.add (centeredLabel (""));
         bits1109.add (centeredLabel ("IR"));
         bits1109.add (centeredLabel (""));
-        bits0806.add (centeredLabel (""));
+        bits0806.add (centeredLabel ("IAK"));
         bits0806.add (centeredLabel ("FET"));
         bits0806.add (centeredLabel ("CH"));
         bits0503.add (centeredLabel ("DE"));
@@ -797,7 +810,7 @@ public class GUI extends JPanel {
         bits0200.add (centeredLabel ("EX"));
         bits0200.add (centeredLabel ("E"));
         bits0200.add (centeredLabel ("C"));
-        bit_1.add (centeredLabel ("IAK"));
+        bit_1.add (centeredLabel (""));
 
         // buttons along the bottom
         JPanel buttonbox1 = new JPanel ();
@@ -939,7 +952,7 @@ public class GUI extends JPanel {
         public void actionPerformed (ActionEvent ae)
         {
             setOn (! ison);
-            access.setsr (readswitches () & 07777);
+            access.setsr (readswitches () & 077777);
         }
 
         public void setOn (boolean on)
@@ -962,26 +975,35 @@ public class GUI extends JPanel {
     }
 
     private static class HaltRunButton extends JButton implements ActionListener {
-        public boolean halted = true;
+        private boolean halted;         //  true: processor is known to be halted
+                                        //        button says RUN to get it going
+                                        // false: processor is known to be running
+                                        //        button says HALT to halt it
 
         public HaltRunButton ()
         {
-            super ("RUN");
+            super ("HALT");
             addActionListener (this);
+        }
+
+        // processor state might have changed, maybe update button
+        public void setHalt (boolean halt)
+        {
+            if (halted != halt) {
+                halted = halt;
+                setText (halted ? "RUN" : "HALT");
+            }
         }
 
         @Override  // ActionListener
         public void actionPerformed (ActionEvent ae)
         {
-            halted = ! halted;
+            // change the processor state
+            // the update timer will update this button by calling setHalt()
             if (halted) {
-                updatetimer.stop ();
-                access.halt ();
-                setText ("RUN");
-            } else {
                 access.run ();
-                updatetimer.start ();
-                setText ("HALT");
+            } else {
+                access.halt ();
             }
         }
     }
@@ -996,9 +1018,6 @@ public class GUI extends JPanel {
         @Override  // ActionListener
         public void actionPerformed (ActionEvent ae)
         {
-            if (! haltrunbutton.halted) {
-                haltrunbutton.actionPerformed (null);
-            }
             access.cycle ();
             updisplay.actionPerformed (null);
         }
@@ -1014,10 +1033,6 @@ public class GUI extends JPanel {
         @Override  // ActionListener
         public void actionPerformed (ActionEvent ae)
         {
-            if (! haltrunbutton.halted) {
-                haltrunbutton.actionPerformed (null);
-            }
-
             // loop with invokeLater() so we can see LEDs update between cycles
             SwingUtilities.invokeLater (this);
         }
@@ -1107,7 +1122,6 @@ public class GUI extends JPanel {
         @Override  // MemButton
         public void actionPerformed (ActionEvent ae)
         {
-            if (! haltrunbutton.halted) haltrunbutton.actionPerformed (ae);
             access.reset (-1);
             updisplay.actionPerformed (null);
         }
@@ -1123,7 +1137,6 @@ public class GUI extends JPanel {
         @Override  // MemButton
         public void actionPerformed (ActionEvent ae)
         {
-            if (! haltrunbutton.halted) haltrunbutton.actionPerformed (ae);
             access.reset (readswitches () & 077777);
             updisplay.actionPerformed (null);
         }

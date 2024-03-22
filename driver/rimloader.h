@@ -23,6 +23,6 @@
 
 #include <stdio.h>
 
-int rimloader (char const *loadname, FILE *loadfile);
+int rimloader (FILE *loadfile);
 
 #endif

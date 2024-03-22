@@ -38,13 +38,14 @@ struct IODevOps {
 struct SCRet;
 struct SCRetErr;
 struct SCRetInt;
+struct SCRetLong;
 struct SCRetStr;
 
 struct IODev {
-    uint16_t opscount;
-    IODevOps const *opsarray;
-
     char const *iodevname;
+    IODev *nextiodev;
+    IODevOps const *opsarray;
+    uint16_t opscount;
 
     IODev ();
     virtual ~IODev ();
@@ -52,22 +53,22 @@ struct IODev {
     virtual void ioreset () = 0;
     virtual SCRet *scriptcmd (int argc, char const *const *argv);
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input) = 0;
-
-    IODev *nextiodev;
 };
 
 struct SCRet {
     enum Type {
         SCRT_ERR,
         SCRT_INT,
+        SCRT_LONG,
         SCRT_STR
     };
 
     virtual ~SCRet () { }
     virtual Type gettype () = 0;
-    virtual SCRetErr *casterr () { return NULL; }
-    virtual SCRetInt *castint () { return NULL; }
-    virtual SCRetStr *caststr () { return NULL; }
+    virtual SCRetErr  *casterr  () { return NULL; }
+    virtual SCRetInt  *castint  () { return NULL; }
+    virtual SCRetLong *castlong () { return NULL; }
+    virtual SCRetStr  *caststr  () { return NULL; }
 };
 
 struct SCRetErr : SCRet {
@@ -84,6 +85,14 @@ struct SCRetInt : SCRet {
     virtual SCRetInt *castint () { return this; }
 
     int val;
+};
+
+struct SCRetLong : SCRet {
+    SCRetLong (long val);
+    virtual Type gettype () { return SCRT_LONG; }
+    virtual SCRetLong *castlong () { return this; }
+
+    long val;
 };
 
 struct SCRetStr : SCRet {

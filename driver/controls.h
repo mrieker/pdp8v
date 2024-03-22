@@ -22,10 +22,13 @@
 #define _CONTROLS_H
 
 bool ctl_halt ();
+bool ctl_ishalted ();
+bool ctl_lock ();
 bool ctl_reset (int addr);
 bool ctl_run ();
 bool ctl_stepcyc ();
 bool ctl_stepins ();
+void ctl_unlock (bool sigint);
 void ctl_wait ();
 
 #endif

@@ -42,6 +42,8 @@
 // construct the library object
 CSrcLib::CSrcLib (char const *modname)
 {
+    libname = "csrclib";
+
     latestwdata = 0;
     latestwvalu = 0;
 
@@ -182,6 +184,12 @@ void CSrcLib::writegpio (bool wdata, uint32_t valu)
 
     // update pins such as the clock
     module->writegpiowork (valu);
+}
+
+// we have paddles
+bool CSrcLib::haspads ()
+{
+    return true;
 }
 
 // read A,B,C,D connectors

@@ -58,6 +58,8 @@ static IODevOps const iodevopsdef[] = {
     { 06046, "03 TLS (TTY) turn off interrupt request for previous char and start printing new char" },
 };
 
+static uint64_t intreqbits;
+
 static uint64_t getnowus ()
 {
     struct timeval nowtv;
@@ -110,6 +112,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     pthread_cond_init (&this->prcond, NULL);
     pthread_mutex_init (&this->lock, NULL);
     this->confd    = -1;
+    this->intenab  = false;
     this->lastpc   = 0xFFFFU;
     this->lastin   = 0xFFFFU;
     this->lastout  = 0xFFFFU;
@@ -130,6 +133,22 @@ IODevTTY::~IODevTTY ()
 // process commands from TCL script
 SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
 {
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  debug               - see if debug is enabled");
+        puts ("  debug 0             - disable debug printing");
+        puts ("  debug 1             - enable debug printing");
+        puts ("  speed               - see what simulated chars-per-second rate is");
+        puts ("  speed <charspersec> - set simulated chars-per-second rate");
+        puts ("                        allowed range 1..1000000");
+        puts ("  telnet <tcpport>    - start listening for telnet connection");
+        puts ("                        allowed range 1..65535");
+        puts ("");
+        return NULL;
+    }
+
     // debug [0/1]
     if (strcmp (argv[0], "debug") == 0) {
         if (argc == 1) {
@@ -204,7 +223,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev tty telnet <tcpport>");
     }
 
-    return new SCRetErr ("unknown tty command %s", argv[0]);
+    return new SCRetErr ("unknown tty command %s - valid: debug speed telnet", argv[0]);
 }
 
 // stop the listening, keyboard and printer threads
@@ -441,7 +460,7 @@ void IODevTTY::kbthreadlk ()
 
         if (this->debug) {
             uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
-            printf ("IODevTTY::kbthread*: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
+            printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
         }
 
         nextreadus = getnowus () + this->usperchr;
@@ -506,7 +525,7 @@ void IODevTTY::prthread ()
 
         if (this->debug) {
             uint8_t prchar = ((this->prbuff < 0240) | (this->prbuff > 0376)) ? '.' : (this->prbuff & 0177);
-            printf ("IODevTTY::prthread*: prbuff=%03o <%c>\n", this->prbuff, prchar);
+            printf ("IODevTTY::prthread: prbuff=%03o <%c>\n", this->prbuff, prchar);
         }
 
         // strip top bit off for printing
@@ -535,7 +554,6 @@ done:;
 
 // reset the device
 // - clear flags
-// - kill threads
 void IODevTTY::ioreset ()
 {
     pthread_mutex_lock (&this->lock);
@@ -543,7 +561,7 @@ void IODevTTY::ioreset ()
     this->intenab = true;   // CAF (6007) enables TTY interrupt
     this->prflag  = false;
     this->prfull  = false;
-    clrintreqmask (IRQ_TTYKBPR);
+    this->updintreqlk ();
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -679,8 +697,8 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
                 }
             }
 
-            if (desc != NULL) printf ("IODevTTY::ioinstr*: %05o  %05o -> %05o  %s\n", pc, oldinput, input, desc);
-                     else printf ("IODevTTY::ioinstr*: %05o  %05o -> %05o  %04o\n", pc, oldinput, input, opcode);
+            if (desc != NULL) printf ("IODevTTY::ioinstr: %05o  %05o -> %05o  %s\n", pc, oldinput, input, desc);
+                     else printf ("IODevTTY::ioinstr: %05o  %05o -> %05o  %04o\n", pc, oldinput, input, opcode);
         }
     }
 
@@ -688,6 +706,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
     return input;
 }
 
+// update interrupt request line after changing intenab, kbflag, prflag
 void IODevTTY::updintreq ()
 {
     pthread_mutex_lock (&this->lock);
@@ -695,12 +714,12 @@ void IODevTTY::updintreq ()
     pthread_mutex_unlock (&this->lock);
 }
 
-// update interrupt request line after changing intenab, kbflag, prflag
 void IODevTTY::updintreqlk ()
 {
-    if (this->intenab && (this->kbflag | this->prflag) && ! (linc.specfuncs & 0040)) {
-        setintreqmask (IRQ_TTYKBPR);
-    } else {
-        clrintreqmask (IRQ_TTYKBPR);
-    }
+    ASSERT ((this->iobasem3 >= 0) && (this->iobasem3 <= 63));
+    bool intreq = this->intenab && (this->kbflag | this->prflag) && ! (linc.specfuncs & 0040);
+    uint64_t newbits = intreq ? __sync_or_and_fetch (&intreqbits, 1ULL << this->iobasem3) :
+                            __sync_and_and_fetch (&intreqbits, ~ (1ULL << this->iobasem3));
+    if (newbits) setintreqmask (IRQ_TTYKBPR);
+            else clrintreqmask (IRQ_TTYKBPR);
 }

@@ -30,10 +30,6 @@
 GpioLib::~GpioLib ()
 { }
 
-// by default, nothing to do to float paddles
-void GpioLib::floatpaddles ()
-{ }
-
 // by default, no implementation of examine()
 // - used by testboard.cc to examine internal variables
 int GpioLib::examine (char const *varname, uint32_t *value)

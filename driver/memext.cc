@@ -108,11 +108,26 @@ void MemExt::ioreset ()
 // process script 'iodev memext' commands
 SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
 {
-    // get [df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj]
+    // get [df/iduj/ie/ieaf/if/ifaj/ireq/sdf/sif/suf/uf/ufaj]
     if (strcmp (argv[0], "get") == 0) {
-        if (argc == 1) return new SCRetStr ("df=%o;iduj=%o;ie=%o;ieaf=%o;if=%o;ifaj=%o;sdf=%o;sif=%o;suf=%o;uf=%o;ufaj=%o",
+        std::string ireqs;
+        if ((argc < 2) || (strcmp (argv[1], "ireq") == 0)) {
+            uint16_t irqm = getintreqmask ();
+            char const *irqx = "";
+            if (irqm & IRQ_SCNINTREQ) { irqm -= IRQ_SCNINTREQ; ireqs.append (irqx); ireqs.append ("SCN"); irqx = "+"; }
+            if (irqm & IRQ_LINECLOCK) { irqm -= IRQ_LINECLOCK; ireqs.append (irqx); ireqs.append ("LNC"); irqx = "+"; }
+            if (irqm & IRQ_RANDMEM)   { irqm -= IRQ_RANDMEM;   ireqs.append (irqx); ireqs.append ("RAN"); irqx = "+"; }
+            if (irqm & IRQ_USERINT)   { irqm -= IRQ_USERINT;   ireqs.append (irqx); ireqs.append ("USR"); irqx = "+"; }
+            if (irqm & IRQ_TTYKBPR)   { irqm -= IRQ_TTYKBPR;   ireqs.append (irqx); ireqs.append ("TTY"); irqx = "+"; }
+            if (irqm & IRQ_PTAPE)     { irqm -= IRQ_PTAPE;     ireqs.append (irqx); ireqs.append ("PT");  irqx = "+"; }
+            if (irqm & IRQ_RTC)       { irqm -= IRQ_RTC;       ireqs.append (irqx); ireqs.append ("RTC"); irqx = "+"; }
+            if (irqm & IRQ_RK8)       { irqm -= IRQ_RK8;       ireqs.append (irqx); ireqs.append ("RK8"); irqx = "+"; }
+            if (irqm != 0) { char buf[12]; snprintf (buf, sizeof buf, "%04X", irqm); ireqs.append (irqx); ireqs.append (buf); }
+        }
+
+        if (argc == 1) return new SCRetStr ("df=%o;iduj=%o;ie=%o;ieaf=%o;if=%o;ifaj=%o;ireq=%s;sdf=%o;sif=%o;suf=%o;uf=%o;ufaj=%o",
             this->dframe >> 12, this->intdisableduntiljump, this->intenabled, this->intenableafterfetch, this->iframe >> 12,
-            this->iframeafterjump >> 12, this->saveddframe >> 12, this->savediframe >> 12, this->saveduserflag,
+            this->iframeafterjump >> 12, ireqs.c_str (), this->saveddframe >> 12, this->savediframe >> 12, this->saveduserflag,
             this->userflag, this->userflagafterjump);
 
         if (argc == 2) {
@@ -122,6 +137,7 @@ SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
             if (strcmp (argv[1], "ieaf") == 0) return new SCRetInt (this->intenableafterfetch);
             if (strcmp (argv[1], "if")   == 0) return new SCRetInt (this->iframe >> 12);
             if (strcmp (argv[1], "ifaj") == 0) return new SCRetInt (this->iframeafterjump >> 12);
+            if (strcmp (argv[1], "ireq") == 0) return new SCRetStr (ireqs.c_str ());
             if (strcmp (argv[1], "sdf")  == 0) return new SCRetInt (this->saveddframe >> 12);
             if (strcmp (argv[1], "sif")  == 0) return new SCRetInt (this->savediframe >> 12);
             if (strcmp (argv[1], "suf")  == 0) return new SCRetInt (this->saveduserflag);
@@ -129,7 +145,33 @@ SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
             if (strcmp (argv[1], "ufaj") == 0) return new SCRetInt (this->userflagafterjump);
         }
 
-        return new SCRetErr ("iodev memext get [df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj]");
+        return new SCRetErr ("iodev memext get [df/iduj/ie/ieaf/if/ifaj/ireq/sdf/sif/suf/uf/ufaj]");
+    }
+
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  get                    - return all registers as a string");
+        puts ("  get <register>         - return specific register as a value");
+        puts ("  set <register> <value> - set register to value");
+        puts ("");
+        puts ("registers:");
+        puts ("");
+        puts ("  df   - data frane");
+        puts ("  iduj - interrupts disabled until jump");
+        puts ("  ie   - interrupts enabled");
+        puts ("  ieaf - interrupts enabled after fetch");
+        puts ("  if   - instruction frame");
+        puts ("  ifaj - instruction frame after jump");
+        puts ("  ireq - interrupt requests (read-only)");
+        puts ("  sdf  - saved data frame");
+        puts ("  sif  - saved instruction frame");
+        puts ("  suf  - saved usermode flag");
+        puts ("  uf   - usermode flag");
+        puts ("  ufaj - usermode flag after jump");
+        puts ("");
+        return NULL;
     }
 
     // set df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj <value>
@@ -197,7 +239,7 @@ SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev memext set df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj <value>");
     }
 
-    return new SCRetErr ("unknown memext command %s", argv[1]);
+    return new SCRetErr ("unknown memext command %s - valid: get set", argv[0]);
 }
 
 // called in INTAK1 when acknowledging interrupt request

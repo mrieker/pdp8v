@@ -154,6 +154,7 @@ bool IowKit::openbysn (char const *sn)
     struct dirent **namelist;
     int nents = scandir ("/dev/usb", &namelist, NULL, NULL);
     if (nents < 0) {
+        if (errno == ENOENT) return false;
         fprintf (stderr, "IowKit::openbysn: error scanning /dev/usb: %m\n");
         abort ();
     }
@@ -165,7 +166,7 @@ bool IowKit::openbysn (char const *sn)
             sprintf (devpath, "/dev/usb/%s", de->d_name);
             int fd = open (devpath, O_RDWR);
             if (fd < 0) {
-                if (errno == EBUSY) goto itsbusy;   // already open such as by another openbysn()
+                if (errno == EBUSY) goto itsbusy;   // already open, such as by another openbysn()
                 fprintf (stderr, "IowKit::openbysn: error opening %s: %m\n", devpath);
                 abort ();
             }

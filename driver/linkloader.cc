@@ -23,11 +23,13 @@
 
 static int fouroctchars (char const *str);
 
-int linkloader (char const *loadname, FILE *loadfile)
+int linkloader (FILE *loadfile)
 {
+    uint32_t lineno = 0;
     char loadline[144], *p;
     int startaddr = 0;
     while (fgets (loadline, sizeof loadline, loadfile) != NULL) {
+        lineno ++;
         uint32_t addr = strtoul (loadline, &p, 8);
         if (*(p ++) != ':') goto badload;
         bool hasdata = false;
@@ -42,7 +44,7 @@ int linkloader (char const *loadname, FILE *loadfile)
     }
     return startaddr;
 badload:;
-    fprintf (stderr, "raspictl: bad loadfile line %s", loadline);
+    fprintf (stderr, "raspictl: bad loadfile line %u: %s", lineno, loadline);
     return -1;
 }
 

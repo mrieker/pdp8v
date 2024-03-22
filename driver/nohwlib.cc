@@ -28,6 +28,8 @@
 
 NohwLib::NohwLib (Shadow *shadow)
 {
+    libname = "nohwlib";
+
     this->shadow = shadow;
 }
 
@@ -53,6 +55,11 @@ uint32_t NohwLib::readgpio ()
 void NohwLib::writegpio (bool wdata, uint32_t value)
 {
     gpiowritten = value | (wdata ? G_QENA : G_DENA);
+}
+
+bool NohwLib::haspads ()
+{
+    return false;
 }
 
 void NohwLib::readpads (uint32_t *pinss)

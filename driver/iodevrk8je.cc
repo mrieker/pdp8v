@@ -133,6 +133,17 @@ void IODevRK8JE::ioreset ()
 // load/unload files
 SCRet *IODevRK8JE::scriptcmd (int argc, char const *const *argv)
 {
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  loadro <drivenumber> <filename> - load file write-locked");
+        puts ("  loadrw <drivenumber> <filename> - load file write-enabled");
+        puts ("  unload <drivenumber>            - unload file - drive reports offline");
+        puts ("");
+        return NULL;
+    }
+
     // loadro/loadrw <drivenumber> <filename>
     bool loadro = (strcmp (argv[0], "loadro") == 0);
     bool loadrw = (strcmp (argv[0], "loadrw") == 0);
@@ -177,7 +188,7 @@ SCRet *IODevRK8JE::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev rk8je unload <drivenumber>");
     }
 
-    return new SCRetErr ("unknown rk8je command %s", argv[0]);
+    return new SCRetErr ("unknown rk8je command %s - valid: loadro loadrw unload", argv[0]);
 }
 
 // perform i/o instruction

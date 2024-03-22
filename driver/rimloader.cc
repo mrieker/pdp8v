@@ -29,21 +29,22 @@
 
 // pdp-8 rimloader format
 //  input:
-//   loadname = name of rimloader file
 //   loadfile = file opened here
 //  output:
 //   returns 0: read successful
 //        else: failure, error message was output
-int rimloader (char const *loadname, FILE *loadfile)
+int rimloader (FILE *loadfile)
 {
+    uint32_t offset = -1;
     for ever {
+        offset ++;
         int ch = fgetc (loadfile);
         if (ch < 0) break;
 
         if (ch == 0377) continue;
 
         if (ch & 0177600) {
-            fprintf (stderr, "rimloader: error reading 1st address byte %03o\n", ch);
+            fprintf (stderr, "rimloader: error reading 1st address byte %03o at %u\n", ch, offset);
             return 1;
         }
 
@@ -51,23 +52,26 @@ int rimloader (char const *loadname, FILE *loadfile)
         if (! (ch & 0100)) continue;
 
         uint16_t addr = (ch & 077) << 6;
+        offset ++;
         ch = fgetc (loadfile);
         if (ch & 0177700) {
-            fprintf (stderr, "rimloader: error reading 2nd address byte %03o\n", ch);
+            fprintf (stderr, "rimloader: error reading 2nd address byte %03o at %u\n", ch, offset);
             return 1;
         }
         addr |= ch & 077;
 
+        offset ++;
         ch = fgetc (loadfile);
         if (ch & 0177700) {
-            fprintf (stderr, "rimloader: error reading 1st data byte %03o\n", ch);
+            fprintf (stderr, "rimloader: error reading 1st data byte %03o at %u\n", ch, offset);
             return 1;
         }
         uint16_t data = (ch & 077) << 6;
 
+        offset ++;
         ch = fgetc (loadfile);
         if (ch & 0177700) {
-            fprintf (stderr, "rimloader: error reading 2nd data byte %03o\n", ch);
+            fprintf (stderr, "rimloader: error reading 2nd data byte %03o at %u\n", ch, offset);
             return 1;
         }
         data |= ch & 077;

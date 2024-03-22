@@ -19,7 +19,7 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // processor control functions
-// - tell raspictl main loop to halt, reset, run, step
+// - tell raspictl.cc main loop to halt, reset, run, step
 
 #include <pthread.h>
 #include <string.h>
@@ -31,215 +31,127 @@
 #include "shadow.h"
 
 // halt processor if not already
-// - tells raspictl main to suspend clocking the processor
+// - tells raspictl.cc main to suspend clocking the processor
 // - halts at the end of a cycle
 // returns true: was already halted
 //        false: was running, now halted
 bool ctl_halt ()
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
     if (haltflags & HF_HALTED) {
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
         return true;
     }
-    haltflags |= HF_HALTIT;
+
+    // if nothing else has requested halt, request halt and say because of halt button
+    if (! (haltflags & HF_HALTIT)) {
+        haltreason = "HALTBUTTON";
+        haltflags |= HF_HALTIT;
+    }
     pthread_cond_broadcast (&haltcond);
+
+    // wait for raspictl.cc main to stop cycling processor
     while (! (haltflags & HF_HALTED)) {
         pthread_cond_wait (&haltcond2, &haltmutex);
     }
-    pthread_mutex_unlock (&haltmutex);
+
+    // must be at end of cycle (clock is low)
+    uint32_t sample = gpio->readgpio ();
+    ASSERT (! (sample & G_CLOCK));
+
+    ctl_unlock (sigint);
     return false;
 }
 
-// reset processor, optionally setting start address
+bool ctl_ishalted ()
+{
+    return (haltflags & HF_HALTED) != 0;
+}
+
+// reset processor
+// returns with processor halted at end of fetch1 with clock still low, shadow.clock() not called yet
+// ...and with DF,IF,PC set to the given address
 bool ctl_reset (int addr)
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
 
     // processor must already be halted
     if (! (haltflags & HF_HALTED)) {
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
         return false;
     }
 
-    // tell it to reset but then halt immediately thereafter
-    haltflags = HF_RESETIT | HF_HALTIT;
+    // 0xFFFFU means just leave PC reset to 0000
+    startpc = addr;
+
+    // tell main to reset but then halt immediately thereafter
+    haltreason = "RESETBUTTON";
+    haltflags  = HF_HALTIT | HF_RESETIT;
     pthread_cond_broadcast (&haltcond);
 
-    // wait for it to halt again
+    // wait for raspictl.cc main to stop cycling processor
     while (! (haltflags & HF_HALTED)) {
         pthread_cond_wait (&haltcond2, &haltmutex);
     }
 
-    pthread_mutex_unlock (&haltmutex);
+    ctl_unlock (sigint);
 
-    // raspictl has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
-    // when resumed, raspictl will sample the GPIO lines, call shadow.clock() and resume processing from there
-
-    // if 15-bit address given, load DF and IF with the frame and JMP to the address
-    if (addr >= 0) {
-        uint32_t masked_sample, sample, should_be;
-
-        // set DF and IF registers to given frame
-        memext.setdfif ((addr >> 12) & 7);
-
-        // clock has been low for half cycle, at end of FETCH1 as a result of the reset()
-        // G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
-        // processor should be asking us to read from memory
-        sample = gpio->readgpio ();
-        if ((sample & (G_CLOCK|G_RESET|G_IOS|G_QENA|G_IRQ|G_DENA|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK)) !=
-                (G_DENA|G_READ)) ABORT ();
-
-        // drive clock high to transition to FETCH2
-        shadow.clock (sample);
-        gpio->writegpio (false, G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through FETCH2 with clock still high
-        // drop clock and start sending it a JMP @0 opcode
-        gpio->writegpio (true, 05400 * G_DATA0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of FETCH2 - processor should be accepting the opcode we sent it
-        sample = gpio->readgpio ();
-        masked_sample = sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK);
-        should_be = 05400 * G_DATA0 | G_QENA;
-        if (masked_sample != should_be) ABORT ();
-
-        // drive clock high to transition to DEFER1
-        // keep sending opcode so tubes will clock it in
-        shadow.clock (sample);
-        gpio->writegpio (true, 05400 * G_DATA0 | G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through DEFER1 with clock still high
-        // drop clock and step to end of cycle
-        gpio->writegpio (false, 0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of DEFER1 - processor should be asking us to read from memory location 0
-        sample = gpio->readgpio ();
-        if ((sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK)) !=
-                (G_DENA|G_READ)) ABORT ();
-
-        // drive clock high to transition to DEFER2
-        shadow.clock (sample);
-        gpio->writegpio (false, G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through DEFER2 with clock still high
-        // drop clock and start sending it the PC contents - 1 for the CLA CLL we're about to send
-        gpio->writegpio (true, ((addr - 1) & 07777) * G_DATA0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of DEFER2 - processor should be accepting the address we sent it
-        sample = gpio->readgpio ();
-        masked_sample = sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK);
-        should_be = ((addr - 1) & 07777) * G_DATA0 | G_QENA;
-        if (masked_sample != should_be) ABORT ();
-
-        // drive clock high to transition to EXEC1/JMP
-        // keep sending the address - 1 so it gets clocked into MA
-        shadow.clock (sample);
-        gpio->writegpio (true, ((addr - 1) & 07777) * G_DATA0 | G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // drop clock and run to end of EXEC1/JUMP
-        gpio->writegpio (false, 0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of EXEC1/JUMP - processor should be reading the opcode at the new address - 1 and about to clock address into PC
-        sample = gpio->readgpio ();
-        masked_sample = sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK);
-        should_be = ((addr - 1) & 07777) * G_DATA0 | G_DENA | G_JUMP | G_READ;
-        if (masked_sample != should_be) ABORT ();
-
-        // drive clock high to transition to FETCH2
-        shadow.clock (sample);
-        gpio->writegpio (false, G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through FETCH2 with clock still high
-        // drop clock and start sending it a CLA CLL opcode
-        gpio->writegpio (true, 07300 * G_DATA0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of FETCH2 - processor should be accepting the opcode we sent it
-        sample = gpio->readgpio ();
-        masked_sample = sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK);
-        should_be = 07300 * G_DATA0 | G_QENA;
-        if (masked_sample != should_be) ABORT ();
-
-        // drive clock high to transition to EXEC1/GRP1
-        // this also clocks incremented PC into PC, it should have correct address
-        // keep sending the opcode so it gets clocked into IR
-        shadow.clock (sample);
-        gpio->writegpio (true, 07300 * G_DATA0 | G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through EXEC1/GRP1
-        // drop clock and step to end of cycle
-        gpio->writegpio (false, 0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // end of EXEC1/GRP1 - don't really care what is on the bus
-        sample = gpio->readgpio ();
-
-        // drive clock high to transition to FETCH1
-        shadow.clock (sample);
-        gpio->writegpio (false, G_CLOCK);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // half way through FETCH1 with clock still high
-        // drop clock
-        gpio->writegpio (false, 0);
-        gpio->halfcycle (shadow.aluadd ());
-
-        // clock has been low for half cycle, at end of FETCH1 as a result of the reset()
-        // G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
-        // processor should be asking us to read memory at PC address
-        sample = gpio->readgpio ();
-        masked_sample = sample & (G_CLOCK|G_RESET|G_DATA|G_IOS|G_QENA|G_IRQ|G_DENA|G_JUMP|G_IOIN|G_DFRM|G_READ|G_WRITE|G_IAK);
-        should_be = (addr & 07777) * G_DATA0 | G_DENA | G_READ;
-        if (masked_sample != should_be) ABORT ();
-    }
-
-    // raspictl has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
-    // when resumed, raspictl will sample the GPIO lines, call shadow.clock() and resume processing from there
+    // raspictl.cc main has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
+    // when resumed, raspictl.cc main will sample the GPIO lines, call shadow.clock() and resume processing from there
 
     return true;
 }
 
 // tell processor to start running
-// - tells raspictl main to resume clocking the processor
+// - tells raspictl.cc main to resume clocking the processor
 bool ctl_run ()
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
+
+    // maybe already running
     if (! (haltflags & HF_HALTED)) {
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
         return false;
     }
-    haltflags = 0;
+
+    // clock must be low (assumed by raspictl.cc main)
+    uint32_t sample = gpio->readgpio ();
+    if (sample & G_CLOCK) {
+        ctl_unlock (sigint);
+        return false;
+    }
+
+    // tell raspictl.cc main to cycle the processor
+    haltreason = "";
+    haltflags  = 0;
     pthread_cond_broadcast (&haltcond);
-    pthread_mutex_unlock (&haltmutex);
+    ctl_unlock (sigint);
     return true;
 }
 
 // tell processor to step one cycle
-// - tells raspictl main to clock the processor a single cycle
+// - tells raspictl.cc main to clock the processor a single cycle
 // - halts at the end of the next cycle
 bool ctl_stepcyc ()
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
 
     // processor must already be halted
     if (! (haltflags & HF_HALTED)) {
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
+        return false;
+    }
+
+    // clock must be low (assumed by raspictl.cc main)
+    uint32_t sample = gpio->readgpio ();
+    if (sample & G_CLOCK) {
+        ctl_unlock (sigint);
         return false;
     }
 
     // tell it to start, run one cycle, then halt
-    haltflags = HF_HALTIT;
+    haltreason = "";
+    haltflags  = HF_HALTIT;
     pthread_cond_broadcast (&haltcond);
 
     // wait for it to halt again
@@ -247,27 +159,44 @@ bool ctl_stepcyc ()
         pthread_cond_wait (&haltcond2, &haltmutex);
     }
 
-    pthread_mutex_unlock (&haltmutex);
+    // must be at end of cycle (clock is low)
+    sample = gpio->readgpio ();
+    ASSERT (! (sample & G_CLOCK));
+
+    // if normal halt, say it's because of stepping
+    if (haltreason[0] == 0) {
+        haltreason = "SINGLECYCLE";
+    }
+
+    ctl_unlock (sigint);
     return true;
 }
 
 // tell processor to step one instruction
-// - tells raspictl main to clock the processor a single cycle
+// - tells raspictl.cc main to clock the processor a single cycle
 // - halts at the end of the next FETCH2 cycle
 bool ctl_stepins ()
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
 
     // processor must already be halted
     if (! (haltflags & HF_HALTED)) {
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
+        return false;
+    }
+
+    // must be at end of cycle (clock is low)
+    uint32_t sample = gpio->readgpio ();
+    if (sample & G_CLOCK) {
+        ctl_unlock (sigint);
         return false;
     }
 
     do {
 
         // tell it to start, run one cycle, then halt
-        haltflags = HF_HALTIT;
+        haltreason = "";
+        haltflags  = HF_HALTIT;
         pthread_cond_broadcast (&haltcond);
 
         // wait for it to halt again
@@ -275,19 +204,56 @@ bool ctl_stepins ()
             pthread_cond_wait (&haltcond2, &haltmutex);
         }
 
+        // stop if some error
+        if (haltreason[0] != 0) break;
+
+        // repeat until fetching next instruction
     } while (shadow.r.state != Shadow::State::FETCH2);
 
-    pthread_mutex_unlock (&haltmutex);
+    // must be at end of cycle (clock is low)
+    sample = gpio->readgpio ();
+    ASSERT (! (sample & G_CLOCK));
+
+    // if normal halt, say it's because of stepping
+    if (haltreason[0] == 0) {
+        haltreason = "SINGLEINSTR";
+    }
+
+    ctl_unlock (sigint);
 
     return true;
 }
 
-// wait for control-C (raspictl halts processing on SIGINT when scripting)
+// wait for halted
 void ctl_wait ()
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
+
     while (! (haltflags & HF_HALTED)) {
         pthread_cond_wait (&haltcond2, &haltmutex);
     }
-    pthread_mutex_unlock (&haltmutex);
+
+    // must be at end of cycle (clock is low)
+    // assumed when we start it back up
+    uint32_t sample = gpio->readgpio ();
+    ASSERT (! (sample & G_CLOCK));
+
+    ctl_unlock (sigint);
+}
+
+// block SIGINT while mutex is locked
+static sigset_t blocksigint;
+bool ctl_lock ()
+{
+    sigset_t oldsigs;
+    sigaddset (&blocksigint, SIGINT);
+    if (pthread_sigmask (SIG_BLOCK, &blocksigint, &oldsigs) != 0) ABORT ();
+    if (pthread_mutex_lock (&haltmutex) != 0) ABORT ();
+    return ! sigismember (&oldsigs, SIGINT);
+}
+
+void ctl_unlock (bool sigint)
+{
+    if (pthread_mutex_unlock (&haltmutex) != 0) ABORT ();
+    if (sigint && (pthread_sigmask (SIG_UNBLOCK, &blocksigint, NULL) != 0)) ABORT ();
 }

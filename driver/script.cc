@@ -22,6 +22,7 @@
 #include <string.h>
 #include <tcl.h>
 
+#include "abcd.h"
 #include "binloader.h"
 #include "controls.h"
 #include "iodevs.h"
@@ -39,6 +40,7 @@ static Tcl_Interp *interp;
 static void *tclthread (void *fnv);
 static int cmpdevnames (void const *v, void const *w);
 static int procscret (Tcl_Interp *interp, SCRet *scret);
+static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...);
 
 void runscript (char const *argv0, char const *filename)
 {
@@ -46,24 +48,60 @@ void runscript (char const *argv0, char const *filename)
     pthread_t tclpid;
     int rc = pthread_create (&tclpid, NULL, tclthread, (void *) filename);
     if (rc != 0) ABORT ();
+    pthread_detach (tclpid);
     haltflags = HF_HALTIT;
 }
 
 static Tcl_ObjCmdProc cmd_alliodevs;
 static Tcl_ObjCmdProc cmd_cpu;
+static Tcl_ObjCmdProc cmd_gpio;
+static Tcl_ObjCmdProc cmd_halfcycle;
 static Tcl_ObjCmdProc cmd_halt;
+static Tcl_ObjCmdProc cmd_haltreason;
+static Tcl_ObjCmdProc cmd_help;
 static Tcl_ObjCmdProc cmd_iodev;
 static Tcl_ObjCmdProc cmd_loadbin;
 static Tcl_ObjCmdProc cmd_loadlink;
 static Tcl_ObjCmdProc cmd_loadrim;
-static Tcl_ObjCmdProc cmd_randmem;
+static Tcl_ObjCmdProc cmd_option;
 static Tcl_ObjCmdProc cmd_readmem;
 static Tcl_ObjCmdProc cmd_reset;
 static Tcl_ObjCmdProc cmd_run;
 static Tcl_ObjCmdProc cmd_stepcyc;
 static Tcl_ObjCmdProc cmd_stepins;
+static Tcl_ObjCmdProc cmd_swreg;
 static Tcl_ObjCmdProc cmd_wait;
 static Tcl_ObjCmdProc cmd_writemem;
+
+struct FunDef {
+    Tcl_ObjCmdProc *func;
+    char const *name;
+    char const *help;
+};
+
+static FunDef fundefs[] = {
+    { cmd_alliodevs,  "alliodevs",  "list all i/o devices for iodev command" },
+    { cmd_cpu,        "cpu",        "access shadow state" },
+    { cmd_gpio,       "gpio",       "access gpio state" },
+    { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
+    { cmd_halt,       "halt",       "halt processor" },
+    { cmd_haltreason, "haltreason", "reason halted" },
+    { cmd_help,       "help",       "print this help" },
+    { cmd_iodev,      "iodev",      "access i/o device state" },
+    { cmd_loadbin,    "loadbin",    "load bin format tape file" },
+    { cmd_loadlink,   "loadlink",   "load link format file" },
+    { cmd_loadrim,    "loadrim",    "load rim format file" },
+    { cmd_option,     "option",     "turn various options on/off" },
+    { cmd_readmem,    "readmem",    "read memory location" },
+    { cmd_reset,      "reset",      "reset processor, optionally load initial if, pc" },
+    { cmd_run,        "run",        "run processor" },
+    { cmd_stepcyc,    "stepcyc",    "step a single cycle" },
+    { cmd_stepins,    "stepins",    "step a single instruction" },
+    { cmd_swreg,      "swreg",      "access switch register" },
+    { cmd_wait,       "wait",       "wait for processor to halt" },
+    { cmd_writemem,   "writemem",   "write memory location" },
+    { NULL, NULL, NULL }
+};
 
 static void *tclthread (void *fnv)
 {
@@ -74,48 +112,45 @@ static void *tclthread (void *fnv)
 
     // https://www.tcl-lang.org/man/tcl/TclLib/CrtObjCmd.htm
 
-    if (Tcl_CreateObjCommand (interp, "alliodevs", cmd_alliodevs, NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "cpu",       cmd_cpu,       NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "halt",      cmd_halt,      NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "iodev",     cmd_iodev,     NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "loadbin",   cmd_loadbin,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "loadlink",  cmd_loadlink,  NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "loadrim",   cmd_loadrim,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "readmem",   cmd_readmem,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "randmem",   cmd_randmem,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "reset",     cmd_reset,     NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "run",       cmd_run,       NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "stepcyc",   cmd_stepcyc,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "stepins",   cmd_stepins,   NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "wait",      cmd_wait,      NULL, NULL) == NULL) ABORT ();
-    if (Tcl_CreateObjCommand (interp, "writemem",  cmd_writemem,  NULL, NULL) == NULL) ABORT ();
+    for (int i = 0; fundefs[i].name != NULL; i ++) {
+        if (Tcl_CreateObjCommand (interp, fundefs[i].name, fundefs[i].func, NULL, NULL) == NULL) ABORT ();
+    }
 
-    ctl_halt ();    // wait for raspictl main initialization to complete
+    // wait for raspictl main initialization to complete
+    ctl_wait ();
 
+    // if given a filename, process that file as a whole
     if (strcmp (fn, "-") != 0) {
         int rc = Tcl_EvalFile (interp, fn);
         if (rc != TCL_OK) {
             char const *res = Tcl_GetStringResult (interp);
             if ((res == NULL) || (res[0] == 0)) fprintf (stderr, "script: error %d evaluating script %s\n", rc, fn);
                                   else fprintf (stderr, "script: error %d evaluating script %s: %s\n", rc, fn, res);
+            Tcl_EvalEx (interp, "puts $::errorInfo", -1, TCL_EVAL_GLOBAL);
             ABORT ();
         }
     }
 
-    for (char const *line; (line = readprompt ("raspictl> ")) != NULL;) {
+    // either way, prompt and process commands from stdin
+    // to have a script file with no stdin processing, end script file with 'run ; wait ; exit'
+    puts ("\nTCL scripting, do 'help' for raspictl-specific commands");
+    for (char const *line;;) {
+        ctrlcflag = false;
+        line = readprompt ("raspictl> ");
+        if (line == NULL) break;
+        ctrlcflag = false;
         int rc = Tcl_EvalEx (interp, line, -1, TCL_EVAL_GLOBAL);
         char const *res = Tcl_GetStringResult (interp);
         if (rc != TCL_OK) {
             if ((res == NULL) || (res[0] == 0)) fprintf (stderr, "script: error %d evaluating command\n", rc);
                                   else fprintf (stderr, "script: error %d evaluating command: %s\n", rc, res);
+            Tcl_EvalEx (interp, "puts $::errorInfo", -1, TCL_EVAL_GLOBAL);
         }
         else if ((res != NULL) && (res[0] != 0)) fprintf (stderr, "%s\n", res);
     }
 
     Tcl_Finalize ();
     exit (0);
-
-    return NULL;
 }
 
 // return list of all i/o device names
@@ -144,11 +179,6 @@ static int cmd_alliodevs (ClientData clientdata, Tcl_Interp *interp, int objc, T
     return TCL_OK;
 }
 
-static int cmpdevnames (void const *v, void const *w)
-{
-    return strcmp (*(char const **)v, *(char const **)w);
-}
-
 // get cpu state (really the shadow state)
 static int cmd_cpu (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
@@ -173,28 +203,416 @@ static int cmd_cpu (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj
     return procscret (interp, scret);
 }
 
-// process return value for cpu or iodev command
-// converts it to corresponding TCL value
-static int procscret (Tcl_Interp *interp, SCRet *scret)
+// get gpio state (actual tube state)
+static int cmd_gpio (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    if (scret == NULL) return TCL_OK;
-    switch (scret->gettype ()) {
-        case SCRet::SCRT_ERR: {
-            Tcl_SetResult (interp, scret->casterr ()->msg, (void (*) (char *)) free);
-            delete scret;
+    ABCD pinss;
+    SCRet *scret;
+
+    // must have at least one argument (<command>)
+    if (objc < 2) {
+        Tcl_SetResult (interp, (char *) "missing gpio sub-command", TCL_STATIC);
+        return TCL_ERROR;
+    }
+
+    // convert all arguments to strings
+    int argc = objc - 1;
+    char const *argv[argc+1];
+    for (int i = 0; i < argc; i ++) {
+        argv[i] = Tcl_GetString (objv[i+1]);
+    }
+    argv[argc] = NULL;
+
+    // decode <gpiogetstring> [<signalname>]
+    if (strcmp (argv[0], "decode") == 0) {
+        if ((argc == 2) || (argc == 3)) {
+
+            // fill pinss with values from [gpio get] string
+            //  a=value;b=value;c=value;d=value;g=value
+            // if no a,b,c,d value, assume paddles not present
+            memset (pinss.cons, 0, sizeof pinss.cons);
+            bool haspads = false;
+            for (char const *p = argv[1]; *p != 0; p ++) {
+                if (memcmp (p, "a=", 2) == 0) {
+                    pinss.acon = strtoul (p + 2, (char **) &p, 0);
+                    haspads = true;
+                } else if (memcmp (p, "b=", 2) == 0) {
+                    pinss.bcon = strtoul (p + 2, (char **) &p, 0);
+                    haspads = true;
+                } else if (memcmp (p, "c=", 2) == 0) {
+                    pinss.ccon = strtoul (p + 2, (char **) &p, 0);
+                    haspads = true;
+                } else if (memcmp (p, "d=", 2) == 0) {
+                    pinss.dcon = strtoul (p + 2, (char **) &p, 0);
+                    haspads = true;
+                } else if (memcmp (p, "g=", 2) == 0) {
+                    pinss.gcon = strtoul (p + 2, (char **) &p, 0);
+                }
+                if (*p == 0) break;
+                if (*p != ';') {
+                    scret = new SCRetErr ("bad gpio value string %s at %s", argv[1], p);
+                    goto ret;
+                }
+            }
+
+            // decode the values
+            pinss.decode ();
+
+            // make one big long string
+            char *buf = NULL;
+            if (haspads) {
+                if (asprintf (&buf,
+                    "acqzero=%o;"
+                    "_jump=%o;"
+                    "_ac_sc=%o;"
+                    "intak1q=%o;"
+                    "fetch1q=%o;"
+                    "_ac_aluq=%o;"
+                    "_alu_add=%o;"
+                    "_alu_and=%o;"
+                    "_alua_m1=%o;"
+                    "_alucout=%o;"
+                    "_alua_ma=%o;"
+                    "alua_mq0600=%o;"
+                    "alua_mq1107=%o;"
+                    "alua_pc0600=%o;"
+                    "alua_pc1107=%o;"
+                    "_alub_m1=%o;"
+                    "alub_1=%o;"
+                    "_alub_ac=%o;"
+                    "clok2=%o;"
+                    "fetch2q=%o;"
+                    "_grpa1q=%o;"
+                    "defer1q=%o;"
+                    "defer2q=%o;"
+                    "defer3q=%o;"
+                    "exec1q=%o;"
+                    "grpb_skip=%o;"
+                    "exec2q=%o;"
+                    "_dfrm=%o;"
+                    "inc_axb=%o;"
+                    "_intak=%o;"
+                    "intrq=%o;"
+                    "exec3q=%o;"
+                    "ioinst=%o;"
+                    "ioskp=%o;"
+                    "iot2q=%o;"
+                    "_ln_wrt=%o;"
+                    "_lnq=%o;"
+                    "lnq=%o;"
+                    "_ma_aluq=%o;"
+                    "mql=%o;"
+                    "_mread=%o;"
+                    "_mwrite=%o;"
+                    "_pc_aluq=%o;"
+                    "_pc_inc=%o;"
+                    "reset=%o;"
+                    "_newlink=%o;"
+                    "tad3q=%o;"
+                    "CLOCK=%o;"
+                    "RESET=%o;"
+                    "LINK=%o;"
+                    "IOS=%o;"
+                    "QENA=%o;"
+                    "IRQ=%o;"
+                    "DENA=%o;"
+                    "JUMP=%o;"
+                    "IOIN=%o;"
+                    "DFRM=%o;"
+                    "READ=%o;"
+                    "WRITE=%o;"
+                    "IAK=%o;"
+                    "acq=0%04o;"
+                    "_aluq=0%04o;"
+                    "_maq=0%04o;"
+                    "maq=0%04o;"
+                    "mq=0%04o;"
+                    "pcq=0%04o;"
+                    "irq=0%04o;"
+                    "DATA=0%04o;"
+                    "state=%*s",
+
+                    pinss.acqzero,
+                    pinss._jump,
+                    pinss._ac_sc,
+                    pinss.intak1q,
+                    pinss.fetch1q,
+                    pinss._ac_aluq,
+                    pinss._alu_add,
+                    pinss._alu_and,
+                    pinss._alua_m1,
+                    pinss._alucout,
+                    pinss._alua_ma,
+                    pinss.alua_mq0600,
+                    pinss.alua_mq1107,
+                    pinss.alua_pc0600,
+                    pinss.alua_pc1107,
+                    pinss._alub_m1,
+                    pinss.alub_1,
+                    pinss._alub_ac,
+                    pinss.clok2,
+                    pinss.fetch2q,
+                    pinss._grpa1q,
+                    pinss.defer1q,
+                    pinss.defer2q,
+                    pinss.defer3q,
+                    pinss.exec1q,
+                    pinss.grpb_skip,
+                    pinss.exec2q,
+                    pinss._dfrm,
+                    pinss.inc_axb,
+                    pinss._intak,
+                    pinss.intrq,
+                    pinss.exec3q,
+                    pinss.ioinst,
+                    pinss.ioskp,
+                    pinss.iot2q,
+                    pinss._ln_wrt,
+                    pinss._lnq,
+                    pinss.lnq,
+                    pinss._ma_aluq,
+                    pinss.mql,
+                    pinss._mread,
+                    pinss._mwrite,
+                    pinss._pc_aluq,
+                    pinss._pc_inc,
+                    pinss.reset,
+                    pinss._newlink,
+                    pinss.tad3q,
+                    pinss.CLOCK,
+                    pinss.RESET,
+                    pinss.LINK,
+                    pinss.IOS,
+                    pinss.QENA,
+                    pinss.IRQ,
+                    pinss.DENA,
+                    pinss.JUMP,
+                    pinss.IOIN,
+                    pinss.DFRM,
+                    pinss.READ,
+                    pinss.WRITE,
+                    pinss.IAK,
+                    pinss.acq,
+                    pinss._aluq,
+                    pinss._maq,
+                    pinss.maq,
+                    pinss.mq,
+                    pinss.pcq,
+                    pinss.irq,
+                    pinss.DATA,
+                    54, "") < 0) ABORT ();
+                char *s = strstr (buf, ";state=") + 7;
+                if (pinss.fetch1q) { strcpy (s, "FETCH1"); s += 6; }
+                if (pinss.fetch2q) { strcpy (s, "FETCH2"); s += 6; }
+                if (pinss.defer1q) { strcpy (s, "DEFER1"); s += 6; }
+                if (pinss.defer2q) { strcpy (s, "DEFER2"); s += 6; }
+                if (pinss.defer3q) { strcpy (s, "DEFER3"); s += 6; }
+                if (pinss.exec1q)  { strcpy (s, "EXEC1");  s += 5; }
+                if (pinss.exec2q)  { strcpy (s, "EXEC2");  s += 5; }
+                if (pinss.exec3q)  { strcpy (s, "EXEC3");  s += 5; }
+                if (pinss.intak1q) { strcpy (s, "INTAK1"); s += 6; }
+            } else {
+                if (asprintf (&buf,
+                    "CLOCK=%o;"
+                    "RESET=%o;"
+                    "LINK=%o;"
+                    "IOS=%o;"
+                    "QENA=%o;"
+                    "IRQ=%o;"
+                    "DENA=%o;"
+                    "JUMP=%o;"
+                    "IOIN=%o;"
+                    "DFRM=%o;"
+                    "READ=%o;"
+                    "WRITE=%o;"
+                    "IAK=%o;"
+                    "DATA=0%04o",
+
+                    pinss.CLOCK,
+                    pinss.RESET,
+                    pinss.LINK,
+                    pinss.IOS,
+                    pinss.QENA,
+                    pinss.IRQ,
+                    pinss.DENA,
+                    pinss.JUMP,
+                    pinss.IOIN,
+                    pinss.DFRM,
+                    pinss.READ,
+                    pinss.WRITE,
+                    pinss.IAK,
+                    pinss.DATA) < 0) ABORT ();
+            }
+            if (argc == 2) {
+                scret = new SCRetStr (buf);
+            } else {
+
+                // find the one requested signal
+                const char *signam = argv[2];
+                int signamlen = strlen (signam);
+                for (char *p = buf;; p ++) {
+                    if ((memcmp (p, signam, signamlen) == 0) && (p[signamlen] == '=')) {
+                        p += signamlen + 1;
+                        if (strcmp (signam, "state") == 0) {
+                            scret = new SCRetStr (p);
+                        } else {
+                            int val = strtol (p, &p, 0);
+                            scret = new SCRetInt (val);
+                        }
+                        goto gotval;
+                    }
+                    p = strchr (p, ';');
+                    if (p == NULL) break;
+                }
+                char *q = buf;
+                bool skip = false;
+                for (char *p = buf; *p != 0; p ++) {
+                    char c = *p;
+                    if (c == '=') { skip = true; continue; }
+                    if (c == ';') { skip = false; c = ' '; }
+                    if (! skip) *(q ++) = c;
+                }
+                *q = 0;
+                scret = new SCRetErr ("bad signal name %s - valid are %s", signam, buf);
+            }
+        gotval:;
+            free (buf);
+            goto ret;
+        }
+
+        scret = new SCRetErr ("decode <gpiogetstring> [<signalname>]");
+        goto ret;
+    }
+
+    // get [a/b/c/d/g]
+    if (strcmp (argv[0], "get") == 0) {
+        if (! ctl_ishalted ()) {
+            scret = new SCRetErr ("processor not halted");
+            goto ret;
+        }
+
+        if (argc == 1) {
+            pinss.gcon = gpio->readgpio ();
+            if (shadow.paddles) {
+                gpio->readpads (pinss.cons);
+                scret = new SCRetStr ("a=0x%08X;b=0x%08X;c=0x%08X;d=0x%08X;g=0x%08X",
+                    pinss.acon, pinss.bcon, pinss.ccon, pinss.dcon, pinss.gcon);
+            } else {
+                scret = new SCRetStr ("g=0x%08X", pinss.gcon);
+            }
+            goto ret;
+        }
+        if (argc == 2) {
+            if (shadow.paddles) {
+                if (strcmp (argv[1], "a")  == 0) {
+                    gpio->readpads (pinss.cons);
+                    scret = new SCRetLong (pinss.acon);
+                    goto ret;
+                }
+                if (strcmp (argv[1], "b")  == 0) {
+                    gpio->readpads (pinss.cons);
+                    scret = new SCRetLong (pinss.bcon);
+                    goto ret;
+                }
+                if (strcmp (argv[1], "c")  == 0) {
+                    gpio->readpads (pinss.cons);
+                    scret = new SCRetLong (pinss.ccon);
+                    goto ret;
+                }
+                if (strcmp (argv[1], "d")  == 0) {
+                    gpio->readpads (pinss.cons);
+                    scret = new SCRetLong (pinss.dcon);
+                    goto ret;
+                }
+            }
+            if (strcmp (argv[1], "g")  == 0) {
+                pinss.gcon = gpio->readgpio ();
+                scret = new SCRetInt (pinss.gcon & 0x0FFFFFFF);
+                goto ret;
+            }
+        }
+
+        scret = new SCRetErr (shadow.paddles ? "gpio get [a/b/c/d/g]" :
+            "gpio get [g] - do 'option set paddles 1' to access a/b/c/d");
+        goto ret;
+    }
+
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  decode <gpiogetstring> [<signalname>] - decode get command output");
+        puts ("                                          eg, whole thing: gpio decode [gpio get]");
+        puts ("                                         just pc contents: gpio decode [gpio get] pcq");
+        puts ("  get           - return all connector readings as a string");
+        puts ("  get g         - return GPIO connector reading as a value");
+        if (shadow.paddles) {
+            puts ("  get [a/b/c/d] - return specific paddle connector reading as a value");
+        } else {
+            puts ("                  do 'option set paddles 1' to access a/b/c/d");
+        }
+        puts ("");
+        puts ("  set g <value> - write value to gpio connector");
+        puts ("                  most likely invalidates shadow state");
+        puts ("                  requiring 'reset' command to restore");
+        puts ("");
+        printf ("connected via %s\n", gpio->libname);
+        puts ("");
+        return TCL_OK;
+    }
+
+    if (strcmp (argv[0], "set") == 0) {
+        if (! ctl_ishalted ()) {
+            scret = new SCRetErr ("processor not halted");
+            goto ret;
+        }
+        if (argc == 3) {
+            if (strcmp (argv[1], "g")  == 0) {
+                char *p;
+                int val = strtol (argv[2], &p, 0);
+                if ((*p != 0) || (val < 0) || (val > 0x0FFFFFFF)) {
+                    scret = new SCRetErr ("gcon value %s not a 28-bit number", argv[2]);
+                    goto ret;
+                }
+                gpio->writegpio ((val & G_QENA) != 0, val);
+                return TCL_OK;
+            }
+        }
+    }
+
+    scret = new SCRetErr ("unknown gpio command %s - valid: decode get help set", argv[0]);
+
+    // process return value
+ret:;
+    return procscret (interp, scret);
+}
+
+// delay half a cycle
+static int cmd_halfcycle (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    int addcyc = 1;
+    switch (objc) {
+        case 1: break;
+        case 2: {
+            char const *st = Tcl_GetString (objv[1]);
+            if (strcmp (st, "help") == 0) {
+                puts ("");
+                puts ("  halfcycle [<aluadd>]");
+                puts ("    <aluadd> = 0: fast cycle");
+                puts ("    <aluadd> = 1: slow cycle (default)");
+                puts ("");
+                return TCL_OK;
+            }
+            int rc = Tcl_GetBooleanFromObj (interp, objv[1], &addcyc);
+            if (rc != TCL_OK) return rc;
+            break;
+        }
+        default: {
+            Tcl_SetResult (interp, (char *) "bad number args", TCL_STATIC);
             return TCL_ERROR;
         }
-        case SCRet::SCRT_INT: {
-            Tcl_SetObjResult (interp, Tcl_NewIntObj (scret->castint ()->val));
-            break;
-        }
-        case SCRet::SCRT_STR: {
-            Tcl_SetObjResult (interp, Tcl_NewStringObj (scret->caststr ()->str, -1));
-            break;
-        }
-        default: ABORT ();
     }
-    delete scret;
+    gpio->halfcycle (addcyc);
     return TCL_OK;
 }
 
@@ -209,27 +627,56 @@ static int cmd_halt (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
     return TCL_OK;
 }
 
+// returns reason for halt
+static int cmd_haltreason (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    Tcl_SetResult (interp, (char *) haltreason, TCL_STATIC);
+    return TCL_OK;
+}
+
+// print help messages
+static int cmd_help (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    puts ("");
+    for (int i = 0; fundefs[i].help != NULL; i ++) {
+        printf ("  %9s - %s\n", fundefs[i].name, fundefs[i].help);
+    }
+    puts ("");
+    puts ("for help on specific command, do '<command> help'");
+    puts ("");
+    return TCL_OK;
+}
+
 // send command to i/o device
-//  iodev <devicename> <command> ...
+//  iodev <devicename> <sub-command> ...
 static int cmd_iodev (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    // must have at least one argument (<command>) to pass to device
+    char const *devname = (objc > 1) ? Tcl_GetString (objv[1]) : NULL;
+    if ((devname != NULL) && (strcmp (devname, "help") == 0)) {
+        puts ("");
+        puts ("access i/o device state");
+        puts ("");
+        puts ("  iodev <device> <sub-command> ...");
+        puts ("");
+        puts ("do 'alliodevs' for list of devices");
+        puts ("do 'iodev <device> help' for help on that device");
+        puts ("");
+        return TCL_OK;
+    }
+
+    // must have at least one argument (<sub-command>) to pass to device
     if (objc < 3) {
-        Tcl_SetResult (interp, (char *) "missing i/o device name and sub-command", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "iodev <device> <sub-command> ...", TCL_STATIC);
         return TCL_ERROR;
     }
 
     // device name is 1st parameter
-    char const *devname = Tcl_GetString (objv[1]);
     IODev *iodev;
     for (iodev = alliodevs; iodev != NULL; iodev = iodev->nextiodev) {
         if ((iodev->iodevname != NULL) && (strcmp (iodev->iodevname, devname) == 0)) goto gotit;
     }
-    {
-        SCRetErr dnerr("unknown i/o device %s", devname);
-        Tcl_SetResult (interp, dnerr.msg, (void (*) (char *)) free);
-        return TCL_ERROR;
-    }
+    Tcl_SetResultF (interp, "unknown i/o device %s - alliodevs for list", devname);
+    return TCL_ERROR;
 
     // build array of strings for remaining parameters
 gotit:;
@@ -260,7 +707,7 @@ static int cmd_loadbin (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
                 return TCL_ERROR;
             }
             uint16_t start;
-            int rc = binloader (filename, loadfile, &start);
+            int rc = binloader (loadfile, &start);
             fclose (loadfile);
             if (rc != 0) return TCL_ERROR;
             Tcl_SetObjResult (interp, Tcl_NewIntObj ((start & 0x8000) ? -1 : (int) start));
@@ -285,7 +732,7 @@ static int cmd_loadlink (ClientData clientdata, Tcl_Interp *interp, int objc, Tc
                 Tcl_SetResult (interp, (char *) strerror (errno), TCL_STATIC);
                 return TCL_ERROR;
             }
-            int rc = linkloader (filename, loadfile);
+            int rc = linkloader (loadfile);
             fclose (loadfile);
             if (rc < 0) return TCL_ERROR;
             Tcl_SetObjResult (interp, Tcl_NewIntObj ((rc == 0) ? -1 : rc));
@@ -309,7 +756,7 @@ static int cmd_loadrim (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
                 Tcl_SetResult (interp, (char *) strerror (errno), TCL_STATIC);
                 return TCL_ERROR;
             }
-            int rc = rimloader (filename, loadfile);
+            int rc = rimloader (loadfile);
             fclose (loadfile);
             if (rc != 0) return TCL_ERROR;
             return TCL_OK;
@@ -321,27 +768,166 @@ static int cmd_loadrim (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
     }
 }
 
-// set/clear/read randmem state
-static int cmd_randmem (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+static bool cmdargsfreeable;
+
+// get/set option state
+static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    switch (objc) {
-        case 1: {
-            Tcl_SetObjResult (interp, Tcl_NewBooleanObj ((int) randmem));
+    char const *subcmd = (objc > 1) ? Tcl_GetString (objv[1]) : "";
+    char const *opname = (objc > 2) ? Tcl_GetString (objv[2]) : "";
+
+    // get <optionname>
+    if (strcmp (subcmd, "get") == 0) {
+        int retint;
+        if (objc == 3) {
+            if (strcmp (opname, "ctrlc")      == 0) { retint = ctrlcflag;         goto ret; }
+            if (strcmp (opname, "haltstop")   == 0) { retint = haltstop;          goto ret; }
+            if (strcmp (opname, "jmpdotstop") == 0) { retint = jmpdotstop;        goto ret; }
+            if (strcmp (opname, "mintimes")   == 0) { retint = getmintimes ();    goto ret; }
+            if (strcmp (opname, "os8zap")     == 0) { retint = os8zap;            goto ret; }
+            if (strcmp (opname, "paddles")    == 0) { retint = shadow.paddles;    goto ret; }
+            if (strcmp (opname, "printinstr") == 0) { retint = shadow.printinstr; goto ret; }
+            if (strcmp (opname, "printstate") == 0) { retint = shadow.printstate; goto ret; }
+            if (strcmp (opname, "quiet")      == 0) { retint = quiet;             goto ret; }
+            if (strcmp (opname, "randmem")    == 0) { retint = randmem;           goto ret; }
+
+            if (strcmp (opname, "cmdargs") == 0) {
+                Tcl_Obj *cmdobjs[cmdargc];
+                for (int i = 0; i < cmdargc; i ++) {
+                    cmdobjs[i] = Tcl_NewStringObj (cmdargv[i], -1);
+                }
+                Tcl_Obj *cmdlist = Tcl_NewListObj (cmdargc, cmdobjs);
+                Tcl_SetObjResult (interp, cmdlist);
+                return TCL_OK;
+            }
+
+            if (strcmp (opname, "stopat") == 0) {
+                Tcl_SetObjResult (interp, Tcl_NewIntObj (stopataddr));
+                return TCL_OK;
+            }
+
+            if (strcmp (opname, "watchwrite") == 0) {
+                Tcl_SetObjResult (interp, Tcl_NewIntObj (watchwrite));
+                return TCL_OK;
+            }
+        }
+
+        Tcl_SetResult (interp, (char *) "option get <optionname>", TCL_STATIC);
+        return TCL_ERROR;
+
+    ret:;
+        Tcl_SetObjResult (interp, Tcl_NewBooleanObj (retint));
+        return TCL_OK;
+    }
+
+    if ((subcmd[0] == 0) || (strcmp (subcmd, "help") == 0)) {
+        puts ("");
+        puts ("  get <optionname>");
+        puts ("  set <optionname> <value>");
+        puts ("");
+        puts ("valid options:");
+        puts ("");
+        puts ("  cmdargs    - raspictl command line args after script filename");
+        puts ("  ctrlc      - control-C has been pressed; must be reset or raspictl will abort");
+        puts ("  haltstop   - stop on HLT (else wait for interrupt)");
+        puts ("  jmpdotstop - stop on JMP .");
+        puts ("  mintimes   - print cycle count every minute");
+        puts ("  os8zap     - zap the os8 delay loop");
+        puts ("  paddles    - verify paddles at end of each cycle");
+        puts ("  printinstr - print each instruction executed");
+        puts ("  printstate - print each cycle executed");
+        puts ("  quiet      - don't print illegal instruction messages");
+        puts ("  randmem    - provide random memory contents");
+        puts ("  stopat     - stop when accessing the memory address (-1 to disable)");
+        puts ("  watchwrite - stop when writing to the memory address (-1 to disable)");
+        puts ("");
+        return (subcmd[0] == 0) ? TCL_ERROR : TCL_OK;
+    }
+
+    // set <optionname> <value>
+    if (strcmp (subcmd, "set") == 0) {
+        if (strcmp (opname, "cmdargs") == 0) {
+
+            // make a new vector from command arguments
+            char **cmdstrs = (char **) malloc ((objc - 2) * sizeof *cmdstrs);
+            for (int i = 0; i < objc - 3; i ++) {
+                cmdstrs[i] = strdup (Tcl_GetString (objv[i+3]));
+            }
+            cmdstrs[objc-3] = NULL;
+
+            // maybe free off old arguments
+            if (cmdargsfreeable) {
+                for (int i = 0; i < cmdargc; i ++) free (cmdargv[i]);
+                free (cmdargv);
+            }
+
+            // set up new command arg list
+            cmdargc = objc - 3;
+            cmdargv = cmdstrs;
+            cmdargsfreeable = true;
+
             return TCL_OK;
         }
-        case 2: {
-            int val;
-            int rc = Tcl_GetBooleanFromObj (interp, objv[1], &val);
-            if (rc == TCL_OK) {
-                randmem = val != 0;
+
+        bool *boolptr;
+        if (objc == 4) {
+            if (strcmp (opname, "ctrlc")      == 0) { boolptr = &ctrlcflag;  goto setbool; }
+            if (strcmp (opname, "haltstop")   == 0) { boolptr = &haltstop;   goto setbool; }
+            if (strcmp (opname, "jmpdotstop") == 0) { boolptr = &jmpdotstop; goto setbool; }
+            if (strcmp (opname, "os8zap")     == 0) { boolptr = &os8zap;     goto setbool; }
+            if (strcmp (opname, "printinstr") == 0) { boolptr = &shadow.printinstr; goto setbool; }
+            if (strcmp (opname, "printstate") == 0) { boolptr = &shadow.printstate; goto setbool; }
+            if (strcmp (opname, "quiet")      == 0) { boolptr = &quiet;      goto setbool; }
+            if (strcmp (opname, "randmem")    == 0) { boolptr = &randmem;    goto setbool; }
+
+            if (strcmp (opname, "mintimes") == 0) {
+                int val;
+                int rc = Tcl_GetBooleanFromObj (interp, objv[3], &val);
+                if (rc == TCL_OK) setmintimes (val != 0);
+                return rc;
             }
-            return rc;
+
+            if (strcmp (opname, "paddles") == 0) {
+                int val;
+                int rc = Tcl_GetBooleanFromObj (interp, objv[3], &val);
+                if (rc == TCL_OK) {
+                    // make sure paddles present before enabling
+                    if (val && ! gpio->haspads ()) {
+                        Tcl_SetResult (interp, (char *) "paddles not present", TCL_STATIC);
+                        return TCL_ERROR;
+                    }
+                    shadow.paddles = val;
+                }
+                return rc;
+            }
+
+            if ((strcmp (opname, "stopat") == 0) || (strcmp (opname, "watchwrite") == 0)) {
+                int val;
+                int rc = Tcl_GetIntFromObj (interp, objv[3], &val);
+                if (rc == TCL_OK) {
+                    if ((val < -1) || (val > 077777)) {
+                        Tcl_SetResultF (interp, "%s address %d not in range -1..077777", opname, val);
+                        return TCL_ERROR;
+                    }
+                    if (opname[0] == 's') stopataddr = val;
+                    if (opname[0] == 'w') watchwrite = val;
+                }
+                return rc;
+            }
         }
-        default: {
-            Tcl_SetResult (interp, (char *) "bad number of arguments", TCL_STATIC);
-            return TCL_ERROR;
-        }
+
+        Tcl_SetResult (interp, (char *) "option set <optionname> <value>", TCL_STATIC);
+        return TCL_ERROR;
+
+    setbool:;
+        int val;
+        int rc = Tcl_GetBooleanFromObj (interp, objv[3], &val);
+        if (rc == TCL_OK) *boolptr = (val != 0);
+        return rc;
     }
+
+    Tcl_SetResult (interp, (char *) "bad number of arguments", TCL_STATIC);
+    return TCL_ERROR;
 }
 
 // read memory location
@@ -374,6 +960,14 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
             break;
         }
         case 2: {
+            char const *arg1str = Tcl_GetString (objv[1]);
+            if (strcmp (arg1str, "help") == 0) {
+                puts ("");
+                puts ("  reset         - reset processor, set if.pc=0.0000");
+                puts ("  reset <value> - reset processor, set if.pc=15-bit value");
+                puts ("");
+                return TCL_OK;
+            }
             int rc = Tcl_GetIntFromObj (interp, objv[1], &addr);
             if (rc != TCL_OK) return rc;
             addr &= 077777;
@@ -387,7 +981,7 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
 
     ctl_halt ();
     if (! ctl_reset (addr)) {
-        Tcl_SetResult (interp, (char *) "failed to halt", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "failed to reset", TCL_STATIC);
         return TCL_ERROR;
     }
     return TCL_OK;
@@ -428,7 +1022,39 @@ static int cmd_stepins (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
     return TCL_OK;
 }
 
-// wait for control-C (raspictl halts processing on SIGINT when scripting)
+// access switch register
+//  swreg = return switch register value
+//  swreg <value> = set switch register value
+static int cmd_swreg (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    switch (objc) {
+        case 1: {
+            Tcl_SetObjResult (interp, Tcl_NewIntObj (switchregister));
+            return TCL_OK;
+        }
+        case 2: {
+            char const *arg1str = Tcl_GetString (objv[1]);
+            if (strcmp (arg1str, "help") == 0) {
+                puts ("");
+                puts ("  swreg         - return switch register as a value");
+                puts ("  swreg <value> - set switch register to value");
+                puts ("");
+                return TCL_OK;
+            }
+            int data;
+            int rc = Tcl_GetIntFromObj (interp, objv[1], &data);
+            if (rc == TCL_OK) switchregister = data & 077777;
+            return rc;
+        }
+        default: {
+            Tcl_SetResult (interp, (char *) "bad number of arguments", TCL_STATIC);
+            return TCL_ERROR;
+        }
+    }
+}
+
+// wait for halt (control-C, haltstop, stopat, etc)
+// returns immediately if already halted
 static int cmd_wait (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     ctl_wait ();
@@ -455,6 +1081,54 @@ static int cmd_writemem (ClientData clientdata, Tcl_Interp *interp, int objc, Tc
     }
 }
 
+/////////////////
+//  Utilities  //
+/////////////////
+
+static int cmpdevnames (void const *v, void const *w)
+{
+    return strcmp (*(char const **)v, *(char const **)w);
+}
+
+// process return value for cpu or iodev command
+// converts it to corresponding TCL value
+static int procscret (Tcl_Interp *interp, SCRet *scret)
+{
+    if (scret == NULL) return TCL_OK;
+    switch (scret->gettype ()) {
+        case SCRet::SCRT_ERR: {
+            Tcl_SetResult (interp, scret->casterr ()->msg, (void (*) (char *)) free);
+            delete scret;
+            return TCL_ERROR;
+        }
+        case SCRet::SCRT_INT: {
+            Tcl_SetObjResult (interp, Tcl_NewIntObj (scret->castint ()->val));
+            break;
+        }
+        case SCRet::SCRT_LONG: {
+            Tcl_SetObjResult (interp, Tcl_NewLongObj (scret->castlong ()->val));
+            break;
+        }
+        case SCRet::SCRT_STR: {
+            Tcl_SetObjResult (interp, Tcl_NewStringObj (scret->caststr ()->str, -1));
+            break;
+        }
+        default: ABORT ();
+    }
+    delete scret;
+    return TCL_OK;
+}
+
+static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...)
+{
+    char *buf = NULL;
+    va_list ap;
+    va_start (ap, fmt);
+    if (vasprintf (&buf, fmt, ap) < 0) ABORT ();
+    va_end (ap);
+    Tcl_SetResult (interp, buf, (void (*) (char *)) free);
+}
+
 ///////////////////////////////////////////////
 //  I/O DEVICE SCRIPT COMMAND RETURN VALUES  //
 ///////////////////////////////////////////////
@@ -470,6 +1144,11 @@ SCRetErr::SCRetErr (char const *fmt, ...)
 }
 
 SCRetInt::SCRetInt (int val)
+{
+    this->val = val;
+}
+
+SCRetLong::SCRetLong (long val)
 {
     this->val = val;
 }

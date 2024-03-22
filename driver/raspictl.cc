@@ -23,8 +23,8 @@
  *
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
- *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guihalt] [-haltcont]
- *          [-haltprint] [-haltstop] [-infloopstop] [-linc] [-mintimes] [-nohw] [-os8zap] [-paddles] [-pipelib] [-printinstr]
+ *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
+ *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printinstr]
  *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-startpc <address>] [-stopat <address>]
  *          [-watchwrite <address>] [-zynqlib] <loadfile>
  *
@@ -35,14 +35,14 @@
  *      -corefile    : specify persistent core file image
  *      -csrclib     : use C-source for circuitry simulation (see csrclib.cc)
  *      -cyclelimit  : specify maximum number of cycles to execute
- *      -guihalt     : used by the GUI.java wrapper to start in halted mode
+ *      -guimode     : used by the GUI.java wrapper to start in halted mode
  *      -haltcont    : HALT instruction just continues
  *      -haltprint   : HALT instruction prints message
  *      -haltstop    : HALT instruction causes exit (else it is 'wait for interrupt')
- *      -infloopstop : infinite loop JMP causes exit
+ *      -jmpdotstop  : infinite loop JMP causes exit
  *      -linc        : process linc instruction set
  *      -mintimes    : print cpu cycle info once a minute
- *      -nohw        : don't use hardware, simulate processor internally
+ *      -nohwlib     : don't use hardware, simulate processor internally
  *      -os8zap      : zap out the OS/8 ISZ/JMP delay loop
  *      -paddles     : check ABCD paddles each cycle
  *      -pipelib     : simulate via pipe connected to NetGen
@@ -77,6 +77,7 @@
 #include <unistd.h>
 
 #include "binloader.h"
+#include "controls.h"
 #include "extarith.h"
 #include "gpiolib.h"
 #include "linkloader.h"
@@ -91,7 +92,11 @@
 
 #define ever (;;)
 
+bool ctrlcflag;
+bool haltstop;
+bool jmpdotstop;
 bool lincenab;
+bool os8zap;
 bool quiet;
 bool randmem;
 bool scriptmode;
@@ -99,26 +104,35 @@ char **cmdargv;
 ExtArith extarith;
 GpioLib *gpio;
 int cmdargc;
+int stopataddr;
+int watchwrite;
 MemExt memext;
 Shadow shadow;
 uint16_t lastreadaddr;
-uint32_t watchwrite = 0xFFFFFFFF;
+uint16_t startpc;
+uint16_t switchregister;
 uint16_t *memory;
+
+static pthread_t mintimestid;
+static pthread_cond_t mintimescond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t mintimeslock = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t haltcond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t haltcond2 = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t haltmutex = PTHREAD_MUTEX_INITIALIZER;
+char const *haltreason = "";
 uint32_t haltflags;
 uint32_t haltsample;
 
+static bool guimode;
 static bool haltcont;
 static bool haltprint;
-static bool haltstop;
-static bool infloopstop;
 static uint16_t intreqmask;
 static uint16_t lastreaddata;
 static uint32_t syncintreq;
 
+static void writestartpc ();
+static void clraccumlink ();
 static void *mintimesthread (void *dummy);
 static void haltcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
@@ -134,10 +148,8 @@ int main (int argc, char **argv)
 {
     bool binldr = false;
     bool csrclib = false;
-    bool guihalt = false;
     bool mintimes = false;
-    bool nohw = false;
-    bool os8zap = false;
+    bool nohwlib = false;
     bool pipelib = false;
     bool resetonerr = false;
     bool rimldr = false;
@@ -145,13 +157,13 @@ int main (int argc, char **argv)
     char const *corename = NULL;
     char const *loadname = NULL;
     char *p;
-    int initcount = 0;
-    uint16_t initreads[4];
-    uint32_t initdfif = 0;
-    uint32_t stopataddr = -1;
     uint32_t cyclelimit = 0;
 
     setlinebuf (stdout);
+
+    startpc = 0xFFFFU;
+    stopataddr = -1;
+    watchwrite = -1;
 
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-binloader") == 0) {
@@ -171,6 +183,7 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-csrclib") == 0) {
             csrclib = true;
+            nohwlib = false;
             pipelib = false;
             zynqlib = false;
             continue;
@@ -183,8 +196,8 @@ int main (int argc, char **argv)
             cyclelimit = atoi (argv[i]);
             continue;
         }
-        if (strcasecmp (argv[i], "-guihalt") == 0) {
-            guihalt = true;
+        if (strcasecmp (argv[i], "-guimode") == 0) {
+            guimode = true;
             continue;
         }
         if (strcasecmp (argv[i], "-haltcont") == 0) {
@@ -199,8 +212,8 @@ int main (int argc, char **argv)
             haltstop = true;
             continue;
         }
-        if (strcasecmp (argv[i], "-infloopstop") == 0) {
-            infloopstop = true;
+        if (strcasecmp (argv[i], "-jmpdotstop") == 0) {
+            jmpdotstop = true;
             continue;
         }
         if (strcasecmp (argv[i], "-linc") == 0) {
@@ -211,8 +224,11 @@ int main (int argc, char **argv)
             mintimes = true;
             continue;
         }
-        if (strcasecmp (argv[i], "-nohw") == 0) {
-            nohw = true;
+        if (strcasecmp (argv[i], "-nohwlib") == 0) {
+            csrclib = false;
+            nohwlib = true;
+            pipelib = false;
+            zynqlib = false;
             continue;
         }
         if (strcasecmp (argv[i], "-os8zap") == 0) {
@@ -225,6 +241,7 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-pipelib") == 0) {
             csrclib = false;
+            nohwlib = false;
             pipelib = true;
             zynqlib = false;
             continue;
@@ -247,8 +264,6 @@ int main (int argc, char **argv)
             rimldr = false;
             scriptmode = false;
             quiet = true;
-            initcount = 1;
-            initreads[0] = 07300;   // CLA CLL
             continue;
         }
         if (strcasecmp (argv[i], "-resetonerr") == 0) {
@@ -256,16 +271,16 @@ int main (int argc, char **argv)
             continue;
         }
         if (strcasecmp (argv[i], "-rimloader") == 0) {
-            binldr = false;
-            randmem = false;
-            rimldr = true;
+            binldr     = false;
+            randmem    = false;
+            rimldr     = true;
             scriptmode = false;
             continue;
         }
         if (strcasecmp (argv[i], "-script") == 0) {
-            binldr = false;
-            randmem = false;
-            rimldr = false;
+            binldr     = false;
+            randmem    = false;
+            rimldr     = false;
             scriptmode = true;
             continue;
         }
@@ -274,12 +289,7 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -startpc\n");
                 return 1;
             }
-            uint16_t startpc = strtoul (argv[i], NULL, 8);
-            initdfif = (startpc >> 12) & 7;
-            initcount = 3;
-            initreads[2] = 07300;   // CLA CLL
-            initreads[1] = 05400;   // JMP @0
-            initreads[0] = startpc & 07777;
+            startpc = strtoul (argv[i], NULL, 8) & 077777;
             continue;
         }
         if (strcasecmp (argv[i], "-stopat") == 0) {
@@ -287,8 +297,8 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -stopat\n");
                 return 1;
             }
-            stopataddr = strtoul (argv[i], &p, 0);
-            if ((*p != 0) || (stopataddr > 0xFFFF)) {
+            stopataddr = strtol (argv[i], &p, 8);
+            if ((*p != 0) || (stopataddr < 0) || (stopataddr > 077777)) {
                 fprintf (stderr, "raspictl: bad -stopat address '%s'\n", argv[i]);
                 return 1;
             }
@@ -299,11 +309,12 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -watchwrite\n");
                 return 1;
             }
-            watchwrite = strtoul (argv[i], NULL, 8);
+            watchwrite = strtol (argv[i], NULL, 8);
             continue;
         }
         if (strcasecmp (argv[i], "-zynqlib") == 0) {
             csrclib = false;
+            nohwlib = false;
             pipelib = false;
             zynqlib = true;
             continue;
@@ -369,34 +380,22 @@ int main (int argc, char **argv)
 
                 // pdp-8 binloader format
                 uint16_t start;
-                int rc = binloader (loadname, loadfile, &start);
+                int rc = binloader (loadfile, &start);
                 if (rc != 0) return rc;
 
                 // maybe a start address was given but don't override -startpc
-                if ((initcount == 0) && ! (start & 0x8000)) {
-                    initdfif = (start >> 12) & 7;
-                    initcount = 3;
-                    initreads[2] = 07300;           // CLA CLL
-                    initreads[1] = 05400;           // JMP @0
-                    initreads[0] = start & 07777;
-                }
+                if (startpc == 0xFFFFU) startpc = start & 077777;
             } else if (rimldr) {
 
                 // pdp-8 rimloader format
-                int rc = rimloader (loadname, loadfile);
+                int rc = rimloader (loadfile);
                 if (rc != 0) return rc;
             } else {
 
                 // linker format
-                int rc = linkloader (loadname, loadfile);
+                int rc = linkloader (loadfile);
                 if (rc < 0) return -rc;
-                if ((initcount == 0) && (rc > 0)) {
-                    initdfif = (rc >> 12) & 7;
-                    initcount = 3;
-                    initreads[2] = 07300;           // CLA CLL
-                    initreads[1] = 05400;           // JMP @0
-                    initreads[0] = rc & 07777;
-                }
+                if (startpc == 0xFFFFU) startpc = rc & 077777;
             }
 
             fclose (loadfile);
@@ -404,33 +403,37 @@ int main (int argc, char **argv)
     }
 
     // print cpu cyclecount once per minute
-    if (mintimes) {
-        pthread_t pid;
-        int rc = pthread_create (&pid, NULL, mintimesthread, NULL);
-        if (rc != 0) ABORT ();
-        pthread_detach (pid);
-    }
+    setmintimes (mintimes);
 
     // set up null signal handler to break out of reads
     signal (SIGCHLD, nullsighand);
 
-    // make sure we undo termios on exit
+    // catch normal termination signals to clean up
     signal (SIGABRT, sighandler);
     signal (SIGHUP,  sighandler);
     signal (SIGINT,  sighandler);
     signal (SIGTERM, sighandler);
 
     // access cpu circuitry
-    // either physical circuit via gpio pins
+    // either physical circuit (tubes or de0) via gpio pins
+    // ...or C-source simulator
+    // ...or zynq fpga circuit
     // ...or netgen simulator via pipes
     // ...or nothing but shadow
     GpioLib *gp = pipelib ? (GpioLib *) new PipeLib ("proc") :
                   csrclib ? (GpioLib *) new CSrcLib ("proc") :
                         zynqlib ? (GpioLib *) new ZynqLib () :
-                    nohw ? (GpioLib *) new NohwLib (&shadow) :
+                 nohwlib ? (GpioLib *) new NohwLib (&shadow) :
                                   (GpioLib *) new PhysLib ();
     gp->open ();
-    gp->floatpaddles ();
+
+    // always call haspads() so it can float the paddles
+    if (! gp->haspads () && shadow.paddles) {
+        fprintf (stderr, "raspictl: -paddles given but paddles not present\n");
+        return 1;
+    }
+
+    // allow other things to access paddles now that they are all set up
     asm volatile ("");
     gpio = gp;
 
@@ -450,46 +453,34 @@ reseteverything:;
     // reset things we keep state of
     ioreset ();
 
-    // do any initialization cycles
-    // ignore HF_HALTIT, GUI is waiting for us to initialize
-    if (initcount > 0) {
-        if ((initcount == 3) && (initreads[1] == 05400) && (initreads[2] == 07300)) {
-            fprintf (stderr, "raspictl: startpc=%o%04o\n", initdfif, initreads[0]);
-        }
-        memext.setdfif (initdfif);
-        int ic = initcount;
-        while (true) {
-            // clock has been low for half cycle, just about to drive lock high
-            uint32_t sample = gpio->readgpio ();
-            if ((sample & G_READ) && (ic == 0)) break;
-            shadow.clock (sample);
-            gpio->writegpio (false, G_CLOCK);
-            gpio->halfcycle (shadow.aluadd ());
-            if (sample & G_READ) {
-                sample = initreads[--ic] * G_DATA0;
-                gpio->writegpio (true, sample);
-                gpio->halfcycle (shadow.aluadd ());
-                shadow.clock (gpio->readgpio ());
-                gpio->writegpio (true, sample | G_CLOCK);
-                gpio->halfcycle (shadow.aluadd ());
-            }
-            gpio->writegpio (false, 0);
-            gpio->halfcycle (shadow.aluadd ());
-        }
-        // if we stopped on JMP1 state, that will be the reading of the opcode at the target PC
-        // so set the shadow PC to the target in case of guihalt, so it will see target PC
-        if (shadow.r.state == Shadow::JMP1) {
-            shadow.r.pc = initreads[0];
-        }
+    // if running from GUI or script, halt processor in next haltcheck() call
+    bool sigint = ctl_lock ();
+    if (guimode | scriptmode) {
+        haltreason = "RESET";
+        haltflags  = HF_HALTIT;
+    } else {
+        haltreason = "";
+        haltflags  = 0;
     }
+    ctl_unlock (sigint);
 
-    // if running from GUI, halt processor in next haltcheck() call
-    if (guihalt) haltflags = HF_HALTIT;
+    // do any initialization cycles
+    // ignore haltflags, GUI.java or script.cc is waiting for us to initialize
+    try {
+        if (startpc != 0xFFFFU) {
+            writestartpc ();
+        } else if (randmem) {
+            clraccumlink ();
+        }
+    } catch (Shadow::StateMismatchException& sme) {
+        haltreason = "STATEMISMATCH";
+        haltordie (haltreason);
+    }
 
     try {
         for ever {
 
-            // maybe GUI is requesting halt at end of cycle
+            // maybe GUI or script is requesting halt at end of cycle
             haltcheck ();
 
             // invariant:
@@ -538,10 +529,9 @@ reseteverything:;
                 uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
                 ASSERT (addr < MEMSIZE);
 
-                if (addr == stopataddr) {
+                if (addr == (unsigned) stopataddr) {
                     fprintf (stderr, "raspictl: stopat %05o\n", addr);
-                    dumpregs ();
-                    return 2;
+                    haltordie ("STOPAT");
                 }
 
                 if (sample & G_READ) {
@@ -559,12 +549,11 @@ reseteverything:;
                     lastreadaddr = addr;
 
                     // maybe stop if a 'JMP .' instruction
-                    if (infloopstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
+                    if (jmpdotstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
                         uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
                         if (ea == addr) {
                             fprintf (stderr, "raspictl: JMP . at PC=%05o\n", lastreadaddr);
-                            dumpregs ();
-                            return 2;
+                            haltordie ("JMPDOT");
                         }
                     }
 
@@ -585,9 +574,9 @@ reseteverything:;
 
                 if (sample & G_WRITE) {
                     uint16_t data = recvdata () & 07777;
-                    if (addr == watchwrite) {
+                    if (addr == (unsigned) watchwrite) {
                         fprintf (stderr, "raspictl: watch write addr %05o data %04o\n", addr, data);
-                        dumpregs ();
+                        haltordie ("WATCHWRITE");
                     }
                     memarray[addr] = data;
                     if (randmem) {
@@ -656,53 +645,196 @@ reseteverything:;
         }
     }
     catch (ResetProcessorException& rpe) {
-        fprintf (stderr, "\nraspictl: resetting everything...\n");
-        goto reseteverything;
     }
     catch (Shadow::StateMismatchException& sme) {
-        if (resetonerr) {
-            fprintf (stderr, "\nraspictl: resetting everything...\n");
-            goto reseteverything;
+        if (! resetonerr) {
+            if (! guimode && ! scriptmode) exit (1);
+            bool sigint = ctl_lock ();
+
+            // tell GUI.java or script.cc we are halting
+            haltreason = "STATEMISMATCH";
+            haltflags  = HF_HALTED;
+            pthread_cond_broadcast (&haltcond2);
+
+            // wait for GUI.java or script.cc to resume us
+            while (haltflags & HF_HALTED) {
+                pthread_cond_wait (&haltcond, &haltmutex);
+            }
+
+            // allz we can do from here is reset everything
+            ctl_unlock (sigint);
         }
-        exit (1);
+    }
+    fprintf (stderr, "\nraspictl: resetting everything...\n");
+    goto reseteverything;
+}
+
+// load DF and IF with the frame and JMP to the address
+// also clears accum and link
+// assumes processor is at end of fetch1 with clock still low, shadow.clock() not called yet
+// returns with processor at end of fetch1 with clock still low, shadow.clock() not called yet
+// might throw StateMismatchException
+static void writestartpc ()
+{
+    // set DF and IF registers to given frame
+    memext.setdfif ((startpc >> 12) & 7);
+
+    // clock has been low for half cycle, at end of FETCH1 as a result of the reset()
+    // G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
+    // processor should be asking us to read from memory
+
+    // drive clock high to transition to FETCH2
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // half way through FETCH2 with clock still high
+    // drop clock and start sending it a JMP @0 opcode
+    gpio->writegpio (true, 05400 * G_DATA0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drive clock high to transition to DEFER1
+    // keep sending opcode so tubes will clock it in
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (true, 05400 * G_DATA0 | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // half way through DEFER1 with clock still high
+    // drop clock and step to end of cycle
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drive clock high to transition to DEFER2
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // half way through DEFER2 with clock still high
+    // drop clock and start sending it the PC contents - 1 for the CLA CLL we're about to send
+    gpio->writegpio (true, ((startpc - 1) & 07777) * G_DATA0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drive clock high to transition to EXEC1/JMP
+    // keep sending startpc - 1 so it gets clocked into MA
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (true, ((startpc - 1) & 07777) * G_DATA0 | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock and run to end of EXEC1/JUMP
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // end of EXEC1/JUMP - processor should be reading the opcode at startpc - 1
+    // but startpc - 1 has not clocked into PC yet
+
+    // clear accumulator and link
+    // - clocks startpc - 1 into PC then increments PC to startpc
+    // - also gets us to a real FETCH1 state with PC updated
+    clraccumlink ();
+
+    // the tubes are waiting at the end of FETCH1 with the clock still low
+    // when resumed, raspictl.cc main will sample the GPIO lines, call shadow.clock() and resume processing from there
+}
+
+// clear accumulator and link
+// also increments program counter
+// assumes processor is at end of FETCH1 or equiv with clock still low, shadow.clock() not called yet
+// returns with processor at end of FETCH1 with clock still low, shadow.clock() not called yet
+// might throw StateMismatchException
+static void clraccumlink ()
+{
+    // raise clock to enter FETCH2
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, start sending the tubes a CLA CLL instruction
+    gpio->writegpio (true, 07300 * G_DATA0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter EXEC1, keep sending opcode
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, 07300 * G_DATA0 | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, stop sending opcode
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter FETCH1
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, to get to end of FETCH1
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+}
+
+// if using GUI or scripts, flag to halt the processor at the end of this cycle
+// otherwise, print out registers and exit
+void haltordie (char const *reason)
+{
+    if (guimode | scriptmode) {
+        bool sigint = ctl_lock ();
+        if (haltreason[0] == 0) {
+            haltreason = reason;
+        }
+        haltflags = HF_HALTIT;
+        ctl_unlock (sigint);
+    } else {
+        dumpregs ();
+        exit (2);
     }
 }
 
-// check to see if GUI.java is requesting halt
+// check to see if script.cc or GUI.java is requesting halt
 // call at end of cycle with clock still low
 // call just before taking gpio sample at end of cycle
 // ...in case of halt where GUI alters what the sample would get
+// returns with clock still low at the end of cycle
+// throws ResetProcessorException if script/GUI is requesting a reset
 static void haltcheck ()
 {
     if (haltflags & HF_HALTIT) {
         bool resetit = false;
-        pthread_mutex_lock (&haltmutex);
+        bool sigint = ctl_lock ();
 
         // re-check haltflags now that we have mutex
         if (haltflags & HF_HALTIT) {
+
+            // make sure clock is low
+            uint32_t sample = gpio->readgpio ();
+            ASSERT (! (sample & G_CLOCK));
 
             // IR is a latch so should now have memory contents
             if (shadow.r.state == Shadow::FETCH2) {
                 shadow.r.ir = lastreaddata;
             }
 
-            // tell GUI.java that we have halted
+            // tell script.cc or GUI.java that we have halted
             haltflags |= HF_HALTED;
             pthread_cond_broadcast (&haltcond2);
 
-            // wait for GUI.java to tell us to resume
+            // wait for script.cc or GUI.java to tell us to resume
             while (haltflags & HF_HALTED) {
                 pthread_cond_wait (&haltcond, &haltmutex);
             }
 
-            // maybe GUI is resetting us
+            // maybe script or GUI is resetting us
             if (haltflags & HF_RESETIT) {
                 resetit = true;
-                haltflags &= ~ HF_RESETIT;
+            }
+
+            // not a reset, make sure clock is low
+            else {
+                uint32_t sample = gpio->readgpio ();
+                ASSERT (! (sample & G_CLOCK));
             }
         }
 
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
+
         if (resetit) {
             ResetProcessorException rpe;
             throw rpe;
@@ -725,10 +857,10 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
     // for OSR and/or HLT, require permission to do i/o
     if ((opcode & 0006) && memext.candoio ()) {
         if (opcode & 0004) {                                    // OSR
-            uint16_t swreg = readswitches ("switchregister");
-            input |= swreg & 07777;
+            switchregister = readswitches ("switchregister");
+            input |= switchregister & 07777;
         }
-        if  (opcode & 0002) {                                   // HLT
+        if (opcode & 0002) {                                    // HLT
             haltinstr ("raspictl: HALT PC=%05o L=%o AC=%04o\n", lastreadaddr, (input >> 12) & 1, input & 07777);
         }
     }
@@ -740,30 +872,27 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
 // otherwise, it is assumed to be a softlink giving the octal integer
 uint16_t readswitches (char const *swvar)
 {
-    char *p, swbuf[10];
+    if (randmem) return randuint16 () & 077777;
+    if ((strcmp (swvar, "switchregister") == 0) && (scriptmode | guimode)) return switchregister;
 
     char const *swenv = getenv (swvar);
-    if ((swenv == NULL) && randmem) swenv = "random";
     if (swenv == NULL) {
         fprintf (stderr, "raspictl: envar %s not defined\n", swvar);
         ABORT ();
     }
+    char *p, swbuf[10];
     uint16_t swreg = strtoul (swenv, &p, 8);
     if (*p != 0) {
-        if (strcasecmp (swenv, "random") == 0) {
-            swreg = randuint16 ();
-        } else {
-            int swlen = readlink (swenv, swbuf, sizeof swbuf - 1);
-            if (swlen < 0) {
-                fprintf (stderr, "raspictl: error reading %s softlink %s: %m\n", swvar, swenv);
-                ABORT ();
-            }
-            swbuf[swlen] = 0;
-            swreg = strtoul (swbuf, &p, 8);
-            if (*p != 0) {
-                fprintf (stderr, "raspictl: bad %s softlink %s: %s\n", swvar, swenv, swbuf);
-                ABORT ();
-            }
+        int swlen = readlink (swenv, swbuf, sizeof swbuf - 1);
+        if (swlen < 0) {
+            fprintf (stderr, "raspictl: error reading %s softlink %s: %m\n", swvar, swenv);
+            ABORT ();
+        }
+        swbuf[swlen] = 0;
+        swreg = strtoul (swbuf, &p, 8);
+        if (*p != 0) {
+            fprintf (stderr, "raspictl: bad %s softlink %s: %s\n", swvar, swenv, swbuf);
+            ABORT ();
         }
     }
     return swreg;
@@ -773,11 +902,11 @@ uint16_t readswitches (char const *swvar)
 // decide what to do
 void haltinstr (char const *fmt, ...)
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
     if ((intreqmask == 0) && ! (haltflags & HF_HALTIT)) {
 
         // -haltprint means print a message
-        if (haltprint | haltstop) {
+        if (haltprint) {
             va_list ap;
             va_start (ap, fmt);
             vfprintf (stderr, fmt, ap);
@@ -786,9 +915,9 @@ void haltinstr (char const *fmt, ...)
 
         // -haltstop means print a message and exit
         if (haltstop) {
-            pthread_mutex_unlock (&haltmutex);
-            fprintf (stderr, "raspictl: haltstop\n");
-            exit (0);
+            ctl_unlock (sigint);
+            haltordie ("HALTSTOP");
+            return;
         }
 
         // wait for an interrupt request
@@ -797,7 +926,7 @@ void haltinstr (char const *fmt, ...)
             while ((intreqmask == 0) && ! (haltflags & HF_HALTIT));
         }
     }
-    pthread_mutex_unlock (&haltmutex);
+    ctl_unlock (sigint);
 }
 
 // generate a random number
@@ -828,17 +957,17 @@ static void dumpregs ()
 // set the interrupt request bits
 void setintreqmask (uint16_t mask)
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
     intreqmask |= mask;
     pthread_cond_broadcast (&haltcond);
-    pthread_mutex_unlock (&haltmutex);
+    ctl_unlock (sigint);
 }
 
 void clrintreqmask (uint16_t mask)
 {
-    pthread_mutex_lock (&haltmutex);
+    bool sigint = ctl_lock ();
     intreqmask &= ~ mask;
-    pthread_mutex_unlock (&haltmutex);
+    ctl_unlock (sigint);
 }
 
 uint16_t getintreqmask ()
@@ -846,16 +975,38 @@ uint16_t getintreqmask ()
     return intreqmask;
 }
 
+// start/stop mintimes thread
+bool getmintimes ()
+{
+    return mintimestid != 0;
+}
+
+void setmintimes (bool mintimes)
+{
+    pthread_mutex_lock (&mintimeslock);
+    if (mintimes && (mintimestid == 0)) {
+        int rc = pthread_create (&mintimestid, NULL, mintimesthread, NULL);
+        if (rc != 0) ABORT ();
+        pthread_mutex_unlock (&mintimeslock);
+        return;
+    }
+    if (! mintimes && (mintimestid != 0)) {
+        pthread_t tid = mintimestid;
+        mintimestid = 0;
+        pthread_cond_broadcast (&mintimescond);
+        pthread_mutex_unlock (&mintimeslock);
+        pthread_join (tid, NULL);
+        return;
+    }
+    pthread_mutex_unlock (&mintimeslock);
+}
+
 // runs in background to print cycle rate at beginning of every minute for testing
 static void *mintimesthread (void *dummy)
 {
-    pthread_cond_t cond;
-    pthread_mutex_t lock;
     struct timespec nowts, waits;
 
-    pthread_cond_init (&cond, NULL);
-    pthread_mutex_init (&lock, NULL);
-    pthread_mutex_lock (&lock);
+    pthread_mutex_lock (&mintimeslock);
 
     if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
     uint64_t lastcycs = shadow.getcycles ();
@@ -863,11 +1014,10 @@ static void *mintimesthread (void *dummy)
 
     waits.tv_nsec = 0;
 
-    while (true) {
-        int rc;
+    while (mintimestid != 0) {
         waits.tv_sec = (lastsecs / 60 + 1) * 60;
-        do rc = pthread_cond_timedwait (&cond, &lock, &waits);
-        while (rc == 0);
+        int rc = pthread_cond_timedwait (&mintimescond, &mintimeslock, &waits);
+        if (rc == 0) continue;
         if (rc != ETIMEDOUT) ABORT ();
         if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
         uint64_t cycs = shadow.getcycles ();
@@ -880,6 +1030,8 @@ static void *mintimesthread (void *dummy)
         lastcycs = cycs;
         lastsecs = secs;
     }
+
+    pthread_mutex_unlock (&mintimeslock);
     return NULL;
 }
 
@@ -911,7 +1063,7 @@ static void senddata (uint16_t data)
     // let data soak into cpu (giving it a setup time)
     gpio->halfcycle (shadow.aluadd ());
 
-    // maybe GUI is requesting halt at end of cycle
+    // maybe GUI or script is requesting halt at end of cycle
     haltcheck ();
 
     // tell cpu data is ready to be read by raising the clock
@@ -947,7 +1099,7 @@ static uint16_t recvdata (void)
     gpio->writegpio (false, syncintreq);
     gpio->halfcycle (shadow.aluadd ());
 
-    // maybe GUI is requesting halt at end of cycle
+    // maybe GUI or script is requesting halt at end of cycle
     haltcheck ();
 
     // read data being sent by cpu just before raising clock
@@ -974,11 +1126,17 @@ static void sighandler (int signum)
     // if control-C with -script, halt the processor getting clocked
     // this will eventually wake script out of 'wait' command if it is in one
     // ...when it sees HF_HALTED set
-    if ((signum == SIGINT) && scriptmode) {
-        pthread_mutex_lock (&haltmutex);
+    // also set a flag for scripts to test and don't allow unacknowleged control-C
+    if ((signum == SIGINT) && scriptmode && ! ctrlcflag) {
+        int ignored __attribute__ ((unused)) = write (0, "\n", 1); // after the "^C"
+        ctrlcflag = true;
+        bool sigint = ctl_lock ();
+        if (haltreason[0] == 0) {
+            haltreason = "CONTROL_C";
+        }
         haltflags |= HF_HALTIT;
         pthread_cond_broadcast (&haltcond);
-        pthread_mutex_unlock (&haltmutex);
+        ctl_unlock (sigint);
         return;
     }
 

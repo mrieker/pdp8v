@@ -1,3 +1,23 @@
+##    Copyright (C) Mike Rieker, Beverly, MA USA
+##    www.outerworldapps.com
+##
+##    This program is free software; you can redistribute it and/or modify
+##    it under the terms of the GNU General Public License as published by
+##    the Free Software Foundation; version 2 of the License.
+##
+##    This program is distributed in the hope that it will be useful,
+##    but WITHOUT ANY WARRANTY; without even the implied warranty of
+##    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+##    GNU General Public License for more details.
+##
+##    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+##
+##    You should have received a copy of the GNU General Public License
+##    along with this program; if not, write to the Free Software
+##    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+##
+##    http://www.gnu.org/licenses/gpl-2.0.html
+
 #
 # test script used by both proc.sim and testde0.do
 # generates random opcodes and operands and steps hdl code
@@ -64,7 +84,7 @@ proc VerifyIR {sb} {
 # print the message with current time if 'sv' is set
 proc SVEcho {msg} {
     global now sv
-    if {$sv} { echo "$now $msg" }
+    if {$sv} { Echo "$now $msg" }
 }
 
 # convert a string of binary digits ('0' and '1') to integer
@@ -121,7 +141,7 @@ proc VfyState {stsb} {
         for {set i 0} {$i < $len} {incr i} {
             set iii [string index $ii $i]
             if {$iii != $ss} {
-                echo "state $st is $ii should be $ss"
+                Echo "state $st is $ii should be $ss"
                 set err 1
             }
         }
@@ -193,7 +213,7 @@ proc VfyState {stsb} {
         set ctl $ccc
         if {[string index $ctl 0] == "?"} { set ctl [string range $ctl 1 end] }
         if {[lsearch $allctls $ctl] < 0} {
-            echo "$stsb bad ctl $ctl"
+            Echo "$stsb bad ctl $ctl"
             set err 1
         }
     }
@@ -203,7 +223,7 @@ proc VfyState {stsb} {
             set ii [string index [GetCtrl $ctl] 0]
             set ss [expr {([lsearch $ctls $ctl] >= 0) ^ ([string index $ctl 0] == "_")}]
             if {$ii != $ss} {
-                echo "$stsb control $ctl is $ii should be $ss"
+                Echo "$stsb control $ctl is $ii should be $ss"
                 set err 1
             }
         }
@@ -287,17 +307,17 @@ proc Execute {opc def val} {
 
     set opcode $opc
 
-    run $hc                         ;# run the second (low) half of the cycle
+    HalfCyc                         ;# run the second (low) half of the cycle
     VerifyMD $shadpc                ;# just about to raise clock, should have PC on the bus
 
     SVEcho "starting FETCH2"
     ForceClock 1                    ;# tell the processor to transition to fetch2
-    run $hc                         ;# give it time to settle into fetch2
+    HalfCyc                         ;# give it time to settle into fetch2
     VerifyPC $shadpc                ;# pc should have instruction's address in it
     ForceClock 0                    ;# now we are halfway through the fetch2 cycle
     VfyState fetch2                 ;# it should be receiving the opcode from the raspi
     ForceMQ $opc                    ;# send opcode from raspi to the processor
-    run $hc                         ;# run the second (low) half of the cycle
+    HalfCyc                         ;# run the second (low) half of the cycle
     VerifyIR $opc                   ;# IR should have top bits of opcode
     set shadpc [expr {($shadpc + 1) & 4095}]
 
@@ -316,29 +336,29 @@ proc Execute {opc def val} {
 
             SVEcho "starting DEFER1"
             ForceClock 1
-            run $hc
+            HalfCyc
             ForceClock 0
             VfyState defer1
-            run $hc
+            HalfCyc
             VerifyMD $addr
 
             SVEcho "starting DEFER2"
             ForceClock 1
-            run $hc
+            HalfCyc
             ForceClock 0
             VfyState defer2
             ForceMQ $def
-            run $hc
+            HalfCyc
             VerifyALU $def                          ;# it's end of defer2, indirect address on output of ALU to be written to MA
 
             if {$autoidx} {
                 SVEcho "starting DEFER3"
                 ForceClock 1
-                run $hc
+                HalfCyc
                 ForceClock 0
                 VfyState defer3
                 ForceMQOff
-                run $hc
+                HalfCyc
                 set def [expr {($def + 1) & 4095}]
                 VerifyALU $def
             }
@@ -352,20 +372,20 @@ proc Execute {opc def val} {
             0 {
                 SVEcho "starting ARITH1/AND"
                 ForceClock 1                        ;# tell the processor to transition to arith1
-                run $hc                             ;# give it time to settle into arith1
+                HalfCyc                             ;# give it time to settle into arith1
                 ForceClock 0                        ;# now we are halfway through the arith1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState arith1
-                run $hc                             ;# run to end of arith1 cycle
+                HalfCyc                             ;# run to end of arith1 cycle
                 VerifyMD $addr                      ;# it should be sending the address to raspi
 
                 SVEcho "starting AND2"
                 ForceClock 1                        ;# tell the processor to transition to and2
-                run $hc                             ;# give it time to settle into and2
+                HalfCyc                             ;# give it time to settle into and2
                 ForceClock 0                        ;# now we are halfway through the and2 cycle
                 VfyState and2
                 ForceMQ $val                        ;# send data from raspi to the processor
-                run $hc                             ;# let it soak through the ALU to end of and2 cycle
+                HalfCyc                             ;# let it soak through the ALU to end of and2 cycle
 
                 set andac [Int2Bin $val 12]
                 set newac ""
@@ -383,38 +403,38 @@ proc Execute {opc def val} {
             1 {
                 SVEcho "starting ARITH1/TAD"
                 ForceClock 1                        ;# tell the processor to transition to arith1
-                run $hc                             ;# give it time to settle into arith1
+                HalfCyc                             ;# give it time to settle into arith1
                 ForceClock 0                        ;# now we are halfway through the arith1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState arith1
-                run $hc                             ;# run to end of arith1 cycle
+                HalfCyc                             ;# run to end of arith1 cycle
                 VerifyMD $addr                      ;# it should be sending the address to raspi
 
                 if {$shadac != 0} {
                     SVEcho "starting TAD2"
                     ForceClock 1                    ;# tell the processor to transition to tad2
-                    run $hc                         ;# give it time to settle into tad2
+                    HalfCyc                         ;# give it time to settle into tad2
                     ForceClock 0                    ;# now we are halfway through the tad2 cycle
                     VfyState tad2
                     ForceMQ $val                    ;# send data from raspi to the processor
-                    run $hc                         ;# let it soak through the ALU to end of tad2 cycle
+                    HalfCyc                         ;# let it soak through the ALU to end of tad2 cycle
 
                     SVEcho "starting TAD3"
                     ForceClock 1                    ;# tell the processor to transition to tad3
-                    run $hc                         ;# give it time to settle into tad3
+                    HalfCyc                         ;# give it time to settle into tad3
                     ForceClock 0                    ;# now we are halfway through the tad3 cycle
                     VfyState tad3
                     ForceMQOff
                     VerifyMA $val                   ;# value should be in MA by now
-                    run $hc                         ;# let addition soak through the ALU to end of tad3 cycle
+                    HalfCyc                         ;# let addition soak through the ALU to end of tad3 cycle
                 } else {
                     SVEcho "starting AND2/TAD2"
                     ForceClock 1                    ;# tell the processor to transition to and2
-                    run $hc                         ;# give it time to settle into and2
+                    HalfCyc                         ;# give it time to settle into and2
                     ForceClock 0                    ;# now we are halfway through the and2 cycle
                     VfyState and2
                     ForceMQ $val                    ;# send data from raspi to the processor
-                    run $hc                         ;# let it soak through the ALU to end of and2 cycle
+                    HalfCyc                         ;# let it soak through the ALU to end of and2 cycle
                 }
 
                 set shadac [expr {[Bin2Int $shadac] + $val}]
@@ -428,30 +448,30 @@ proc Execute {opc def val} {
             2 {
                 SVEcho "starting ISZ1"
                 ForceClock 1                        ;# tell the processor to transition to isz1
-                run $hc                             ;# give it time to settle into isz1
+                HalfCyc                             ;# give it time to settle into isz1
                 ForceClock 0                        ;# now we are halfway through the isz1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState isz1
-                run $hc                             ;# run to end of isz1 cycle
+                HalfCyc                             ;# run to end of isz1 cycle
                 VerifyMD $addr                      ;# it should be sending the address to raspi
 
                 SVEcho "starting ISZ2"
                 ForceClock 1                        ;# tell the processor to transition to isz2
-                run $hc                             ;# give it time to settle into isz2
+                HalfCyc                             ;# give it time to settle into isz2
                 ForceClock 0                        ;# now we are halfway through the isz2 cycle
                 VfyState isz2
                 ForceMQ $val                        ;# send data from raspi to the processor
-                run $hc                             ;# let it soak through the ALU to end of isz2 cycle
+                HalfCyc                             ;# let it soak through the ALU to end of isz2 cycle
 
                 set newval [expr {($val + 1) & 4095}]
 
                 SVEcho "starting ISZ3"
                 ForceClock 1
-                run $hc
+                HalfCyc
                 ForceClock 0
                 VfyState isz3
                 ForceMQOff
-                run $hc
+                HalfCyc
                 VerifyMD $newval
 
                 if {$newval == 0} {
@@ -462,19 +482,19 @@ proc Execute {opc def val} {
             3 {
                 SVEcho "starting DCA1"
                 ForceClock 1                        ;# tell the processor to transition to dca1
-                run $hc                             ;# give it time to settle into dca1
+                HalfCyc                             ;# give it time to settle into dca1
                 ForceClock 0                        ;# now we are halfway through the dca1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState dca1
-                run $hc                             ;# run to end of dca1 cycle
+                HalfCyc                             ;# run to end of dca1 cycle
                 VerifyMD $addr                      ;# it should be sending the address to raspi
 
                 SVEcho "starting DCA2"
                 ForceClock 1                        ;# tell the processor to transition to dca2
-                run $hc                             ;# give it time to settle into dca2
+                HalfCyc                             ;# give it time to settle into dca2
                 ForceClock 0                        ;# now we are halfway through the dca2 cycle
                 VfyState dca2
-                run $hc                             ;# run to end of dca2 cycle
+                HalfCyc                             ;# run to end of dca2 cycle
                 VerifyMD [Bin2Int $shadac]          ;# it should be sending accumulator to raspi
 
                 set shadac 000000000000             ;# it should clear AC
@@ -483,11 +503,11 @@ proc Execute {opc def val} {
             4 {
                 SVEcho "starting JMS1"
                 ForceClock 1                        ;# tell the processor to transition to jms1
-                run $hc                             ;# give it time to settle into jms1
+                HalfCyc                             ;# give it time to settle into jms1
                 ForceClock 0                        ;# now we are halfway through the jms1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState jms1
-                run $hc                             ;# run to end of jms1 cycle
+                HalfCyc                             ;# run to end of jms1 cycle
                 VerifyMD $addr                      ;# it should be sending the address to raspi
 
                 ExecJMS23Seq $addr
@@ -499,7 +519,7 @@ proc Execute {opc def val} {
 
                 SVEcho "starting JMP1"
                 ForceClock 1                        ;# tell the processor to transition to jmp1
-                run $hc                             ;# give it time to settle into jmp1
+                HalfCyc                             ;# give it time to settle into jmp1
                 ForceClock 0                        ;# now we are halfway through the jmp1 cycle
                 VerifyMA $addr                      ;# address should be clocked into MA by now
                 VfyState jmp1
@@ -509,7 +529,7 @@ proc Execute {opc def val} {
                     VerifyLink $shadln              ;# verify link contents
                     return
                 }
-                run $hc                             ;# run to end of jmp1 cycle
+                HalfCyc                             ;# run to end of jmp1 cycle
                 VerifyALU $shadpc                   ;# should be writing new pc value
             }
         }
@@ -523,10 +543,10 @@ proc Execute {opc def val} {
                 if {! ($opc & 256)} {
                     SVEcho "starting GRPA1"
                     ForceClock 1
-                    run $hc
+                    HalfCyc
                     ForceClock 0
                     VfyState grpa1
-                    run $hc
+                    HalfCyc
 
                     if {$opc & 128} { set shadac 000000000000 }
                     if {$opc &  64} { set shadln 0 }
@@ -574,7 +594,7 @@ proc Execute {opc def val} {
                 } elseif {! ($opc & 7)} {
                     SVEcho "starting GRPB1"
                     ForceClock 1
-                    run $hc
+                    HalfCyc
                     ForceClock 0
 
                     set grpb_skip 0
@@ -595,7 +615,7 @@ proc Execute {opc def val} {
                     if {! $intrq} {                     ;# if no interrupt request,
                         return                          ;# ...grpb1 acts like fetch1
                     }
-                    run $hc
+                    HalfCyc
                 } else {
                     ExecIOTSeq IOT $opc $def $val       ;# group 2 with OSR or HLT and group 3 treated like io instruction
                 }
@@ -606,11 +626,11 @@ proc Execute {opc def val} {
     if {$intrq} {
         SVEcho "starting INTAK1"
         ForceClock 1
-        run $hc
+        HalfCyc
         ForceClock 0
         VfyState intak1
         ForceIntRq 0
-        run $hc
+        HalfCyc
 
         set intrq 0                     ;# intack turns intrq off
 
@@ -620,7 +640,7 @@ proc Execute {opc def val} {
 
     SVEcho "starting FETCH1"
     ForceClock 1                        ;# tell the processor to transition to fetch1
-    run $hc                             ;# give it time to settle into fetch1
+    HalfCyc                             ;# give it time to settle into fetch1
     ForceClock 0                        ;# now we are halfway through the fetch1 cycle
     VfyState fetch1
     ForceMQOff
@@ -637,23 +657,23 @@ proc ExecIOTSeq {mne opc def val} {
 
     SVEcho "starting ${mne}1"           ;# processor sends 12-bit accumulator to raspi
     ForceClock 1
-    run $hc
+    HalfCyc
     ForceClock 0
     VfyState iot1
-    run $hc
+    HalfCyc
     VerifyMD [Bin2Int $shadac]
 
     SVEcho "starting ${mne}2"           ;# processor receives updated accumulator, link and ioskip from raspi
     set shadac [Int2Bin $val 12]
     set shadln [expr {($def >> 1) & 1}]
     ForceClock 1
-    run $hc
+    HalfCyc
     ForceClock 0
     VfyState iot2
     ForceMQ $val
     ForceMQL $shadln
     ForceIoSkp [expr {$def & 1}]
-    run $hc
+    HalfCyc
 
     if {$def & 1} {
         set shadpc [expr {($shadpc + 1) & 4095}]
@@ -670,17 +690,17 @@ proc ExecJMS23Seq {addr} {
 
     SVEcho "starting JMS2"
     ForceClock 1                        ;# tell the processor to transition to jms2
-    run $hc                             ;# give it time to settle into jms2
+    HalfCyc                             ;# give it time to settle into jms2
     ForceClock 0                        ;# now we are halfway through the jms2 cycle
     VfyState jms2
-    run $hc                             ;# run to end of jms2 cycle
+    HalfCyc                             ;# run to end of jms2 cycle
     VerifyMD $shadpc                    ;# it should be sending the incremented pc to raspi
 
     set shadpc [expr {($addr + 1) & 4095}]
 
     SVEcho "starting JMS3"
     ForceClock 1                        ;# tell the processor to transition to jms3
-    run $hc                             ;# give it time to settle into jms3
+    HalfCyc                             ;# give it time to settle into jms3
     ForceClock 0                        ;# now we are halfway through the jms3 cycle
     VfyState jms3
 
@@ -689,42 +709,46 @@ proc ExecJMS23Seq {addr} {
         return
     }
 
-    run $hc                             ;# run to end of jms3 cycle
+    HalfCyc                             ;# run to end of jms3 cycle
     VerifyALU $shadpc                   ;# should be calculating incremented pc
 }
 
 
-## SCRIPT STARTS HERE ##
+# initialize everything
+proc TestInit {} {
+    global intrq shadac shadln shadpc
 
-SVEcho "starting FETCH1"
-ForceClock 0
-ForceIntRq 0
-ForceReset 1
-run $hc
-ForceReset 0
+    SVEcho "starting FETCH1/RESET"
+    ForceClock 0
+    ForceIntRq 0
+    ForceReset 1
+    HalfCyc
+    ForceReset 0
 
-set intrq 0
-set shadpc 0
-set shadac "xxxxxxxxxxxx"
-set shadln "x"
+    set intrq 0
+    set shadpc 0
+    set shadac "xxxxxxxxxxxx"
+    set shadln "x"
 
-Execute [Bin2Int 111011000000] 0 0          ;# CLA CLL
+    Execute [Bin2Int 111011000000] 0 0      ;# CLA CLL
+}
 
-for {set i 0} {$i < 4096*4096} {incr i} {
+# test single random instruction
+#  i = incrementing test step counter
+proc TestStep {i} {
+    global intrq now shadac shadln shadpc
+
     set opc [expr {int (rand () * 4096)}]
     set def [expr {int (rand () * 4096)}]
     set val [expr {int (rand () * 4096)}]
 
+    ;# maybe request interrupt at end of instruction
     if {[GetState fetch1]} {
         set intrq [expr {int (rand () * 8) == 0}]
-        ForceIntRq $intrq                   ;# request interrupt at end of instruction
+        ForceIntRq $intrq
     }
 
-    echo "$i [expr {$now - $hc}]  IRQ=$intrq  L=$shadln AC=$shadac PC=[Int2Bin $shadpc 12] OPC=[Int2Bin $opc 12]  DEF=[Int2Bin $def 12]  VAL=[Int2Bin $val 12]  [Disasm $opc $shadpc]"
+    Echo "$i $now IRQ=$intrq  L=$shadln AC=$shadac PC=[Int2Bin $shadpc 12] OPC=[Int2Bin $opc 12]  DEF=[Int2Bin $def 12]  VAL=[Int2Bin $val 12]  [Disasm $opc $shadpc]"
 
     Execute $opc $def $val
 }
-
-Execute [Bin2Int 111000000000] 0 0          ;# NOP
-
-echo "SUCCESS"

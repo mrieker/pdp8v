@@ -45,6 +45,8 @@
 
 PipeLib::PipeLib (char const *modname)
 {
+    libname = "pipelib";
+
     // make sure modname exists in ../modules/whole.mod so netgen will find it
     // also changes "rpi" to "rpi_testpads" so gpio pins will be found
     modname = makepipelibmod (modname);
@@ -286,6 +288,12 @@ uint32_t PipeLib::examine (char const *varname)
             }
         }
     }
+}
+
+// we have paddles
+bool PipeLib::haspads ()
+{
+    return true;
 }
 
 // read A,B,C,D connectors

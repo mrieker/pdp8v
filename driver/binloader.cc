@@ -30,14 +30,13 @@
 
 // pdp-8 binloader format
 //  input:
-//   loadname = name of binloader file
 //   loadfile = file opened here
 //  output:
 //   returns 0: read successful
 //              *start_r = 0x8000 : no start address given
 //                           else : 15-bit start address
 //        else: failure, error message was output
-int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
+int binloader (FILE *loadfile, uint16_t *start_r)
 {
     bool rubbingout = false;
     bool inleadin   = true;
@@ -46,11 +45,13 @@ int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
     uint16_t data   =  0;
     uint16_t chksum =  0;
     uint16_t field  =  0;
+    uint32_t offset = -1;
     *start_r = 0x8000;
     for ever {
+        offset ++;
         int ch = fgetc (loadfile);
         if (ch < 0) {
-            fprintf (stderr, "raspictl: eof reading loadfile %s\n", loadname);
+            fprintf (stderr, "binloader: eof reading loadfile at %u\n", offset);
             return 1;
         }
         debug ("\n %03o", ch);
@@ -84,7 +85,7 @@ int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
 
         // no other frame should have <7> set
         if (ch & 0200) {
-            fprintf (stderr, "raspictl: bad char %03o in loadfile %s\n", ch, loadname);
+            fprintf (stderr, "binloader: bad char %03o at %u\n", ch, offset);
             return 1;
         }
 
@@ -114,6 +115,10 @@ int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
 
         // process the 6 bits
         switch (state) {
+            case -1: {
+                fprintf (stderr, "binloader: bad leader char %03o at %u\n", ch, offset);
+                return 1;
+            }
             // top 6 bits of address are followed by bottom 6 bits
             case 0: {
                 addr  = ch << 6;
@@ -146,6 +151,7 @@ int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
                 state =  4;
                 break;
             }
+
             default: ABORT ();
         }
     }
@@ -158,7 +164,7 @@ int binloader (char const *loadname, FILE *loadfile, uint16_t *start_r)
     chksum &= 07777;
     debug ("cooked chksum %04o\n", chksum);
     if (chksum != data) {
-        fprintf (stderr, "raspictl: checksum calculated %04o, given on tape %04o\n", chksum, data);
+        fprintf (stderr, "binloader: checksum calculated %04o, given on tape %04o\n", chksum, data);
         return 1;
     }
 

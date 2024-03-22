@@ -808,7 +808,7 @@ uint16_t ScnCall2::ioinstr (uint16_t opcode, uint16_t input)
                     fprintf (hcffile, ">\n");
                 }
             }
-            exit (1);
+            haltordie ("HCFINSTR");
         }
     }
     return input;
