@@ -844,21 +844,19 @@ public class StandCell extends Placeable implements ICombo, IPrintLoc, IVerilog 
 
     // print CSource statement for boolean assignment
     @Override  // ICombo
-    public void printIComboCSource (PrintStream ps)
+    public int printIComboCSource (PrintStream ps)
     {
         String outvname = outnet.getVeriName (true);
         String envnam = "stuckon_" + outvname;
         String envstr = System.getenv (envnam);
         if ((envstr != null) && !envstr.equals ("")) {
-            ps.println ("    " + outvname + " = " + envstr + ";");
+            ps.println ("    nto += " + outvname + " = " + envstr + ";");
             System.out.println ("StandCell: " + envnam + "=" + envstr);
-            return;
-        }
-        if (inputss.size () == 0) {
-            ps.println ("    " + outvname + " = true;");
+        } else if (inputss.size () == 0) {
+            ps.println ("    nto += " + outvname + " = true;");
         } else {
             String ssvname = Network.getVeriName (true, name);
-            ps.print ("    " + outvname + " = !(");
+            ps.print ("    nto += " + outvname + " = !(");
             String sep1 = "(";
             for (int i = 0; i < inputss.size (); i ++) {
                 ArrayList<Network> inputs = inputss.get (i);
@@ -880,6 +878,7 @@ public class StandCell extends Placeable implements ICombo, IPrintLoc, IVerilog 
             }
             ps.println ("));");
         }
+        return 1;
     }
 
     // print input and output pin locations for the StandCell as a gate

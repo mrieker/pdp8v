@@ -42,7 +42,8 @@
 module backplane (CLOCK, TRIGGR, DEBUGS,
         paddlrda, paddlrdb, paddlrdc, paddlrdd,
         paddlwra, paddlwrb, paddlwrc, paddlwrd,
-        boardena, gpinput, gpoutput, gpcompos);
+        boardena, gpinput, gpoutput, gpcompos,
+        nto, ntt, counts);
     input CLOCK;
     output TRIGGR;
     output[13:00] DEBUGS;
@@ -51,6 +52,9 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     input[5:0] boardena;
     output[31:00] gpinput, gpcompos;
     input[31:00] gpoutput;
+    output[31:00] counts;
+
+    assign counts = 0; // debug
 
     wire rpi_qena, rpi_dena;
 
@@ -126,6 +130,15 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     wire[11:09] bus_irq         , seq_irq         , pad_irq        ;
 
     assign DEBUGS = 14'b0;
+
+    // count total number of gates outputting one = total number of triodes off
+    output reg[9:0] nto, ntt;
+    wire[9:0] aclnto, alunto, manto, pcnto, seqnto;
+    wire[9:0] aclntt, aluntt, mantt, pcntt, seqntt;
+    always @(posedge CLOCK) begin
+        nto <= (aclena ? aclnto : 0) + (aluena ? alunto : 0) + (maena ? manto : 0) + (pcena ? pcnto : 0) + (seqena ? seqnto : 0);
+        ntt <= (aclena ? aclntt : 0) + (aluena ? aluntt : 0) + (maena ? mantt : 0) + (pcena ? pcntt : 0) + (seqena ? seqntt : 0);
+    end
 
     // read gpio pins :0they read signals from the bus
     assign gpinput[03:00] = 4'b0000;
@@ -504,7 +517,7 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     // for input pins, use the bus signals
     // for output pins, use the module-specific signal
 
-    aclcirc aclinst (
+    aclcirc_nto aclinst (
         .uclk (CLOCK),
         ._ac_aluq    (bus__ac_aluq),
         ._ac_sc      (bus__ac_sc),
@@ -523,10 +536,12 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         .mql         (bus_mql),
         ._newlink    (bus__newlink),
         .reset       (bus_reset),
-        .tad3q       (bus_tad3q)
+        .tad3q       (bus_tad3q),
+        .nto         (aclnto),
+        .ntt         (aclntt)
     );
 
-    alucirc aluinst (
+    alucirc_nto aluinst (
         .uclk (CLOCK),
         .acq         (bus_acq),
         ._alu_add    (bus__alu_add),
@@ -550,30 +565,36 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         .maq         (bus_maq),
         .mq          (bus_mq),
         ._newlink    (alu__newlink),
-        .pcq         (bus_pcq)
+        .pcq         (bus_pcq),
+        .nto         (alunto),
+        .ntt         (aluntt)
     );
 
-    macirc mainst (
+    macirc_nto mainst (
         .uclk (CLOCK),
         ._aluq       (bus__aluq),
         .clok2       (bus_clok2),
         ._ma_aluq    (bus__ma_aluq),
         ._maq        (ma__maq),
         .maq         (ma_maq),
-        .reset       (bus_reset)
+        .reset       (bus_reset),
+        .nto         (manto),
+        .ntt         (mantt)
     );
 
-    pccirc pcinst (
+    pccirc_nto pcinst (
         .uclk (CLOCK),
         ._aluq       (bus__aluq),
         .clok2       (bus_clok2),
         ._pc_aluq    (bus__pc_aluq),
         ._pc_inc     (bus__pc_inc),
         .pcq         (pc_pcq),
-        .reset       (bus_reset)
+        .reset       (bus_reset),
+        .nto         (pcnto),
+        .ntt         (pcntt)
     );
 
-    seqcirc seqinst (
+    seqcirc_nto seqinst (
         .uclk (CLOCK),
         ._ac_aluq    (seq__ac_aluq),
         ._ac_sc      (seq__ac_sc),
@@ -621,6 +642,8 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         .exec1q      (seq_exec1q),
         .exec2q      (seq_exec2q),
         .exec3q      (seq_exec3q),
-        .irq         (seq_irq)
+        .irq         (seq_irq),
+        .nto         (seqnto),
+        .ntt         (seqntt)
     );
 endmodule

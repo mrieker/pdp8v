@@ -161,9 +161,10 @@ public class PulseModule extends Module implements ICombo, IVerilog {
     }
 
     @Override  // ICombo
-    public void printIComboCSource (PrintStream ps)
+    public int printIComboCSource (PrintStream ps)
     {
         printVerilog (ps, true);
+        return 4;
     }
 
     @Override  // IVerilog

@@ -20,7 +20,7 @@
 
 // emulate latch constructed the way the tube latches are
 
-module DLatModule (U, Q, _Q, D, G, _PC, _PS);
+module DLatModule (U, Q, _Q, D, G, _PC, _PS, nto);
     input   U;
     output  Q;
     output _Q;
@@ -29,27 +29,19 @@ module DLatModule (U, Q, _Q, D, G, _PC, _PS);
     input _PC;
     input _PS;
 
-    //reg Q, _Q;
+    wire ga, gb, gc, gd;
 
-    wire a, b, c, d;
+    StandCell anand (U, ga, G  & D);
+    StandCell bnand (U, gb, G  & ga);
+    StandCell cnand (U, gc, ga & gd & _PS);
+    StandCell dnand (U, gd, gb & gc & _PC);
 
-    StandCell anand (U, a, G & D);
-    StandCell bnand (U, b, G & a);
-    StandCell cnand (U, c, a & d & _PS);
-    StandCell dnand (U, d, b & c & _PC);
+    assign  Q = gc;
+    assign _Q = gd;
 
-    assign  Q = c;
-    assign _Q = d;
-
-    /*
-    always @(*) begin
-        if (~ _PC | ~ _PS) begin
-             Q <= ~ _PS;
-            _Q <= ~ _PC;
-        end else if (G) begin
-             Q <=   D;
-            _Q <= ~ D;
-        end
+    // number of gates that are one = number of triodes that are off
+    output reg[2:0] nto;
+    always @(posedge U) begin
+        nto <= ga + gb + gc + gd;
     end
-    */
 endmodule

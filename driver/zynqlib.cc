@@ -77,6 +77,19 @@ void ZynqLib::close ()
     memfd  = -1;
 }
 
+void ZynqLib::halfcycle (bool aluadd)
+{
+    // let the values written to gpio port soak into gates
+    TimedLib::halfcycle (aluadd);
+
+    // now read the stats as to how many gates are one = triodes are off
+    pthread_mutex_lock (&trismutex);
+    uint32_t nttnto = gpiopage[5];
+    numtrisoff += nttnto & 0xFFFFU;
+    ntotaltris += nttnto >> 16;
+    pthread_mutex_unlock (&trismutex);
+}
+
 // returns all signals with active high orientation
 uint32_t ZynqLib::readgpio ()
 {

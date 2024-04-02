@@ -4,6 +4,10 @@ dd=`dirname $dz`
 $dd/loadmod.sh
 . $dd/iowsns.si
 $dd/iowowner.sh
+if [ "$scriptini" == "" ]
+then
+    export scriptini=$dd/scriptini.tcl
+fi
 dbg=''
 if [ "$1" == "-gdb" ]
 then

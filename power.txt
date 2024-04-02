@@ -1,0 +1,14 @@
+
+front left filaments:    9 boards = 72 tubes = 72 x 2.5w = 180w
+front right filaments:  10 boards = 80 tubes = 200w
+rear left filaments:    11 boards = 88 tubes = 220w
+rear right filaments:   11 boards = 88 tubes = 220w
+
+left  120V * 45mA/board * 41 boards = 220w
+right  96V * 35mA/board * 41 boards = 140w
+right   5V * 12mA/board * 41 boards = 2.5w
+
+left total:  180+220+220 = 620w
+right total: 200+220+140 = 560w
+                          1180w
+

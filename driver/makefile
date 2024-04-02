@@ -4,7 +4,7 @@ TCLINC := -I/usr/include/tcl8.6
 GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
-LNKFLG := -ldl -lm -lpthread -lreadline -ltcl
+LNKFLG := -ldl -lm -lpthread -lreadline -lrt -ltcl
 RDCYC  := rdcyc-$(MACH).cc
 
 ifeq ($(MACH),armv6l)
@@ -21,7 +21,7 @@ LIBS = lib.a.$(MACH)
 
 .PRECIOUS: csrcmod_%.cc csrcmod_%.so.$(MACH)
 
-default: autoboardtest.$(MACH) gpioudpserver.$(MACH) loopedboardtest.$(MACH) \
+default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) loopedboardtest.$(MACH) \
 	manualboardtest.$(MACH) raspictl.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
@@ -35,6 +35,7 @@ lib.a.$(MACH): \
 		getexedir.o.$(MACH) \
 		gpiolib.o.$(MACH) \
 		iodevs.o.$(MACH) \
+		iodevdtape.o.$(MACH) \
 		iodevptape.o.$(MACH) \
 		iodevrk8.o.$(MACH) \
 		iodevrk8je.o.$(MACH) \
@@ -121,6 +122,9 @@ GUIRasPiCtl.h: GUIRasPiCtl.java
 	CLASSPATH=. javac -h . GUIRasPiCtl.java
 
 autoboardtest.$(MACH): autoboardtest.o.$(MACH) $(LIBS)
+	$(GPP) -o $@ $^ $(LNKFLG)
+
+dtapestatus.$(MACH): dtapestatus.o.$(MACH) $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 gpioudpserver.$(MACH): gpioudpserver.o.$(MACH) $(LIBS)

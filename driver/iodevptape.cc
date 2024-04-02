@@ -158,7 +158,7 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev ptape unload reader/punch");
     }
 
-    return new SCRetErr ("unknown ptape command %s - valid: load unload", argv[0]);
+    return new SCRetErr ("unknown ptape command %s - valid: help load unload", argv[0]);
 }
 
 // process paper tape I/O instruction

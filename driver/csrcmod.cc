@@ -58,18 +58,73 @@ CSrcMod::Var const *CSrcMod::findvar (char const *namestr, unsigned namelen)
 }
 
 // step a DFF state
+//  input:
+//        d = data signal
+//        t = clock signal
+//      _pc = preclear
+//      _ps = preset
+//    old_q = previous _Q output
+//     oldq = previous Q output
+//   *lastt = previous T input
+//     name = flipflop name
+//  output:
+//   *new_q = newly computed _Q output
+//    *newq = newly computed Q output
+//   *lastt = t
 void CSrcMod::DFFStep (bool d, bool t, bool _pc, bool _ps, bool old_q, bool oldq, bool *new_q, bool *newq, bool *lastt, char const *name)
 {
     if (!_pc | !_ps) {
          *newq = !_ps;
         *new_q = !_pc;
-    }
-    else if (t & !*lastt) {
-         *newq =  d;
-        *new_q = !d;
+
+        // _PC=1 _PS=0 : D=1 F=1 C=~t B=1 A=~d E=0
+        if (_pc) nto += (t ? 3 : 4) +   (d ? 0 : 1);
+
+        // _PC=0 : A=1 C=1 E=1 B=~t D=~_ps F=~_ps
+            else nto += (t ? 3 : 4) + (_ps ? 0 : 2);
     } else {
-         *newq =  oldq;
-        *new_q = old_q;
+        if (t & !*lastt) {
+             *newq =  d;
+            *new_q = !d;
+        } else {
+             *newq =  oldq;
+            *new_q = old_q;
+        }
+
+        if (! t) {
+            nto += 4;           // B=1, C=1
+                                // exactly 1 of A,D=1
+                                // exactly 1 of E,F=1
+        } else {
+
+            // handle case of flipflop now q=0
+            // since B=0 because d input was zero before clock edge,
+            // ...any change in d input will be ignored, A stays 1
+            if (! *newq) {
+                nto += 3;       // A=1
+                                // C=1
+                                // E=1
+            }
+
+            // handle case of flipflop now q=1
+            else {
+
+                // handle case of flipflop now q=1 and still d=1
+                if (d) {
+                    nto += 3;   // B=1
+                                // D=1
+                                // F=1
+                }
+
+                // handle case of flipflop now q=1 but now d=0
+                else {
+                    nto += 4;   // A=1
+                                // B=1
+                                // D=1
+                                // F=1
+                }
+            }
+        }
     }
     *lastt = t;
 }
@@ -80,9 +135,14 @@ void CSrcMod::DLatStep (bool d, bool g, bool _pc, bool _ps, bool *q, bool *_q, c
     if (!_pc | !_ps) {
          *q = !_ps;
         *_q = !_pc;
-    }
-    else if (g) {
-         *q =  d;
-        *_q = !d;
+        nto += (_pc ? 0 : 1) + (_ps ? 0 : 1) + (g ? 1 : 2);
+    } else {
+        if (g) {
+             *q =  d;
+            *_q = !d;
+            nto += 2;
+        } else {
+            nto += 3;
+        }
     }
 }

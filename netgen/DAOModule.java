@@ -220,9 +220,10 @@ public class DAOModule extends Module implements ICombo, IVerilog {
     }
 
     @Override  // ICombo
-    public void printIComboCSource (PrintStream ps)
+    public int printIComboCSource (PrintStream ps)
     {
         printVerilog (ps, true);
+        return 0;
     }
 
     @Override  // IVerilog

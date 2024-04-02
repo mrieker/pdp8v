@@ -188,7 +188,7 @@ SCRet *IODevRK8JE::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev rk8je unload <drivenumber>");
     }
 
-    return new SCRetErr ("unknown rk8je command %s - valid: loadro loadrw unload", argv[0]);
+    return new SCRetErr ("unknown rk8je command %s - valid: help loadro loadrw unload", argv[0]);
 }
 
 // perform i/o instruction

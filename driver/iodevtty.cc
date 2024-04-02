@@ -111,15 +111,20 @@ IODevTTY::IODevTTY (uint16_t iobase)
     // initialize struct elements
     pthread_cond_init (&this->prcond, NULL);
     pthread_mutex_init (&this->lock, NULL);
-    this->confd    = -1;
     this->intenab  = false;
     this->lastpc   = 0xFFFFU;
     this->lastin   = 0xFFFFU;
     this->lastout  = 0xFFFFU;
-    this->lisfd    = -1;
-    this->listid   = 0;
+    this->kbfd     = -1;
+    this->kbsetup  = false;
+    this->kbstdin  = false;
+    this->prfd     = -1;
+    this->tlfd     = -1;
+    this->kbtid    =  0;
+    this->prtid    =  0;
     this->mask8    = 0177;
-    this->prtid    = 0;
+    this->stopping = false;
+    this->telnetd  = false;
     this->usperchr = 1000000 / 120;
 }
 
@@ -133,22 +138,6 @@ IODevTTY::~IODevTTY ()
 // process commands from TCL script
 SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
 {
-    if (strcmp (argv[0], "help") == 0) {
-        puts ("");
-        puts ("valid sub-commands:");
-        puts ("");
-        puts ("  debug               - see if debug is enabled");
-        puts ("  debug 0             - disable debug printing");
-        puts ("  debug 1             - enable debug printing");
-        puts ("  speed               - see what simulated chars-per-second rate is");
-        puts ("  speed <charspersec> - set simulated chars-per-second rate");
-        puts ("                        allowed range 1..1000000");
-        puts ("  telnet <tcpport>    - start listening for telnet connection");
-        puts ("                        allowed range 1..65535");
-        puts ("");
-        return NULL;
-    }
-
     // debug [0/1]
     if (strcmp (argv[0], "debug") == 0) {
         if (argc == 1) {
@@ -160,7 +149,38 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
             return NULL;
         }
 
-        return new SCRetErr ("iodev tty debug [0/1]");
+        return new SCRetErr ("iodev %s debug [0/1]", iodevname);
+    }
+
+    if (strcmp (argv[0], "help") == 0) {
+        puts ("");
+        puts ("valid sub-commands:");
+        puts ("");
+        puts ("  debug               - see if debug is enabled");
+        puts ("  debug 0             - disable debug printing");
+        puts ("  debug 1             - enable debug printing");
+        puts ("  pipes <kb> [<pr>]   - use named pipes or /dev/pty/... for i/o");
+        puts ("                        <pr> defaults to same as <kb>");
+        puts ("                        dash (-) or dash dash (- -) means stdin and stdout");
+        puts ("  speed               - see what simulated chars-per-second rate is");
+        puts ("  speed <charspersec> - set simulated chars-per-second rate");
+        puts ("                        allowed range 1..1000000");
+        puts ("  telnet <tcpport>    - start listening for inbound telnet connection");
+        puts ("                        allowed range 1..65535");
+        puts ("");
+        return NULL;
+    }
+
+    // pipes <kb> <pr>
+    if (strcmp (argv[0], "pipes") == 0) {
+        if (argc == 2) {
+            return openpipes (argv[1], argv[1]);
+        }
+        if (argc == 3) {
+            return openpipes (argv[1], argv[2]);
+        }
+
+        return new SCRetErr ("iodev %s pipes <kb-pipe-or-pty-or-dash> [<pr-pipe-or-pty-or-dash>]", iodevname);
     }
 
     // speed <charpersec>
@@ -177,7 +197,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
             return NULL;
         }
 
-        return new SCRetErr ("iodev tty speed [<charpersec>]");
+        return new SCRetErr ("iodev %s speed [<charpersec>]", iodevname);
     }
 
     // telnet <tcpport>
@@ -194,12 +214,12 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
 
             int lfd = socket (AF_INET, SOCK_STREAM, 0);
             if (lfd < 0) {
-                fprintf (stderr, "IODevTTY::scriptcmd: socket error: %m\n");
+                fprintf (stderr, "IODevTTY::scriptcmd: %02o socket error: %m\n", iobasem3 + 3);
                 ABORT ();
             }
             int one = 1;
             if (setsockopt (lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
-                fprintf (stderr, "IODevTTY::scriptcmd: SO_REUSEADDR error: %m\n");
+                fprintf (stderr, "IODevTTY::scriptcmd: %02o SO_REUSEADDR error: %m\n", iobasem3 + 3);
                 ABORT ();
             }
             if (bind (lfd, (sockaddr *)&servaddr, sizeof servaddr) < 0) {
@@ -208,138 +228,182 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
                 return err;
             }
             if (listen (lfd, 1) < 0) {
-                fprintf (stderr, "IODevTTY::scriptcmd: listen error: %m\n");
+                fprintf (stderr, "IODevTTY::scriptcmd: %02o listen error: %m\n", iobasem3 + 3);
                 ABORT ();
             }
 
             pthread_mutex_lock (&this->lock);
             stopthreads ();
             this->servport = port;
-            startlisthread (lfd);
+            this->kbsetup  = false;
+            this->kbstdin  = false;
+
+            ASSERT (this->kbfd == -1);
+            ASSERT (this->prfd == -1);
+            ASSERT (this->tlfd == -1);
+            ASSERT (this->kbtid == 0);
+            ASSERT (this->prtid == 0);
+
+            this->tlfd = lfd;
+            this->telnetd = true;
+
+            int rc = pthread_create (&this->kbtid, NULL, tcpthreadwrap, this);
+            if (rc != 0) ABORT ();
+
             pthread_mutex_unlock (&this->lock);
             return NULL;
         }
 
-        return new SCRetErr ("iodev tty telnet <tcpport>");
+        return new SCRetErr ("iodev %s telnet <tcpport>", iodevname);
     }
 
-    return new SCRetErr ("unknown tty command %s - valid: debug speed telnet", argv[0]);
+    return new SCRetErr ("unknown tty command %s - valid: debug help pipes speed telnet", argv[0]);
 }
 
-// stop the listening, keyboard and printer threads
+// open the given pipes and start the threads
+SCRetErr *IODevTTY::openpipes (char const *kbname, char const *prname)
+{
+    bool kbstdin = strcmp (kbname, "-") == 0;
+    int kbfd = kbstdin ? dup (0) : open (kbname, O_RDONLY);
+    if (kbfd < 0) {
+        return new SCRetErr ("error opening %s: %m", kbname);
+    }
+    int prfd = (strcmp (prname, "-") == 0) ? dup (1) : open (prname, O_WRONLY);
+    if (prfd < 0) {
+        int en = errno;
+        close (kbfd);
+        errno = en;
+        return new SCRetErr ("error opening %s: %m", prname);
+    }
+
+    pthread_mutex_lock (&this->lock);
+    stopthreads ();
+
+    ASSERT (this->kbfd == -1);
+    ASSERT (this->prfd == -1);
+    ASSERT (this->tlfd == -1);
+    ASSERT (this->kbtid == 0);
+    ASSERT (this->prtid == 0);
+
+    this->kbfd = kbfd;
+    this->prfd = prfd;
+    this->telnetd = false;
+    this->kbstdin = kbstdin;
+
+    // if processor started doing i/o on this keyboard aleady
+    // ...set it to raw mode if keyboard is a tty
+    if (this->kbsetup) this->setkbrawmode ();
+
+    // start the threads going
+    int rc = pthread_create (&this->kbtid, NULL, kbthreadwrap, this);
+    if (rc != 0) ABORT ();
+
+    rc = pthread_create (&this->prtid, NULL, prthreadwrap, this);
+    if (rc != 0) ABORT ();
+
+    pthread_mutex_unlock (&this->lock);
+    return NULL;
+}
+
+// stop the keyboard and printer threads and close fds
+// call with mutex locked, returns with mutex locked
 void IODevTTY::stopthreads ()
 {
-    int lfd = this->lisfd;
-    if (lfd >= 0) {
+    // maybe another thread is stopping everything
+    while (this->stopping) {
+        pthread_cond_wait (&this->prcond, &this->lock);
+    }
 
-        // replace listening device with null device
+    // nothing else is trying to stop them, see if threads are stopped
+    if ((this->kbtid != 0) || (this->prtid != 0)) {
+
+        // if we had a keyboard set up, restore its attributes
+        if (this->kbsetup && (isatty (this->kbfd) > 0) && (tcsetattr (this->kbfd, TCSAFLUSH, &this->oldattr) < 0)) ABORT ();
+
+        // kb needs setup next time accessed
+        // this flag gets set only when an i/o instruction is executed for this terminal
+        // ...so we delay setting the attributes to raw until the processor starts using it
+        this->kbsetup = false;
+
+        // replace keyboard device with null device
         // ...so poll() will complete immediately if it hasn't begun
         int nullfd = open ("/dev/null", O_RDWR);
         if (nullfd < 0) ABORT ();
-        if (dup2 (nullfd, lfd) < 0) ABORT ();
 
-        // maybe that thread is reading keyboard,
+        int kbfd = this->kbfd;
+        if ((kbfd >= 0) && (dup2 (nullfd, kbfd) < 0)) ABORT ();
+
+        // same with printing device
         // make that poll() complete immediately if it hasn't begun
-        int cfd = this->confd;
-        if (cfd >= 0) {
-            if (dup2 (nullfd, cfd) < 0) ABORT ();
-            this->confd = -1;
-        }
+        int prfd = this->prfd;
+        if ((prfd >= 0) && (dup2 (nullfd, prfd) < 0)) ABORT ();
+
+        // maybe there is a tcp listener going
+        // make that poll() complete immediately if it hasn't begun
+        int tlfd = this->tlfd;
+        if ((tlfd >= 0) && (dup2 (nullfd, tlfd) < 0)) ABORT ();
+
         close (nullfd);
 
-        // tell listhread() that we want it to exit
-        this->lisfd = -2;
+        // in case prthread() is blocked waiting for processor to print something
+        pthread_cond_broadcast (&this->prcond);
+
+        // tell threads to exit
+        this->kbfd = -1;
+        this->prfd = -1;
+        this->tlfd = -1;
+        this->stopping = true;
         pthread_mutex_unlock (&this->lock);
 
-        // if it is in poll(), break it out
-        pthread_kill (this->listid, SIGCHLD);
+        // break them out of poll()s
+        if (this->kbtid != 0) pthread_kill (this->kbtid, SIGCHLD);
+        if (this->prtid != 0) pthread_kill (this->prtid, SIGCHLD);
 
-        // wait for listhread() to exit
-        pthread_join (this->listid, NULL);
+        // wait for threads to exit
+        if (this->kbtid != 0) pthread_join (this->kbtid, NULL);
+        if (this->prtid != 0) pthread_join (this->prtid, NULL);
+
+        // the threads are no longer running
         pthread_mutex_lock (&this->lock);
+        this->stopping = false;
+        this->kbtid = 0;
+        this->prtid = 0;
 
-        // tell anyone who cares that listhread() has exited
+        // tell anyone who cares that threads have exited
         pthread_cond_broadcast (&this->prcond);
-    } else {
-
-        // wait for other thread in stopthreads() to finish killing listhread()
-        while (this->lisfd < -1) {
-            pthread_cond_wait (&this->prcond, &this->lock);
-        }
     }
 
-    ASSERT (this->lisfd == -1);
-    ASSERT (this->confd == -1);
+    ASSERT (this->kbfd == -1);
+    ASSERT (this->prfd == -1);
+    ASSERT (this->tlfd == -1);
+    ASSERT (this->kbtid == 0);
+    ASSERT (this->prtid == 0);
 }
 
-// start listen thread in non-script mode using default TCP port
-void IODevTTY::startdeflisten ()
+void *IODevTTY::tcpthreadwrap (void *zhis)
 {
-    struct sockaddr_in servaddr;
-    memset (&servaddr, 0, sizeof servaddr);
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons (this->servport);
-
-    int lfd = socket (AF_INET, SOCK_STREAM, 0);
-    if (lfd < 0) {
-        fprintf (stderr, "IODevTTY::startdeflisten: socket error: %m\n");
-        ABORT ();
-    }
-    int one = 1;
-    if (setsockopt (lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) < 0) {
-        fprintf (stderr, "IODevTTY::startdeflisten: SO_REUSEADDR error: %m\n");
-        ABORT ();
-    }
-    if (bind (lfd, (sockaddr *)&servaddr, sizeof servaddr) < 0) {
-        fprintf (stderr, "IODevTTY::startdeflisten: bind %d error: %m\n", this->servport);
-        ABORT ();
-    }
-    if (listen (lfd, 1) < 0) {
-        fprintf (stderr, "IODevTTY::startdeflisten: listen error: %m\n");
-        ABORT ();
-    }
-
-    this->startlisthread (lfd);
-}
-
-// start thread to listen for incoming connection
-void IODevTTY::startlisthread (int lfd)
-{
-    ASSERT (this->lisfd == -1);
-    ASSERT (this->confd == -1);
-    ASSERT (this->listid == 0);
-    ASSERT (this->prtid  == 0);
-
-    this->lisfd = lfd;
-
-    int rc = pthread_create (&this->listid, NULL, listhreadwrap, this);
-    if (rc != 0) ABORT ();
-}
-
-void *IODevTTY::listhreadwrap (void *zhis)
-{
-    ((IODevTTY *)zhis)->listhread ();
+    ((IODevTTY *)zhis)->tcpthread ();
     return NULL;
 }
 
 // listen for incoming telnet connection
 // process that one connection until it terminates or we are killed
-void IODevTTY::listhread ()
+void IODevTTY::tcpthread ()
 {
     pthread_mutex_lock (&this->lock);
-    while (this->lisfd >= 0) {
+    while (this->tlfd >= 0) {
 
-        fprintf (stderr, "IODevTTY::listhread: %02o listening on %d\n", iobasem3 + 3, this->servport);
+        fprintf (stderr, "IODevTTY::tcpthread: %02o listening on %d\n", iobasem3 + 3, this->servport);
 
         // wait for a connection to be available
         // use a poll() so we can be aborted by stopthreads()
-        struct pollfd pfd = { this->lisfd, POLLIN, 0 };
+        struct pollfd pfd = { this->tlfd, POLLIN, 0 };
         while (true) {
             pthread_mutex_unlock (&this->lock);
             int rc = poll (&pfd, 1, -1);
             int en = errno;
             pthread_mutex_lock (&this->lock);
-            if (this->lisfd < 0) goto done;
+            if (this->tlfd < 0) goto done;
             if (rc > 0) break;
             if ((rc == 0) || (en != EINTR)) ABORT ();
         }
@@ -348,16 +412,16 @@ void IODevTTY::listhread ()
         struct sockaddr_in clinaddr;
         memset (&clinaddr, 0, sizeof clinaddr);
         socklen_t addrlen = sizeof clinaddr;
-        int cfd = accept (this->lisfd, (sockaddr *)&clinaddr, &addrlen);
+        int cfd = accept (this->tlfd, (sockaddr *)&clinaddr, &addrlen);
         if (cfd < 0) {
-            fprintf (stderr, "IODevTTY::listhread: accept error: %m\n");
+            fprintf (stderr, "IODevTTY::tcpthread: %02o accept error: %m\n", iobasem3 + 3);
             continue;
         }
         int one = 1;
         if (setsockopt (cfd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one) < 0) {
             ABORT ();
         }
-        fprintf (stderr, "IODevTTY::listhread: %02o accepted from %s:%d\n",
+        fprintf (stderr, "IODevTTY::tcpthread: %02o accepted from %s:%d\n",
             iobasem3 + 3, inet_ntoa (clinaddr.sin_addr), ntohs (clinaddr.sin_port));
 
         // ref: http://support.microsoft.com/kb/231866
@@ -372,33 +436,63 @@ void IODevTTY::listhread ()
 
         int rc = write (cfd, initmodes, sizeof initmodes);
         if (rc < 0) {
-            fprintf (stderr, "IODevTTY::listhread: write error: %m\n");
+            fprintf (stderr, "IODevTTY::tcpthread: %02o write error: %m\n", iobasem3 + 3);
             ABORT ();
         }
         if (rc != sizeof initmodes) {
-            fprintf (stderr, "IODevTTY::listhread: only wrote %d of %d chars\n", rc, (int) sizeof initmodes);
+            fprintf (stderr, "IODevTTY::tcpthread: %02o only wrote %d of %d chars\n", iobasem3 + 3, rc, (int) sizeof initmodes);
             ABORT ();
         }
 
-        this->confd = cfd;
+        this->kbfd = cfd;
+        this->prfd = dup (cfd); // separate fd so stopthreads() won't double-close the same fd
+        if (this->prfd < 0) ABORT ();
 
+        // do printer stuff in separate thread
         rc = pthread_create (&this->prtid, NULL, prthreadwrap, this);
         if (rc != 0) ABORT ();
 
+        // process keyboard stuff in this thread
         this->kbthreadlk ();
-        ASSERT (this->confd < 0);
+        ASSERT (this->kbfd < 0);
 
-        pthread_cond_broadcast (&this->prcond);
-        pthread_mutex_unlock (&this->lock);
-        pthread_join (this->prtid, NULL);
+        // stop printer thread and close channel
+        if (this->prfd >= 0) {
 
-        pthread_mutex_lock (&this->lock);
-        this->prtid = 0;
+            // replace tcp connection with /dev/null so poll() will complete immediately if it hasn't started yet
+            int nullfd = open ("/dev/null", O_RDWR);
+            if (nullfd < 0) ABORT ();
+            if (dup2 (nullfd, this->prfd) < 0) ABORT ();
+            close (nullfd);
+
+            // wake prthread() out of pthread_cond_wait() if it is in one or just about to
+            pthread_cond_broadcast (&this->prcond);
+            pthread_mutex_unlock (&this->lock);
+
+            // break it out of poll() if it is in one for the actual tcp connection
+            pthread_kill (this->prtid, SIGCHLD);
+
+            // wait for prthread() to exit
+            pthread_join (this->prtid, NULL);
+            pthread_mutex_lock (&this->lock);
+            this->prtid = 0;
+
+            // it should have closed its fd
+            ASSERT (this->prfd < 0);
+        }
     }
 done:;
-    ASSERT (this->confd < 0);
-    this->lisfd = -1;
+    ASSERT (this->kbfd < 0);
+    ASSERT (this->prfd < 0);
     pthread_mutex_unlock (&this->lock);
+}
+
+void *IODevTTY::kbthreadwrap (void *zhis)
+{
+    pthread_mutex_lock (&((IODevTTY *)zhis)->lock);
+    ((IODevTTY *)zhis)->kbthreadlk ();
+    pthread_mutex_unlock (&((IODevTTY *)zhis)->lock);
+    return NULL;
 }
 
 void IODevTTY::kbthreadlk ()
@@ -407,11 +501,11 @@ void IODevTTY::kbthreadlk ()
     uint64_t nextreadus = getnowus ();
 
     // make sure we aren't aborted
-    while (this->confd >= 0) {
+    while (this->kbfd >= 0) {
 
         // wait for a character to be available
         // use a poll() so we can be aborted by stopthreads()
-        struct pollfd pfd = { this->confd, POLLIN, 0 };
+        struct pollfd pfd = { this->kbfd, POLLIN, 0 };
         while (true) {
             pthread_mutex_unlock (&this->lock);
 
@@ -432,7 +526,7 @@ void IODevTTY::kbthreadlk ()
 
             // return if connection fd has been closed
             pthread_mutex_lock (&this->lock);
-            if (this->confd < 0) return;
+            if (this->kbfd < 0) return;
 
             // break out of loop if char ready to be read
             if (rc > 0) break;
@@ -442,18 +536,21 @@ void IODevTTY::kbthreadlk ()
         }
 
         // we know a char is available (or eof), read it
-        int rc = read (this->confd, &this->kbbuff, 1);
+        int rc = read (this->kbfd, &this->kbbuff, 1);
         if (rc <= 0) {
-            if (rc == 0) fprintf (stderr, "IODevTTY::kbthread: %02o eof reading from link\n", iobasem3 + 3);
-              else fprintf (stderr, "IODevTTY::kbthread: %02o error reading from link: %m\n", iobasem3 + 3);
-            close (this->confd);
-            this->confd = -1;
+            if (rc == 0) fprintf (stderr, "IODevTTY::kbthread: %02o eof reading from pipe\n", iobasem3 + 3);
+              else fprintf (stderr, "IODevTTY::kbthread: %02o error reading from pipe: %m\n", iobasem3 + 3);
+            if ((isatty (this->kbfd) > 0) && (tcsetattr (this->kbfd, TCSAFLUSH, &this->oldattr) < 0)) ABORT ();
+            close (this->kbfd);
+            this->kbfd = -1;
             break;
         }
 
         // discard telnet IAC x x sequences
-        if (this->kbbuff == 255) skipchars = 3;
-        if ((skipchars > 0) && (-- skipchars >= 0)) continue;
+        if (this->telnetd) {
+            if (this->kbbuff == 255) skipchars = 3;
+            if ((skipchars > 0) && (-- skipchars >= 0)) continue;
+        }
 
         // pdp-8 software likes top bit set (eg, focal, os/8)
         this->kbbuff |= ~ this->mask8;
@@ -484,7 +581,7 @@ void IODevTTY::prthread ()
     pthread_mutex_lock (&this->lock);
 
     // make sure we aren't aborted
-    while (this->confd >= 0) {
+    while (this->prfd >= 0) {
 
         // make sure there is another character to print
         if (! this->prfull) {
@@ -494,7 +591,7 @@ void IODevTTY::prthread ()
 
         // wait for a character room to be available
         // use a poll() so we can be aborted by stopthreads()
-        struct pollfd pfd = { this->confd, POLLOUT, 0 };
+        struct pollfd pfd = { this->prfd, POLLOUT, 0 };
         while (true) {
             pthread_mutex_unlock (&this->lock);
 
@@ -506,7 +603,6 @@ void IODevTTY::prthread ()
                 continue;
             }
 
-
             // it's been a while, so block here until line has room for char
             // this can get sigint'd by stopthreads()
             int rc = poll (&pfd, 1, -1);
@@ -514,7 +610,7 @@ void IODevTTY::prthread ()
 
             // return if connection fd has been closed
             pthread_mutex_lock (&this->lock);
-            if (this->confd < 0) goto done;
+            if (this->prfd < 0) goto done;
 
             // break out of loop if room for char
             if (rc > 0) break;
@@ -532,12 +628,12 @@ void IODevTTY::prthread ()
         this->prbuff &= this->mask8;
 
         // we know there is room, write it
-        int rc = write (this->confd, &this->prbuff, 1);
+        int rc = write (this->prfd, &this->prbuff, 1);
         if (rc <= 0) {
             if (rc == 0) fprintf (stderr, "IODevTTY::prthread: %02o eof writing to link\n", iobasem3 + 3);
               else fprintf (stderr, "IODevTTY::prthread: %02o error writing to link: %m\n", iobasem3 + 3);
-            close (this->confd);
-            this->confd = -1;
+            close (this->prfd);
+            this->prfd = -1;
             goto done;
         }
 
@@ -550,6 +646,46 @@ void IODevTTY::prthread ()
     }
 done:;
     pthread_mutex_unlock (&this->lock);
+}
+
+// a tty i/o instruction has been detected, set up keyboard
+void IODevTTY::dokbsetup ()
+{
+    // if kb not open in non-script mode for the default tty, open stdin/stdout
+    if ((this->kbfd < 0) && ! scriptmode && (iobasem3 == 0)) {
+        pthread_mutex_unlock (&this->lock);
+        fprintf (stderr, "IODevTTY::ioinstr: %02o connecting to stdin/stdout\n", iobasem3 + 3);
+        SCRetErr *reterr = this->openpipes ("-", "-");
+        if (reterr != NULL) {
+            fprintf (stderr, "IODevTTY::ioinstr: %02o error opening stdin/stdout: %s\n", iobasem3 + 3, reterr->msg);
+            ABORT ();
+        }
+        pthread_mutex_lock (&this->lock);
+        ASSERT (this->kbfd >= 0);
+        ASSERT (this->prfd >= 0);
+    }
+
+    // if using a tty, set it to raw mode
+    if (! this->kbsetup && (this->kbfd >= 0)) this->setkbrawmode ();
+
+    // keyboard is now set up
+    // if this->kbfd is < 0, we didn't set it up, but when it gets opened, it will set itself up
+    this->kbsetup = true;
+}
+
+// if using a tty, set it to raw mode
+void IODevTTY::setkbrawmode ()
+{
+    if (isatty (this->kbfd) > 0) {
+        if (tcgetattr (this->kbfd, &this->oldattr) < 0) ABORT ();
+        struct termios newattr = this->oldattr;
+        cfmakeraw (&newattr);
+        newattr.c_oflag |= OPOST;       // still insert CR before LF on output
+        if (this->kbstdin) {
+            newattr.c_lflag |= ISIG;    // for stdin, still handle ^C, ^Z
+        }
+        if (tcsetattr (this->kbfd, TCSAFLUSH, &newattr) < 0) ABORT ();
+    }
 }
 
 // reset the device
@@ -578,12 +714,11 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
 {
     pthread_mutex_lock (&this->lock);
 
-    uint16_t oldinput = input;
+    // if no listener going in non-script mode, open stdin/stdout
+    // also set it to raw if it is a tty device
+    if (! this->kbsetup) this->dokbsetup ();
 
-    // if no listener going in non-script mode, start a default listener
-    if ((this->lisfd < 0) && ! scriptmode) {
-        this->startdeflisten ();
-    }
+    uint16_t oldinput = input;
 
     // process opcode
     switch (opcode - iobasem3 * 010) {

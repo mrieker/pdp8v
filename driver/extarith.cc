@@ -126,7 +126,7 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev eae set mq/gt/mode/sc <value>");
     }
 
-    return new SCRetErr ("unknown eae command %s - valid: get set", argv[0]);
+    return new SCRetErr ("unknown eae command %s - valid: get help set", argv[0]);
 }
 
 // process an EAE instruction

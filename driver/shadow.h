@@ -80,6 +80,7 @@ struct Shadow {
     void clock (uint32_t sample);
     bool aluadd ();
     uint64_t getcycles ();
+    uint64_t getinstrs ();
     uint32_t readgpio (bool irq);
 
     SCRet *scriptcmd (int argc, char const *const *argv);
@@ -94,6 +95,7 @@ private:
     GpioLib *gpiolib;
     uint16_t alu;
     uint64_t cycle;
+    uint64_t instr;
 
     Regs saveregs[NSAVEREGS];
 

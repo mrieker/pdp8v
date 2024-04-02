@@ -368,7 +368,7 @@ public class DLatModule extends Module {
         }
 
         @Override  // ICombo
-        public void printIComboCSource (PrintStream ps)
+        public int printIComboCSource (PrintStream ps)
         {
             String instname = Network.getVeriName (true, name) + "_" + rbit;
             ps.println ("    DLatStep (" +
@@ -379,6 +379,7 @@ public class DLatModule extends Module {
                     cnand.getOutput ().getVeriName (true) + ", &" +
                     dnand.getOutput ().getVeriName (true) + ", \"" +
                     instname + "\");");
+            return 4;
         }
 
         @Override  // IVerilog

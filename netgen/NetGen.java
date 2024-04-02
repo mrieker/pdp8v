@@ -1073,20 +1073,6 @@ public class NetGen {
         }
         ps.println ("};");
 
-        // output C-callable wrapper for the constructor (accessible to dlopen())
-        ps.println ();
-        ps.println ("extern \"C\" { " + structbase + " *" + structname + "_ctor (); }");
-        ps.println (structbase + " *" + structname + "_ctor ()");
-        ps.println ("{");
-        ps.println ("    return new " + structname + " ();");
-        ps.println ("}");
-
-        // output constructor to fill in pointer to the boolean and variable descriptor arrays
-        ps.println ();
-        ps.println (structname + "::" + structname + " ()");
-        ps.println ("    : " + structbase + " (boolarray, " + bai + ", vv, " + genmod.variables.size () + ", \"" + genmod.name + "\")");
-        ps.println ("{ }");
-
         // get list of all networks driven by combinational logic
         // - Gates and DAOModules and DLatModules
         //   DLats are considered combo logic
@@ -1117,8 +1103,9 @@ public class NetGen {
         }
 
         // output combos in order of dependency
+        int numtotaltriodes = 0;
         int logiclevel = 0;
-        ps.println ("\nvoid " + structname + "::stepstatework ()\n{");
+        ps.println ("\nvoid " + structname + "::stepstatework ()\n{\n    nto = 0;");
         while (remainingcombonetworks.size () > 0) {
             boolean didsomething = false;
             TreeMap<String,ICombo> levelcombos = new TreeMap<> ();
@@ -1145,7 +1132,7 @@ public class NetGen {
                 }
             }
             for (ICombo icombo : levelcombos.values ()) {
-                icombo.printIComboCSource (ps);
+                numtotaltriodes += icombo.printIComboCSource (ps);
             }
             ps.println ("  // level " + ++ logiclevel + " complete");
             ps.println ();
@@ -1173,12 +1160,28 @@ public class NetGen {
 
         // output code to update flipflops
         for (ISequen isequen : genctx.isequens.values ()) {
-            isequen.printISequenKer (ps);
+            numtotaltriodes += isequen.printISequenKer (ps);
         }
         ps.println ();
         for (ISequen isequen : genctx.isequens.values ()) {
             isequen.printISequenChunk (ps);
         }
+        ps.println ("}");
+
+        // output C-callable wrapper for the constructor (accessible to dlopen())
+        ps.println ();
+        ps.println ("extern \"C\" { " + structbase + " *" + structname + "_ctor (); }");
+        ps.println (structbase + " *" + structname + "_ctor ()");
+        ps.println ("{");
+        ps.println ("    return new " + structname + " ();");
+        ps.println ("}");
+
+        // output constructor to fill in pointer to the boolean and variable descriptor arrays
+        ps.println ();
+        ps.println (structname + "::" + structname + " ()");
+        ps.println ("    : " + structbase + " (boolarray, " + bai + ", vv, " + genmod.variables.size () + ", \"" + genmod.name + "\")");
+        ps.println ("{");
+        ps.println ("    ntt = " + numtotaltriodes + ";");
         ps.println ("}");
 
         // output gpio and connector access code

@@ -36,6 +36,7 @@
 #define IRQ_PTAPE     00040
 #define IRQ_RTC       00100
 #define IRQ_RK8       00200
+#define IRQ_DTAPE     00400
 
 typedef unsigned long long LLU; // for printf %llu format
 
@@ -49,6 +50,7 @@ extern bool os8zap;
 extern bool quiet;
 extern bool randmem;
 extern bool scriptmode;
+extern bool waitingforinterrupt;
 extern char **cmdargv;
 extern char const *haltreason;
 extern GpioLib *gpio;

@@ -542,7 +542,7 @@ public class DFFModule extends Module {
         { }
 
         @Override  // ISequen
-        public void printISequenKer (PrintStream ps)
+        public int printISequenKer (PrintStream ps)
         {
             String instname = Network.getVeriName (true, name) + "_" + rbit;
             String dinput = datnet.getVeriName (true);
@@ -557,6 +557,7 @@ public class DFFModule extends Module {
                     enand.getOutput ().getVeriName (true) + "_step, &" +
                     fnand.getOutput ().getVeriName (true) + "_step, &" +
                     instname + "_lastt, \"" + instname + "\");");
+            return 6;
         }
 
         @Override  // ISequen

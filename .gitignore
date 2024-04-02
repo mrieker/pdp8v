@@ -25,6 +25,7 @@
 *.tgz
 *.x86_64
 .nfs*
+fp-info-cache
 GUI.jar
 GUIRasPiCtl.h
 libGUIRasPiCtl.*.so

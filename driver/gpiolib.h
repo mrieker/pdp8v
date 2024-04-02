@@ -22,7 +22,9 @@
 #define _GPIOLIB_H
 
 #include <netinet/in.h>
+#include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string>
 
@@ -79,7 +81,11 @@ struct Shadow;
 #define NPADS 4  // number of paddles
 struct GpioLib {
     char const *libname;
+    pthread_mutex_t trismutex;
+    uint64_t numtrisoff;
+    uint64_t ntotaltris;
 
+    GpioLib ();
     virtual ~GpioLib ();
     virtual void open () = 0;
     virtual void close () = 0;
@@ -234,6 +240,7 @@ struct ZynqLib : TimedLib {
     virtual ~ZynqLib ();
     virtual void open ();
     virtual void close ();
+    virtual void halfcycle (bool aluadd);
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();

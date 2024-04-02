@@ -42,6 +42,7 @@ Shadow::Shadow ()
     printinstr = false;
     printstate = false;
     cycle = 0;
+    instr = 0;
 }
 
 // gpiolib = instance of PhysLib: verify physical cpu board
@@ -63,8 +64,12 @@ void Shadow::reset ()
     maknown = false;
 
     if (printstate) {
-        printf ("0 STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
+        printf ("        0 STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
             r.link, r.ac, r.pc, r.ir, r.ma);
+        pthread_mutex_lock (&gpiolib->trismutex);
+        gpiolib->numtrisoff = 0;
+        gpiolib->ntotaltris = 0;
+        pthread_mutex_unlock (&gpiolib->trismutex);
     }
 }
 
@@ -85,14 +90,15 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
             } else {
                 dis = this->r.reset ? "RESET" : "";
             }
-            return new SCRetStr ("ac=%05o;cycle=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;state=%s;disas=%s",
-                this->r.ac, (LLU) this->getcycles (), this->r.ir, this->r.link, this->r.ma, this->r.pc,
+            return new SCRetStr ("ac=%05o;cycle=%llu;instr=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;state=%s;disas=%s",
+                this->r.ac, (LLU) this->getcycles (), (LLU) this->getinstrs(), this->r.ir, this->r.link, this->r.ma, this->r.pc,
                 statestr (this->r.state), dis);
         }
 
         if (argc == 2) {
             if (strcmp (argv[1], "ac")    == 0) return new SCRetInt  (this->r.ac);
             if (strcmp (argv[1], "cycle") == 0) return new SCRetLong (this->getcycles ());
+            if (strcmp (argv[1], "instr") == 0) return new SCRetLong (this->getinstrs ());
             if (strcmp (argv[1], "ir")    == 0) return new SCRetInt  (this->r.ir);
             if (strcmp (argv[1], "link")  == 0) return new SCRetInt  (this->r.link);
             if (strcmp (argv[1], "ma")    == 0) return new SCRetInt  (this->r.ma);
@@ -114,7 +120,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
             }
         }
 
-        return new SCRetErr ("cpu get [ac/cycle/ir/link/ma/pc/state/disas]");
+        return new SCRetErr ("cpu get [ac/cycle/instr/ir/link/ma/pc/state/disas]");
     }
 
     if (strcmp (argv[0], "help") == 0) {
@@ -129,6 +135,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("  ac    - accumulator");
         puts ("  cycle - cycle count");
+        puts ("  instr - instruction count");
         puts ("  ir    - instruction register (full 12 bits)");
         puts ("  link  - link bit");
         puts ("  ma    - memory address");
@@ -223,7 +230,7 @@ void Shadow::clock (uint32_t sample)
                 fputs (buf, stdout);
             }
             if (printstate) {
-                printf ("%llu                fetched %04o : %s\n", (LLU) cycle, r.ir, disassemble (r.ir, r.pc).c_str ());
+                printf ("%9llu                fetched %04o : %s\n", (LLU) cycle, r.ir, disassemble (r.ir, r.pc).c_str ());
             }
             r.pc = (r.pc + 1) & 07777;
             if ((r.ir < 06000) && (r.ir & 00400)) {
@@ -231,6 +238,11 @@ void Shadow::clock (uint32_t sample)
             } else {
                 r.state = firstexecstate ();
             }
+            #if UNIPROC
+                instr ++;
+            #else
+                __atomic_add_fetch (&instr, 1, __ATOMIC_RELAXED);
+            #endif
             break;
         }
 
@@ -449,8 +461,22 @@ void Shadow::clock (uint32_t sample)
 #endif
 
     if (printstate) {
-        printf ("%llu STARTING STATE %-6s  L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
+        pthread_mutex_lock (&gpiolib->trismutex);
+        uint64_t ntt = gpiolib->ntotaltris;
+        uint64_t nto = ntt - gpiolib->numtrisoff;
+        gpiolib->numtrisoff = 0;
+        gpiolib->ntotaltris = 0;
+        pthread_mutex_unlock (&gpiolib->trismutex);
+        char line[96];
+        int rc = snprintf (line, sizeof line,
+            "%9llu STARTING STATE %-6s  L=%o AC=%04o PC=%04o IR=%04o MA=%04o",
             (LLU) cycle, statestr (r.state), r.link, r.ac, r.pc, r.ir, r.ma);
+        ASSERT (rc > 0);
+        if (ntt > 0) {
+            rc += snprintf (line + rc, sizeof line - rc, "  trison=%llu/%llu=%5.2f%%",
+                (LLU) nto / 2, (LLU) ntt / 2, nto * 100.0 / ntt);
+        }
+        puts (line);
     }
 }
 
@@ -804,6 +830,15 @@ uint64_t Shadow::getcycles ()
     return cycle;
 #else
     return __atomic_load_n (&cycle, __ATOMIC_RELAXED);
+#endif
+}
+
+uint64_t Shadow::getinstrs ()
+{
+#if UNIPROC
+    return instr;
+#else
+    return __atomic_load_n (&instr, __ATOMIC_RELAXED);
 #endif
 }
 

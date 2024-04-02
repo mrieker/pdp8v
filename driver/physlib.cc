@@ -1168,10 +1168,10 @@ void PhysLib::delayiow ()
 // so block signals while they are running
 void PhysLib::blocksigint ()
 {
-    if (sigprocmask (SIG_BLOCK, &sigintmask, NULL) < 0) ABORT ();
+    if (pthread_sigmask (SIG_BLOCK, &sigintmask, NULL) != 0) ABORT ();
 }
 
 void PhysLib::allowsigint ()
 {
-    if (sigprocmask (SIG_UNBLOCK, &sigintmask, NULL) < 0) ABORT ();
+    if (pthread_sigmask (SIG_UNBLOCK, &sigintmask, NULL) != 0) ABORT ();
 }

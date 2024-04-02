@@ -27,6 +27,13 @@
 #include "gpiolib.h"
 #include "pindefs.h"
 
+GpioLib::GpioLib ()
+{
+    pthread_mutex_init (&trismutex, NULL);
+    numtrisoff = 0;
+    ntotaltris = 0;
+}
+
 GpioLib::~GpioLib ()
 { }
 

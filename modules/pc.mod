@@ -33,7 +33,7 @@ module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00
     clok0c  = ~ _clok1;
 
     _reseta = ~ reset;          // each DFF _PC input has load 3
-    _resetb = ~ reset;          // so load 36 requires 3 drivers
+    _resetb = ~ reset;          // so load 36 requires 4 drivers
     _resetc = ~ reset;
     _resetd = ~ reset;
 

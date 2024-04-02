@@ -25,6 +25,7 @@
 #include "abcd.h"
 #include "binloader.h"
 #include "controls.h"
+#include "disassemble.h"
 #include "iodevs.h"
 #include "linkloader.h"
 #include "memext.h"
@@ -54,6 +55,7 @@ void runscript (char const *argv0, char const *filename)
 
 static Tcl_ObjCmdProc cmd_alliodevs;
 static Tcl_ObjCmdProc cmd_cpu;
+static Tcl_ObjCmdProc cmd_disasop;
 static Tcl_ObjCmdProc cmd_gpio;
 static Tcl_ObjCmdProc cmd_halfcycle;
 static Tcl_ObjCmdProc cmd_halt;
@@ -82,6 +84,7 @@ struct FunDef {
 static FunDef fundefs[] = {
     { cmd_alliodevs,  "alliodevs",  "list all i/o devices for iodev command" },
     { cmd_cpu,        "cpu",        "access shadow state" },
+    { cmd_disasop,    "disasop",    "disassemble opcode" },
     { cmd_gpio,       "gpio",       "access gpio state" },
     { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
     { cmd_halt,       "halt",       "halt processor" },
@@ -119,6 +122,22 @@ static void *tclthread (void *fnv)
     // wait for raspictl main initialization to complete
     ctl_wait ();
 
+    // maybe there is a script init file
+    char const *scriptini = getenv ("scriptini");
+    char *inihelp = NULL;
+    if (scriptini != NULL) {
+        int rc = Tcl_EvalFile (interp, scriptini);
+        if (rc != TCL_OK) {
+            char const *err = Tcl_GetStringResult (interp);
+            if ((err == NULL) || (err[0] == 0)) fprintf (stderr, "script: error %d evaluating scriptini %s\n", rc, scriptini);
+                                  else fprintf (stderr, "script: error %d evaluating scriptini %s: %s\n", rc, scriptini, err);
+            Tcl_EvalEx (interp, "puts $::errorInfo", -1, TCL_EVAL_GLOBAL);
+            ABORT ();
+        }
+        char const *res = Tcl_GetStringResult (interp);
+        if ((res != NULL) && (res[0] != 0)) inihelp = strdup (res);
+    }
+
     // if given a filename, process that file as a whole
     if (strcmp (fn, "-") != 0) {
         int rc = Tcl_EvalFile (interp, fn);
@@ -134,6 +153,10 @@ static void *tclthread (void *fnv)
     // either way, prompt and process commands from stdin
     // to have a script file with no stdin processing, end script file with 'run ; wait ; exit'
     puts ("\nTCL scripting, do 'help' for raspictl-specific commands");
+    if (inihelp != NULL) {
+        puts (inihelp);
+        free (inihelp);
+    }
     for (char const *line;;) {
         ctrlcflag = false;
         line = readprompt ("raspictl> ");
@@ -201,6 +224,42 @@ static int cmd_cpu (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj
 
     // process return value
     return procscret (interp, scret);
+}
+
+// disassemble opcode
+static int cmd_disasop (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    if ((objc < 2) || (objc > 3)) {
+        Tcl_SetResult (interp, (char *) "wrong number srgs", TCL_STATIC);
+        return TCL_ERROR;
+    }
+
+    if (strcmp (Tcl_GetString (objv[1]), "help") == 0) {
+        puts ("");
+        puts ("  disasop <opcode> [<address>]");
+        puts ("");
+        puts ("  returns string giving disassembly of opcode at that address");
+        puts ("");
+        return TCL_OK;
+    }
+
+    int ir = 00000;
+    int pc = 07777;
+    int rc = Tcl_GetIntFromObj (interp, objv[1], &ir);
+    if (rc != TCL_OK) return rc;
+    if (objc > 2) {
+        rc = Tcl_GetIntFromObj (interp, objv[2], &pc);
+        if (rc != TCL_OK) return rc;
+    }
+
+    char const *ioin = iodisas (ir);
+    if (ioin != NULL) {
+        Tcl_SetResult (interp, (char *) ioin, TCL_STATIC);
+    } else {
+        std::string opcd = disassemble (ir, pc);
+        Tcl_SetResult (interp, strdup (opcd.c_str ()), (void (*) (char *)) free);
+    }
+    return TCL_OK;
 }
 
 // get gpio state (actual tube state)
@@ -639,7 +698,7 @@ static int cmd_help (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
 {
     puts ("");
     for (int i = 0; fundefs[i].help != NULL; i ++) {
-        printf ("  %9s - %s\n", fundefs[i].name, fundefs[i].help);
+        printf ("  %10s - %s\n", fundefs[i].name, fundefs[i].help);
     }
     puts ("");
     puts ("for help on specific command, do '<command> help'");

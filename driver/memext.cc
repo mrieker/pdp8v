@@ -239,7 +239,7 @@ SCRet *MemExt::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev memext set df/iduj/ie/ieaf/if/ifaj/sdf/sif/suf/uf/ufaj <value>");
     }
 
-    return new SCRetErr ("unknown memext command %s - valid: get set", argv[0]);
+    return new SCRetErr ("unknown memext command %s - valid: get help set", argv[0]);
 }
 
 // called in INTAK1 when acknowledging interrupt request

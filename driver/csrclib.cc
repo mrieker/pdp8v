@@ -160,6 +160,11 @@ void CSrcLib::halfcycle ()
         // it should stabilize
     } while (memcmp (backing, module->boolarray, sizeof backing) != 0);
 
+    pthread_mutex_lock (&trismutex);
+    numtrisoff += module->nto;
+    ntotaltris += module->ntt;
+    pthread_mutex_unlock (&trismutex);
+
     if (maxloops < nloops) {
         maxloops = nloops;
         fprintf (stderr, "CSrcLib::halfcycle: nloops=%u\n", nloops);
