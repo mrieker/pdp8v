@@ -795,6 +795,11 @@ void Shadow::history (FILE *out, char const *pfx, unsigned offset)
     }
 }
 
+Shadow::State Shadow::getprevstate ()
+{
+    return saveregs[(cycle-1)%NSAVEREGS].state;
+}
+
 char const *Shadow::StateMismatchException::what ()
 {
     return "shadow detected state mismatch on GPIO and/or paddles";
@@ -1000,6 +1005,7 @@ char const *Shadow::statestr (State s)
         case GRPA1:  return "GRPA1";
         case GRPB1:  return "GRPB1";
         case INTAK1: return "INTAK1";
+        case DMA:    return "DMA";
     }
     return "bad state enum";
 }

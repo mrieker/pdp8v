@@ -138,7 +138,7 @@ IODevTTY::~IODevTTY ()
 // process commands from TCL script
 SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
 {
-    // debug [0/1]
+    // debug [0/1/2]
     if (strcmp (argv[0], "debug") == 0) {
         if (argc == 1) {
             return new SCRetInt (this->debug ? 1 : 0);
@@ -149,7 +149,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
             return NULL;
         }
 
-        return new SCRetErr ("iodev %s debug [0/1]", iodevname);
+        return new SCRetErr ("iodev %s debug [0/1/2]", iodevname);
     }
 
     if (strcmp (argv[0], "help") == 0) {
@@ -157,8 +157,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("valid sub-commands:");
         puts ("");
         puts ("  debug               - see if debug is enabled");
-        puts ("  debug 0             - disable debug printing");
-        puts ("  debug 1             - enable debug printing");
+        puts ("  debug 0/1/2         - set debug printing");
         puts ("  pipes <kb> [<pr>]   - use named pipes or /dev/pty/... for i/o");
         puts ("                        <pr> defaults to same as <kb>");
         puts ("                        dash (-) or dash dash (- -) means stdin and stdout");
@@ -555,7 +554,7 @@ void IODevTTY::kbthreadlk ()
         // pdp-8 software likes top bit set (eg, focal, os/8)
         this->kbbuff |= ~ this->mask8;
 
-        if (this->debug) {
+        if (this->debug > 0) {
             uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
             printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
         }
@@ -619,7 +618,7 @@ void IODevTTY::prthread ()
             if ((rc == 0) || (en != EINTR)) ABORT ();
         }
 
-        if (this->debug) {
+        if (this->debug > 0) {
             uint8_t prchar = ((this->prbuff < 0240) | (this->prbuff > 0376)) ? '.' : (this->prbuff & 0177);
             printf ("IODevTTY::prthread: prbuff=%03o <%c>\n", this->prbuff, prchar);
         }
@@ -817,7 +816,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
         default: input = UNSUPIO;
     }
 
-    if (this->debug) {
+    if (this->debug > 1) {
         uint16_t pc = shadow.r.pc - 1;
         if ((this->lastpc != pc) || (this->lastin != oldinput) || (this->lastout != input)) {
             this->lastpc  = pc;

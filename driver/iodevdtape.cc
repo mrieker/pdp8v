@@ -32,9 +32,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "dyndis.h"
 #include "iodevdtape.h"
 #include "memory.h"
 #include "shadow.h"
+
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
 #define BLOCKSPERTAPE 1474  // 02702
 #define WORDSPERBLOCK 129
@@ -206,12 +209,28 @@ SCRet *IODevDTape::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev %s debug [0/1/2]", iodevname);
     }
 
+    // gofast [0/1]
+    if (strcmp (argv[0], "gofast") == 0) {
+        if (argc == 1) {
+            return new SCRetInt (shm->gofast);
+        }
+
+        if (argc == 2) {
+            shm->gofast = atoi (argv[1]);
+            return NULL;
+        }
+
+        return new SCRetErr ("iodev %s gofast [0/1]", iodevname);
+    }
+
     if (strcmp (argv[0], "help") == 0) {
         puts ("");
         puts ("valid sub-commands:");
         puts ("");
         puts ("  debug                           - get debug level");
         puts ("  debug 0/1/2                     - set debug level");
+        puts ("  gofast                          - get gofast level");
+        puts ("  gofast 0/1/2                    - enabled makes drive run quickly");
         puts ("  loaded <drivenumber>            - see what file is loaded on drive");
         puts ("                                    first char -: read-only; +: read/write");
         puts ("  loadro <drivenumber> <filename> - load file write-locked");
@@ -340,6 +359,7 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
             }
             if (shm->status_a & GOBIT) {
                 shm->iopend = true;                         // there is an i/o command to process
+                shm->dmapc  = dyndispc;
                 shm->cycles = shadow.getcycles ();
                 pthread_cond_broadcast (&shm->cond);
                 if (shm->threadid == 0) {
@@ -458,7 +478,7 @@ void IODevDTape::thread ()
                 // MOVE (2.5.1.4 p 27)
                 case 0: {
                     while (true) {
-                        if (this->delayus (25000)) goto finished;               // 25ms to skip to next block
+                        if (this->delayblk ()) goto finished;
                         if (this->stepskip (drive)) goto endtape;
                     }
                 }
@@ -469,8 +489,11 @@ void IODevDTape::thread ()
                     uint16_t idca = memarray[IDCA];
                     ASSERT (idwc <= 07777);
                     ASSERT (idca <= 07777);
+                    dyndisdma (IDWC, 1,  true, shm->dmapc);
+                    dyndisdma (IDCA, 1, false, shm->dmapc);
+                    dyndisdma (memfield + idca - memarray, 1, true, shm->dmapc);
                     do {
-                        if (this->delayus (25000)) goto finished;               // 25ms to read next block address
+                        if (this->delayblk ()) goto finished;
                         if (this->stepskip (drive)) goto endtape;
 
                         memfield[idca] = drive->tapepos / 4;                    // write out mark we just hopped over
@@ -485,7 +508,7 @@ void IODevDTape::thread ()
                 case 2: {
                     uint16_t idca, idwc;
                     do {
-                        if (this->delayus (25000)) goto finished;               // 25ms per block
+                        if (this->delayblk ()) goto finished;
                         if (this->stepxfer (drive)) goto endtape;
 
                         uint16_t buff[WORDSPERBLOCK];
@@ -504,6 +527,9 @@ void IODevDTape::thread ()
                         idwc = memarray[IDWC];
                         ASSERT (idca <= 07777);
                         ASSERT (idwc <= 07777);
+                        dyndisdma (IDWC, 1, true, shm->dmapc);
+                        dyndisdma (IDCA, 1, true, shm->dmapc);
+                        dyndisdma (memfield + idca - memarray, MIN (WORDSPERBLOCK, 010000 - idwc), true, shm->dmapc);
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; -- i >= 0;) {
                                 idca = (idca + 1) & 07777;
@@ -544,7 +570,7 @@ void IODevDTape::thread ()
 
                     uint16_t idca, idwc;
                     do {
-                        if (this->delayus (25000)) goto finished;  // 25ms per block
+                        if (this->delayblk ()) goto finished;
                         if (this->stepxfer (drive)) goto endtape;
 
                         uint16_t buff[WORDSPERBLOCK];
@@ -552,6 +578,9 @@ void IODevDTape::thread ()
                         idwc = memarray[IDWC];
                         ASSERT (idca <= 07777);
                         ASSERT (idwc <= 07777);
+                        dyndisdma (IDWC, 1, true, shm->dmapc);
+                        dyndisdma (IDCA, 1, true, shm->dmapc);
+                        dyndisdma (memfield + idca - memarray, MIN (WORDSPERBLOCK, 010000 - idwc), false, shm->dmapc);
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; i > 0;) {
                                 idca = (idca + 1) & 07777;
@@ -692,12 +721,18 @@ void IODevDTape::dumpbuf (IODevDTapeDrive *drive, char const *label, uint16_t co
     }
 }
 
-// delay the given number of microseconds with mutex unlocked
+// delay processing for a block
 //  returns:
 //   false = it's ok to keep going as is
 //    true = something changed, re-decode
-bool IODevDTape::delayus (int usec)
+bool IODevDTape::delayblk ()
 {
+    // no delay if going fast
+    if (shm->gofast) return false;
+
+    // 25ms standard per-block delay
+    int usec = 25000;
+
     // 375ms additional for startup delay
     if (shm->startdelay) {
         shm->startdelay = false;

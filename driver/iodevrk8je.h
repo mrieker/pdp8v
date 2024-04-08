@@ -45,6 +45,8 @@ private:
     pthread_mutex_t lock;
     pthread_t threadid;
 
+    uint16_t dmapc;
+
     uint16_t command;       // <11:09> : func code: 0=read data; 1=read all; 2=set write prot; 3=seek only; 4=write data; 5=write all; 6/7=unused
                             //    <08> : interrupt on done
                             //    <07> : set done on seek done

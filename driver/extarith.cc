@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "dyndis.h"
 #include "extarith.h"
 #include "memory.h"
 #include "shadow.h"
@@ -202,6 +203,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             input |= stepcount;                     // 0040 SCA - or step count into accumulator
         }
         case 001: {                                 // 7403 SCL
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = ~ memarray[nextreadaddr] & 037;
             input |= IO_SKIP;
             break;
@@ -213,6 +215,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             input |= stepcount;                     // 0040 SCA - or step count into accumulator
         }
         case 002: {                                 // 7405 MUY
+            if (dyndisena) dyndisread (nextreadaddr);
             uint16_t multiplier = memarray[nextreadaddr];
             input = multiply (input, multiplier);
             break;
@@ -224,6 +227,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             break;                                  // 7447 SWBA - redundant switch to mode A
         }
         case 003: {                                 // 7407 DVI
+            if (dyndisena) dyndisread (nextreadaddr);
             uint16_t divisor  = memarray[nextreadaddr];
             input = divide (input, divisor);
             break;
@@ -245,6 +249,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             input |= stepcount;                     // 0040 SCA - or step count into accumulator
         }
         case 005: {                                 // 7413 SHL
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = (memarray[nextreadaddr] & 037) + 1;
             DEBUG ("  SHL %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 017777) << 12) | multquot;
@@ -261,6 +266,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             input |= stepcount;                     // 0040 SCA - or step count into accumulator
         }
         case 006: {                                 // 7415 ASR
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = (memarray[nextreadaddr] & 037) + 1;
             DEBUG ("  ASR %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 07777) << 12) | (((uint32_t) input & 04000) << 13) | multquot;
@@ -277,6 +283,7 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
             input |= stepcount;                     // 0040 SCA - or step count into accumulator
         }
         case 007: {                                 // 7417 LSR
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = (memarray[nextreadaddr] & 037) + 1;
             DEBUG ("  LSR %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 07777) << 12) | multquot;
@@ -330,6 +337,7 @@ uint16_t ExtArith::eae_modeb (uint16_t opcode, uint16_t input)
         // SHL - shift left
         // p230 v7-10
         case 005: {                                 // 7413 SHL
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = memarray[nextreadaddr] & 037;
             DEBUG ("  SHL %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 017777) << 12) | multquot;
@@ -346,6 +354,7 @@ uint16_t ExtArith::eae_modeb (uint16_t opcode, uint16_t input)
         // ASR - arithmetic shift right
         // p230 v7-10
         case 006: {                                 // 7415 ASR
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = memarray[nextreadaddr] & 037;
             DEBUG ("  ASR %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 07777) << 12) | (((uint32_t) input & 04000) << 13) | multquot;
@@ -363,6 +372,7 @@ uint16_t ExtArith::eae_modeb (uint16_t opcode, uint16_t input)
         // LSR - logical shift right
         // p230 v7-10
         case 007: {                                 // 7417 LSR
+            if (dyndisena) dyndisread (nextreadaddr);
             stepcount = memarray[nextreadaddr] & 037;
             DEBUG ("  LSR %02o", stepcount);
             uint32_t acmq = (((uint32_t) input & 07777) << 12) | multquot;
@@ -456,8 +466,10 @@ uint16_t ExtArith::eae_modeb (uint16_t opcode, uint16_t input)
 uint16_t ExtArith::getdeferredaddr ()
 {
     if ((nextreadaddr & 07770) == 00010) {
+        if (dyndisena) dyndiswrite (nextreadaddr);
         memarray[nextreadaddr] = (memarray[nextreadaddr] + 1) & 07777;
     }
+    if (dyndisena) dyndisread (nextreadaddr);
     return memarray[nextreadaddr];
 }
 

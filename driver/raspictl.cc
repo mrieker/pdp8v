@@ -78,6 +78,7 @@
 
 #include "binloader.h"
 #include "controls.h"
+#include "dyndis.h"
 #include "extarith.h"
 #include "gpiolib.h"
 #include "linkloader.h"
@@ -547,6 +548,7 @@ reseteverything:;
                         } else {
                             lastreaddata = memarray[addr];
                         }
+                        if (dyndisena) dyndisread (addr);
 
                         // save last address being read from
                         lastreadaddr = addr;
@@ -585,6 +587,7 @@ reseteverything:;
                         haltordie ("WATCHWRITE");
                     }
                     memarray[addr] = data;
+                    if (dyndisena) dyndiswrite (addr);
                     if (randmem) {
                         uint16_t r = randuint16 ();
                         intreqmask = (r & 1) * IRQ_RANDMEM;

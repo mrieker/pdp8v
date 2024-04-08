@@ -34,19 +34,28 @@ _0060:	.word	00060
 
 ai10:	.word	.-.
 
+_0201:	.word	00201
 _0204:	.word	00204
 _0214:	.word	00214
 _0224:	.word	00224
 _0244:	.word	00244
 _0314:	.word	00314
+_0400:	.word	00400
 _0604:	.word	00604
 _0614:	.word	00614
+_0624:	.word	00624
+_0707:	.word	00707
 _0714:	.word	00714
+_1111:	.word	01111
+_2222:	.word	02222
 _3000:	.word	03000
+_3777:	.word	03777
 _4321:	.word	04321
+_4444:	.word	04444
 _5076:	.word	05076
 _5077:	.word	05077
 _7000:	.word	07000
+_7070:	.word	07070
 _7577:	.word	07577
 _7774:	.word	07774
 _7777:	.word	07777
@@ -56,22 +65,25 @@ driveno: .word	.-.			; drive number in top 3 bits
 blockno:  .word	.-.			; block number wanted
 randseed: .word	.-.			; random number seed
 
-_blockseeds:  .word blockseeds		; table of random seed used to write a block
-_fatal:       .word fatal		; print fatal error message
-_getrand:     .word getrand		; get random uint12
-_idwc:	      .word idwc		; points to dma transfer negative wordcount
-_idca:	      .word idca		; points to dma transfer address word
-_dmabuff:     .word dmabuff		; points to beginning of dma transfer buffer
-_printoct:    .word printoct		; print number in octal
-_printcrlf:   .word printcrlf		; print cr/lf
-_printstrz:   .word printstrz		; print null-terminated string
-_readrand:    .word readrand		; read block and verify random numbers
-_rewind:      .word rewind		; rewind the tape
-_scanbegblk:  .word scanbegblk
-_waitfordone: .word waitfordone		; wait for any type of completion
-_waitforeot:  .word waitforeot		; wait for end-of-tape
-_waitsuccess: .word waitsuccess		; wait for success
-_writerand:   .word writerand		; write random numbers to block
+_blockseeds:   .word blockseeds		; table of random seed used to write a block
+_fatal:        .word fatal		; print fatal error message
+_getrand:      .word getrand		; get random uint12
+_idwc:	       .word idwc		; points to dma transfer negative wordcount
+_idca:	       .word idca		; points to dma transfer address word
+_dmabuff:      .word dmabuff		; points to beginning of dma transfer buffer
+_obvcomp:      .word obvcomp		; compute obverse complement of a number
+_printoct:     .word printoct		; print number in octal
+_printcrlf:    .word printcrlf		; print cr/lf
+_printstrz:    .word printstrz		; print null-terminated string
+_readfwdrand:  .word readfwdrand	; read block reverse and verify random numbers
+_readrevrand:  .word readrevrand	; read block reverse and verify random numbers
+_rewind:       .word rewind		; rewind the tape
+_scanbegblk:   .word scanbegblk		; scan to beginning of block in forward direction
+_scanendblk:   .word scanendblk		; scan to end of block in reverse direction
+_waitfordone:  .word waitfordone	; wait for any type of completion
+_waitforeot:   .word waitforeot		; wait for end-of-tape
+_waitsuccess:  .word waitsuccess	; wait for success
+_writefwdrand: .word writefwdrand	; write random numbers to block
 
 	. = 0200
 	.global	__boot
@@ -90,7 +102,7 @@ __boot:
 
 	dca	blockno		; write initial random data to whole tape
 initloop:
-	jmsi	_writerand	; write block with random data
+	jmsi	_writefwdrand	; write block with random data
 	isz	blockno
 	tad	blockno
 	tad	_5076		; -2702
@@ -99,6 +111,8 @@ initloop:
 
 readloop:
 	jmsi	_getrand	; get random block to read
+	spa
+	jmp	readrev
 	dca	blockno
 	tad	blockno		; make sure .lt. 02702
 	cll
@@ -110,11 +124,27 @@ readloop:
 	tad	blockno
 	jmsi	_printoct
 	jmsi	_scanbegblk	; skip to beginning of block
-	jmsi	_readrand	; read block & verify random numbers
+	jmsi	_readfwdrand	; read block & verify random numbers
+	jmp	readloop	; try another
+readrev:
+	and	_3777
+	dca	blockno
+	tad	blockno		; make sure .lt. 02702
+	cll
+	tad	_5076
+	szl cla
+	jmp	readloop	; get another rand if not
+	tad	_readloopm2
+	jmsi	_printstrz
+	tad	blockno
+	jmsi	_printoct
+	jmsi	_scanendblk	; skip to end of block
+	jmsi	_readrevrand	; read block & verify random numbers
 	jmp	readloop	; try another
 
-_readloopm1: .word .+1
-	.asciz	"\r\nverify blockno="
+_readloopm1: .word readloopm1
+
+_readloopm2: .word readloopm2
 
 
 	.align	00200
@@ -131,11 +161,18 @@ _readloopm1: .word .+1
 ;   interrupts disabled
 ;
 rewind:	.word	.-.
+	tad	_rewmsg1
+	jmsi	_printstrz
 	tad	driveno		; select drive
 	tad	_0604		; 'rewind reverse'
 	dtla			; start rewinding
 	jmsi	_waitforeot	; wait for completion
 	jmpi	rewind
+
+_rewmsg1: .word	rewmsg1
+
+
+	.align	00200
 
 ;
 ; scan for beginning of a block going forward
@@ -149,19 +186,26 @@ scanbegblk: .word .-.
 	tad	blockno
 	sza cla
 	jmp	sbb_nonzero
-	jms	rewind
+	jmsi	_rewind
 	jmp	sbb_readfwd
 sbb_nonzero:
 	tad	_7777		; set up DMA word count
 	dcai	_idwc
 	tad	_dmabuff	; set up DMA memory addr
 	dcai	_idca
+	dtra			; see if tape currently going in reverse
+	and	_0400
+	sza cla
+	jmp	sbb_reverse
+	tad	_sbbm1
+	jmsi	_printstrz
 	tad	driveno		; 'scan forward normal' to get next block number
 	tad	_0214
 	dtla
 	jmsi	_waitfordone
 	spa cla
 	jmp	sbb_ateot
+	jms	sbb_printblkno
 	tadi	_dmabuff	; get current block number
 	cma iac			; ...negative
 	tad	blockno		; get desired block number - current block number
@@ -171,13 +215,42 @@ sbb_nonzero:
 	jmpi	scanbegblk	; ... we're there
 
 	; need to skip forward AC blocks
+sbb_gofwdpos:
 	cma iac			; make it negative
+sbb_gofwdneg:
 	dcai	_idwc		; set it up as DMA word count
+	tad	_sbbm3
+	jmsi	_printstrz
+	tadi	_idwc
+	cma iac
+	jmsi	_printoct
 	tad	driveno		; 'scan forward continuous' to skip that many blocks
 	tad	_0314
 	dtla
 	jmsi	_waitsuccess	; wait for successful completion
 	jmp	sbb_verify
+
+	; tape initially going in reverse
+sbb_reverse:
+	tad	_sbbm2
+	jmsi	_printstrz
+	tad	driveno		; 'scan reverse normal' to get next block number
+	tad	_0614
+	dtla
+	jmsi	_waitfordone
+	spa cla
+	jmp	sbb_atbot
+	jms	sbb_printblkno
+	tad	blockno		; get desired block number
+	cma iac
+	tadi	_dmabuff	; get current block number - desired block number
+	spa
+	jmp	sbb_gofwdneg	; block farther down the tape, go forward by -AC blocks
+	cma			; get neg number of blocks to keep going backward over
+	jmp	sbb_goback
+sbb_atbot:
+	tad	blockno
+	jmp	sbb_gofwdpos
 
 	; am at end of tape, that's just like being at beginning of block 2702
 sbb_ateot:
@@ -188,7 +261,13 @@ sbb_ateot:
 	; suppose blockno=11 and _dmabuff=14, AC = -3
 sbb_behindus:
 	tad	_7777		; have to skip one extra (skip to end of block 10 for the example)
+sbb_goback:
 	dcai	_idwc
+	tad	_sbbm4
+	jmsi	_printstrz
+	tadi	_idwc
+	cma iac
+	jmsi	_printoct
 	tad	driveno		; 'scan backward continuous' to skip that many blocks
 	tad	_0714
 	dtla
@@ -196,12 +275,15 @@ sbb_behindus:
 
 	; now skip forward one block, should be what we want
 sbb_readfwd:
+	tad	_sbbm1
+	jmsi	_printstrz
 	tad	_7777		; set up DMA word count
 	dcai	_idwc
 	tad	driveno		; 'scan forward normal' to get next block number
 	tad	_0214
 	dtla
 	jmsi	_waitsuccess
+	jms	sbb_printblkno
 
 	; verify that we just skipped forward to beginning of the target block
 sbb_verify:
@@ -211,6 +293,23 @@ sbb_verify:
 	sza
 	jmsi	_fatal		; - fatal if not
 	jmpi	scanbegblk
+
+	; print block number
+sbb_printblkno: .word .-.
+	tad	_sbbm5
+	jmsi	_printstrz
+	tadi	_dmabuff
+	jmsi	_printoct
+	jmpi	sbb_printblkno
+
+_sbbm1:	.word	sbbm1
+_sbbm2:	.word	sbbm2
+_sbbm3:	.word	sbbm3
+_sbbm4:	.word	sbbm4
+_sbbm5:	.word	sbbm5
+
+
+	.align	00200
 
 ;
 ; scan for end of a block going backward
@@ -225,6 +324,8 @@ scanendblk: .word .-.
 	tad	_5077
 	sza cla
 	jmp	seb_noteot
+	tad	_sebm1
+	jmsi	_printstrz
 	tad	driveno		; skip driver to end-of-tape
 	tad	_0204
 	dtla
@@ -235,12 +336,15 @@ seb_noteot:
 	dcai	_idwc
 	tad	_dmabuff	; set up DMA memory addr
 	dcai	_idca
+	tad	_sebm2
+	jmsi	_printstrz
 	tad	driveno		; 'scan reverse normal' to get next block number
 	tad	_0614
 	dtla
 	jmsi	_waitfordone
 	spa cla
 	jmp	seb_atbot
+	jms	seb_printblkno
 	tad	blockno		; get desired block number
 	cma iac			; ...negative
 	tadi	_dmabuff	; get current block number - desired block number
@@ -252,6 +356,11 @@ seb_noteot:
 	; need to skip backward AC blocks
 	cma iac			; make it negative
 	dcai	_idwc		; set it up as DMA word count
+	tad	_sebm3
+	jmsi	_printstrz
+	tadi	_idwc
+	cma iac
+	jmsi	_printoct
 	tad	driveno		; 'scan reverse continuous' to skip that many blocks
 	tad	_0714
 	dtla
@@ -268,6 +377,11 @@ seb_atbot:
 seb_aheadus:
 	tad	_7777		; have to skip one extra (skip to beg of block 15 for the example)
 	dcai	_idwc
+	tad	_sebm4
+	jmsi	_printstrz
+	tadi	_idwc
+	cma iac
+	jmsi	_printoct
 	tad	driveno		; 'scan forward continuous' to skip that many blocks
 	tad	_0314
 	dtla
@@ -277,10 +391,13 @@ seb_aheadus:
 seb_readrev:
 	tad	_7777		; set up DMA word count
 	dcai	_idwc
+	tad	_sebm2
+	jmsi	_printstrz
 	tad	driveno		; 'scan reverse normal' to get prior block number
 	tad	_0614
 	dtla
 	jmsi	_waitsuccess
+	jms	seb_printblkno
 
 	; verify that we just skipped backward to end of the target block
 seb_verify:
@@ -290,6 +407,20 @@ seb_verify:
 	sza
 	jmsi	_fatal		; - fatal if not
 	jmpi	scanendblk
+
+	; print block number
+seb_printblkno: .word .-.
+	tad	_sebm5
+	jmsi	_printstrz
+	tadi	_dmabuff
+	jmsi	_printoct
+	jmpi	seb_printblkno
+
+_sebm1:	.word	sebm1
+_sebm2:	.word	sebm2
+_sebm3:	.word	sebm3
+_sebm4:	.word	sebm4
+_sebm5:	.word	sbbm5
 
 
 	.align	00200
@@ -367,31 +498,31 @@ intacsave: .word .-.
 
 	.align	00200
 ;
-; write random data to block
+; write block forward with random data
 ;  input:
 ;   AC = zero
 ;   blockno = block number
 ;   randseed = random seed
 ;
-writerand: .word .-.
+writefwdrand: .word .-.
 
 	; save random seed that will be used to fill block
 	tad	_blockseeds
 	tad	blockno
-	dca	wr_temp1
+	dca	wfr_temp1
 	tad	randseed
-	dcai	wr_temp1
+	dcai	wfr_temp1
 
 	; fill DMA buffer with random numbers
 	tad	_7577
-	dca	wr_temp1
+	dca	wfr_temp1
 	tad	_dmabuff
 	dca	ai10
-wr_fill:
+wfr_fill:
 	jmsi	_getrand
 	dcai	ai10
-	isz	wr_temp1
-	jmp	wr_fill
+	isz	wfr_temp1
+	jmp	wfr_fill
 
 	; set up DMA buffer descriptor
 	tad	_7577
@@ -406,24 +537,24 @@ wr_fill:
 
 	; wait for success
 	jmsi	_waitsuccess
-	jmpi	writerand
+	jmpi	writefwdrand
 
-wr_temp1: .word	.-.
+wfr_temp1: .word .-.
 
 ;
-; read block and check random data
+; read block forward and check random data
 ;  input:
 ;   AC = zero
 ;   blockno = block number
 ;   randseed = random seed
 ;
-readrand: .word .-.
+readfwdrand: .word .-.
 
 	; get random seed that was used to fill block
 	tad	_blockseeds
 	tad	blockno
-	dca	rr_temp1
-	tadi	rr_temp1
+	dca	rfr_temp1
+	tadi	rfr_temp1
 	dca	randseed
 
 	; set up DMA buffer descriptor
@@ -432,7 +563,9 @@ readrand: .word .-.
 	tad	_dmabuff
 	dcai	_idca
 
-	; start reading
+	; start reading forward
+	tad	_rfrm1
+	jmsi	_printstrz
 	tad	driveno
 	tad	_0224
 	dtla
@@ -442,20 +575,79 @@ readrand: .word .-.
 
 	; verify DMA buffer random numbers
 	tad	_7577
-	dca	rr_temp1
+	dca	rfr_temp1
 	tad	_dmabuff
 	dca	ai10
-rr_check:
+rfr_check:
 	jmsi	_getrand
 	cma iac
 	tadi	ai10
 	sza
 	jmsi	_fatal
-	isz	rr_temp1
-	jmp	rr_check
-	jmpi	readrand
+	isz	rfr_temp1
+	jmp	rfr_check
+	jmpi	readfwdrand
 
-rr_temp1: .word	.-.
+rfr_temp1: .word .-.
+
+_rfrm1:	.word	rfrm1
+
+;
+; read block reverse and check random data
+;  input:
+;   AC = zero
+;   blockno = block number
+;   randseed = random seed
+;
+readrevrand: .word .-.
+
+	; get random seed that was used to fill block
+	tad	_blockseeds
+	tad	blockno
+	dca	rrr_temp1
+	tadi	rrr_temp1
+	dca	randseed
+
+	; set up DMA buffer descriptor
+	tad	_7577
+	dcai	_idwc
+	tad	_dmabuff
+	dcai	_idca
+
+	; start reading reverse
+	tad	_rrrm1
+	jmsi	_printstrz
+	tad	driveno
+	tad	_0624
+	dtla
+
+	; wait for success
+	jmsi	_waitsuccess
+
+	; verify DMA buffer random numbers
+	tad	_7577		; get neg number of words to check
+	dca	rrr_temp1
+	tad	_dmabuff	; point to last word read from tape
+	tad	_0201		; = first word written to tape
+	dca	rrr_temp2
+rrr_check:
+	jmsi	_getrand	; get random word supposedly written to tape
+	jmsi	_obvcomp	; get obverse complement cuz we're reading backward
+	cma iac
+	tadi	rrr_temp2	; compare with what was read from tape
+	sza
+	jmsi	_fatal
+	cma			; decrement pointer to next word to check
+	tad	rrr_temp2
+	dca	rrr_temp2
+	isz	rrr_temp1	; repeat if more words to check
+	jmp	rrr_check
+	jmpi	readrevrand
+
+rrr_temp1: .word .-.
+rrr_temp2: .word .-.
+
+_rrrm1:	.word	rrrm1
 
 
 	.align	00200
@@ -477,6 +669,52 @@ getrand: .word .-.
 	dca	randseed
 	tad	randseed
 	jmpi	getrand
+
+;
+; get obverse complement of given word
+;  input:
+;   AC = word to process
+;  output:
+;   AC = result
+;
+obvcomp: .word	.-.
+	; AC = ~abcdefghijkl
+	cll cma bsw
+	; AC = ghijklabcdef
+	dca	oc_temp1
+	tad	oc_temp1
+	and	_7070
+	rtr
+	rar
+	; AC = 000ghi000abc
+	dca	oc_temp2
+	tad	oc_temp1
+	and	_0707
+	rtl
+	ral
+	; AC = jkl000def000
+	tad	oc_temp2
+	; AC = jklghidefabc
+	dca	oc_temp1
+	tad	oc_temp1
+	and	_4444
+	rtr
+	; AC = 00j00g00d00a
+	dca	oc_temp2
+	tad	oc_temp1
+	and	_2222
+	tad	oc_temp2
+	; AC = 0kj0hg0ed0ba
+	dca	oc_temp2
+	tad	oc_temp1
+	and	_1111
+	rtl
+	tad	oc_temp2
+	; AC = lkjihgfedcba
+	jmpi	obvcomp
+
+oc_temp1: .word .-.
+oc_temp2: .word	.-.
 
 
 	.align	0200
@@ -547,12 +785,27 @@ fatal:	.word	.-.
 
 fatalac: .word	.-.
 
-_fatalm1: .word	.+1
-	.asciz	"\r\nFATAL ERROR at "
-_fatalm2: .word	.+1
-	.asciz	" AC="
+_fatalm1: .word	fatalm1
+_fatalm2: .word	fatalm2
 
 ; ------------------------------------------------------------------------------
+
+readloopm1: .asciz "\r\n\nverify fwd blockno="
+readloopm2: .asciz "\r\n\nverify rev blockno="
+rewmsg1:    .asciz "\r\nrewind: rewinding"
+sbbm1:      .asciz "\r\nscanbegblk: read blockno fwd"
+sbbm2:      .asciz "\r\nscanbegblk: read blockno rev"
+sbbm3:      .asciz "\r\nscanbegblk: skip forward "
+sbbm4:      .asciz "\r\nscanbegblk: skip reverse "
+sbbm5:      .asciz "->"
+sebm1:      .asciz "\r\nscanendblk: skip eot"
+sebm2:      .asciz "\r\nscanendblk: read blockno rev"
+sebm3:      .asciz "\r\nscanendblk: skip reverse "
+sebm4:      .asciz "\r\nscanendblk: skip forward "
+rfrm1:      .asciz "\r\nreadfwdrand: read block"
+rrrm1:      .asciz "\r\nreadrevrand: read block"
+fatalm1:    .asciz "\r\nFATAL ERROR at "
+fatalm2:    .asciz " AC="
 
 dmabuff: .blkw	130
 

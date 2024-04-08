@@ -37,7 +37,6 @@ struct IODevTTY : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
-    bool debug;
     bool kbflag;        // there is a char in kbbuff that processor hasn't read yet
     bool kbsetup;       // processor has tried to do i/o on this device since the beginning or since last connection dropped
                         //   if kbfd <  0, keyboard needs tcsetattr() immediately on connect if it's a tty
@@ -49,6 +48,7 @@ private:
     bool stopping;      // threads are being stopped
     bool telnetd;       // being serviced in telnet daemon mode
     char ttydevname[8];
+    int debug;
     int kbfd;           // -1: kb shut down or being shut down; else: fd for keyboard i/o
     int prfd;           // -1: pr shut down or being shut down; else: fd for printer i/o
     int tlfd;           // -1: tcp listener shut down or being shut down; else: fd for listening

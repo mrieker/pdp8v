@@ -54,7 +54,8 @@ struct Shadow {
         IOT2   = 0x66,
         GRPA1  = 0x75,
         GRPB1  = 0x85,
-        INTAK1 = 0x08
+        INTAK1 = 0x08,
+        DMA    = 0xFF   // dyndis use only
     };
 
     struct Regs {
@@ -81,6 +82,7 @@ struct Shadow {
     bool aluadd ();
     uint64_t getcycles ();
     uint64_t getinstrs ();
+    State getprevstate ();
     uint32_t readgpio (bool irq);
 
     SCRet *scriptcmd (int argc, char const *const *argv);

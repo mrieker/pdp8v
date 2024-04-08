@@ -26,6 +26,7 @@
 #include "binloader.h"
 #include "controls.h"
 #include "disassemble.h"
+#include "dyndis.h"
 #include "iodevs.h"
 #include "linkloader.h"
 #include "memext.h"
@@ -56,6 +57,7 @@ void runscript (char const *argv0, char const *filename)
 static Tcl_ObjCmdProc cmd_alliodevs;
 static Tcl_ObjCmdProc cmd_cpu;
 static Tcl_ObjCmdProc cmd_disasop;
+static Tcl_ObjCmdProc cmd_dyndis;
 static Tcl_ObjCmdProc cmd_gpio;
 static Tcl_ObjCmdProc cmd_halfcycle;
 static Tcl_ObjCmdProc cmd_halt;
@@ -85,6 +87,7 @@ static FunDef fundefs[] = {
     { cmd_alliodevs,  "alliodevs",  "list all i/o devices for iodev command" },
     { cmd_cpu,        "cpu",        "access shadow state" },
     { cmd_disasop,    "disasop",    "disassemble opcode" },
+    { cmd_dyndis,     "dyndis",     "dynamic disassembly" },
     { cmd_gpio,       "gpio",       "access gpio state" },
     { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
     { cmd_halt,       "halt",       "halt processor" },
@@ -230,7 +233,7 @@ static int cmd_cpu (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj
 static int cmd_disasop (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     if ((objc < 2) || (objc > 3)) {
-        Tcl_SetResult (interp, (char *) "wrong number srgs", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "wrong number args", TCL_STATIC);
         return TCL_ERROR;
     }
 
@@ -260,6 +263,76 @@ static int cmd_disasop (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
         Tcl_SetResult (interp, strdup (opcd.c_str ()), (void (*) (char *)) free);
     }
     return TCL_OK;
+}
+
+// dynamic disassembly
+static int cmd_dyndis (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    if (objc < 2) {
+        Tcl_SetResult (interp, (char *) "missing sub-command", TCL_STATIC);
+        return TCL_ERROR;
+    }
+
+    char const *subcommand = Tcl_GetString (objv[1]);
+
+    if (strcmp (subcommand, "clear") == 0) {
+        dyndisclear ();
+        return TCL_OK;
+    }
+
+    if (strcmp (subcommand, "dump") == 0) {
+        char const *filename = "-";
+        if (objc > 2) {
+            filename = Tcl_GetString (objv[2]);
+        }
+        FILE *dumpfile = stdout;
+        if (strcmp (filename, "-") != 0) {
+            dumpfile = fopen (filename, "w");
+            if (dumpfile == NULL) {
+                Tcl_SetResult (interp, (char *) strerror (errno), TCL_STATIC);
+                return TCL_ERROR;
+            }
+        }
+        dyndisdump (dumpfile);
+        if ((dumpfile != stdout) && (fclose (dumpfile) < 0)) {
+            Tcl_SetResult (interp, (char *) strerror (errno), TCL_STATIC);
+            return TCL_ERROR;
+        }
+        return TCL_OK;
+    }
+
+    if (strcmp (subcommand, "enable") == 0) {
+        switch (objc) {
+            case 2: {
+                Tcl_SetObjResult (interp, Tcl_NewIntObj (dyndisena));
+                return TCL_OK;
+            }
+            case 3: {
+                int enab;
+                int rc = Tcl_GetIntFromObj (interp, objv[2], &enab);
+                if (rc == TCL_OK) dyndisena = enab;
+                return rc;
+            }
+        }
+        Tcl_SetResult (interp, (char *) "wrong number args", TCL_STATIC);
+        return TCL_ERROR;
+    }
+
+    if (strcmp (subcommand, "help") == 0) {
+        puts ("");
+        puts ("  clear");
+        puts ("  dump [filename]");
+        puts ("  enable");
+        puts ("  enable 0/1");
+        puts ("  help");
+        puts ("");
+        puts ("  dumps dynamic assembly captured during execution");
+        puts ("");
+        return TCL_OK;
+    }
+
+    Tcl_SetResult (interp, (char *) "unknown sub-command, try 'dyndis help'", TCL_STATIC);
+    return TCL_ERROR;
 }
 
 // get gpio state (actual tube state)

@@ -34,6 +34,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "dyndis.h"
 #include "iodevrk8je.h"
 #include "memory.h"
 #include "shadow.h"
@@ -303,6 +304,9 @@ void IODevRK8JE::startio ()
     // don't allow any changing of registers while this I/O is in progress
     this->status = 04000;
 
+    // save iot instr address for tracing
+    this->dmapc = dyndispc;
+
     // tell thread to start doing an I/O request
     if (this->threadid == 0) {
         int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
@@ -409,6 +413,7 @@ void IODevRK8JE::thread ()
                         }
                         break;
                     }
+                    dyndisdma (xma, wcnt, true, this->dmapc);
                     for (icnt = 0; icnt < wcnt; icnt ++) {
                         memarray[xma+icnt] = temp[icnt] & 07777;
                     }
@@ -435,6 +440,7 @@ void IODevRK8JE::thread ()
                         break;
                     }
                     ASSERT (xma + wcnt <= MEMSIZE);
+                    dyndisdma (xma, wcnt, false, this->dmapc);
                     ptr = &memarray[xma];
                     len = wcnt * 2;
                     if (wcnt % 256 != 0) {

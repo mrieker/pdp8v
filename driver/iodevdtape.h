@@ -45,7 +45,7 @@ private:
     bool stepskip (IODevDTapeDrive *drive);
     bool stepxfer (IODevDTapeDrive *drive);
     void dumpbuf (IODevDTapeDrive *drive, char const *label, uint16_t const *buff);
-    bool delayus (int usec);
+    bool delayblk ();
     void updateirq ();
 };
 
@@ -64,9 +64,11 @@ struct IODevDTapeShm {
     bool volatile exiting;
     bool volatile initted;
     int debug;
+    int gofast;
     pthread_cond_t cond;
     pthread_mutex_t lock;
     pthread_t threadid;
+    uint16_t dmapc;
     uint16_t status_a;
     uint16_t status_b;
     uint64_t cycles;

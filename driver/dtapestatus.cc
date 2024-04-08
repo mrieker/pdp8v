@@ -134,7 +134,7 @@ int main ()
                     bool gorev = go &&   rev && (i == driveno);
                     printf (ESC_EREOL "\n  %o: %c%s" ESC_EREOL "\n", i, (drive->rdonly ? '-' : '+'), drive->fname);
                     printf (" [----------------------------------------------------------------]" ESC_EREOL "\n");
-                    printf ("%*s%c%c^%04o%c%c%c%6u" ESC_EREOL "\n",
+                    printf ("%*s%c%c^%04o%c%c%c%6u wps" ESC_EREOL "\n",
                         drive->tapepos * 16 / BLOCKSPERTAPE, "",
                         (gorev ? rw : ' '), (gorev ? '<' : ' '),
                         blocknumber, 'a' + drive->tapepos % 4,
@@ -144,6 +144,11 @@ int main ()
             }
 
             if (++ sampleindex == SAMPLESPERSEC) sampleindex = 0;
+
+            printf (ESC_EREOL "\n    0000a = beg-of-tape"
+                    ESC_EREOL "\n    ____b = between leading block number and data"
+                    ESC_EREOL "\n    ____c = between data and trailing block number"
+                    ESC_EREOL "\n    2701d = end-of-tape" ESC_EREOL "\n");
 
             // little twirly to show we are cycling
             printf (ESC_EREOL "\n  %c" ESC_EREOP "\r", "-\\|/"[++j&3]);

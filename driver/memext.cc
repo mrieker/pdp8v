@@ -84,6 +84,8 @@ MemExt::MemExt ()
     this->saveduserflag = false;                // no userflag saved
     this->userflagafterjump = false;            // stay in execmode after jump
     this->iframeafterjump = 0;                  // stay in iframe 0 after jump
+    this->iframe = 0;                           // start in iframe 0
+    this->dframe = 0;                           // start in dframe 0
 }
 
 void MemExt::setdfif (uint32_t frame)
@@ -96,8 +98,6 @@ void MemExt::setdfif (uint32_t frame)
 // reset to power-on state
 void MemExt::ioreset ()
 {
-    this->iframe = 0;                           // start in iframe 0
-    this->dframe = 0;                           // start in dframe 0
     this->intdisableduntiljump = false;         // don't override intenabled
     this->intenableafterfetch = false;          // don't enable interrups after next fetch
     this->intenabled = false;                   // interrupts disabled

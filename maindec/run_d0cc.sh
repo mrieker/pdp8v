@@ -2,16 +2,17 @@
 #
 #  add instruction test
 #  runs indefinitely
-#  types SIMAD SIMROT FCT RANDOM on teletype after about 6 minutes
 #
-#  export MAINDECOPTS='-cpuhz 1000000000 -mintimes -nohw'
+#  with -nohwlib (15,000,000 cps), types SIMAD SIMROT FCT RANDOM
+#       on teletype after about 5 minutes (4,000,000,000 cycles)
+#
+#  with -zynqlib  SIMAD  after  3 mins
+#                 SIMROT after 25 mins
+#                 FCT    after 29 mins
+#                 RANDOM after 40 mins
+#         and **** EXTENDED BANKS message at 40 mins
 #
 # p52/v1-43
 #  field checking code
 #
-export iodevptaperdr=
-export iodevtty_cps=10
-export iodevtty_debug=0
-export iodevtty='-|-'
-export switchregister=0270
-exec ../driver/raspictl -binloader -haltstop -startpc 0200 $MAINDECOPTS bins/8E-D0CC.bin
+exec ../driver/raspictl "$@" -script d0cc.tcl

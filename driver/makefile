@@ -31,6 +31,7 @@ lib.a.$(MACH): \
 		controls.o.$(MACH) \
 		csrclib.o.$(MACH) \
 		disassemble.o.$(MACH) \
+		dyndis.o.$(MACH) \
 		extarith.o.$(MACH) \
 		getexedir.o.$(MACH) \
 		gpiolib.o.$(MACH) \

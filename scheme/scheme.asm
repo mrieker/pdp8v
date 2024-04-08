@@ -1844,11 +1844,15 @@ f__shl:
 	jmsi	_checkmiss
 	jmsi	_nextint	; get next integer argument
 	tadi	ai10
-	dca	udiv_remdr+0
+	jmsi	_pushda
 	tadi	ai10
-	dca	udiv_remdr+1
+	jmsi	_pushda
 	jmsi	_checkmiss
 	jmsi	_nextint	; get next integer argument
+	jmsi	_popda
+	dca	udiv_remdr+1
+	jmsi	_popda
+	dca	udiv_remdr+0
 	jmsi	_popda
 	dca	shxright	; save right-shift flag
 	tadi	ai10		; mask the shift count
