@@ -24,7 +24,7 @@
 	OP_MALLPR = 0	; print mallocs and frees
 	OP_MEMCHK = 1	; memck before & after garbcoll
 	OP_POISON = 0	; poison freed memory blocks
-	OP_TTWAIT = 0	; wait after each char printed
+	OP_TTWAIT = 1	; wait after each char printed
 	OP_XARITH = 1	; extended arithmetic
 
 	SR_VTRUBS = 00001 ;<00> vt-style rubouts
@@ -1675,6 +1675,7 @@ _sysex:	.word	.+1
 ;  output:
 ;   ac = 0: symbol not found
 ;     else: composite pointer to value token
+;           sluvaldf,sluvalptr = pointer to SE_VALUn for the symbol
 ;  scratch:
 ;   df, ai10, ai11, ai12
 symlookup: .word .-.
@@ -1746,6 +1747,11 @@ sluentdone:
 slufound:
 	tadi	ai10		;SE_VALU1=2,SE_VALU2=4,SE_VALU3=6 : symbol found, return corresponding value token from SE_VALU1,2,3
 	dca	sluentry	; save value token found
+	tad	_6201
+	rdf			; save where SE_VALUn is
+	dca	sluvaldf
+	tad	ai10
+	dca	sluvalptr
 	tad	slutoken	; access symbol name token we looked up
 	jmsi	_access
 	tad	_0002		;T_VALU=3 : access value area
@@ -1829,6 +1835,36 @@ sluframe:    .word .-.		; next outer frame to search
 sluentry:    .word .-.		; next entry in frame to search
 slunegname:  .word .-.		; negative name entry pointer we're looking for
 slutoken:    .word .-.		; symbol token we are looking for
+sluvalptr:   .word .-.		; pointer within that frame of SE_VALUn
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; (set! variable value)
+;  - variable must already be defined somewhere
+;    either in current frame or an outer frame
+f_set_x:
+	jmsi	_checkmiss
+	jmsi	_nextelem	; get varname token
+	jmsi	_pushcp
+	jmsi	_checkmiss
+	jmsi	_nexteval	; get and evaluate value token
+	dca	addsymval
+	jmsi	_checklast	; make sure there are no more tokens after value
+	jmsi	_popcp
+	jms	symlookup	; look for existing symbol definition
+	sna cla
+	jmp	seterr1
+sluvaldf: .word	.-.		; get data frame for symbol's SE_VALUn entry
+	tad	addsymval	; get new value for symbol
+	dcai	sluvalptr	; overwrite symbol's SE_VALUn entry
+setret1:jmpi	_retnull	; return value is the null token
+
+seterr1:
+	tad	_setmsg1
+	jmpi	_evalerr
+
+_symtok2namentb: .word symtok2nament
+
+_setmsg1: .word	setmsg1
 
 
 
@@ -4057,7 +4093,7 @@ asecmploop:
 	cma iac
 	tad	addsymnam	; see if it matches name we are trying to add
 	sna cla			; check for names match
-	jmp	asereplace	; if so, replace the old value with new one
+	jmp	asereplace2	; if so, replace the old value with new one
 	; ac   = zero
 	; df   = accesses symbol entry node (SE_...)
 	; ai10 = just before SE_VALUn of the symbol entry node
@@ -4089,7 +4125,7 @@ asemalcdf: .word .-.		; save pointer to the node
 	dcai	ai10		;SE_NAME1=1
 	tad	addsymval
 	dcai	ai10		;SE_VALU1=2
-	dcai	ai10		;SE_NAME2=3
+aseret1:dcai	ai10		;SE_NAME2=3
 	dcai	ai10		;SE_VALU2=4
 	dcai	ai10		;SE_NAME3=5
 	dcai	ai10		;SE_VALU3=6
@@ -4099,14 +4135,15 @@ asemalcdf: .word .-.		; save pointer to the node
 	; df,ai10 = SE_NAMEn that is zero or has same name
 	; ac = zero
 asereplace:
+	cla cma
 	tad	ai10		; back up ai10 so we can overwrite entry
-	tad	_7777
 	dca	ai10
 	tad	addsymnam	; write SE_NAME<1,2,3>
 	dcai	ai10
+asereplace2:
 	tad	addsymval	; write SE_VALU<1,2,3>
 	dcai	ai10
-	jmpi	addsyment
+aseret2:jmpi	addsyment
 
 asemalptr:   .word .-.
 asecmpcount: .word .-.
@@ -6818,6 +6855,7 @@ mnemsg1:    .asciz "makenament: block "
 nimsg1:     .asciz "nextint: argument not an integer"
 nsmsg1:     .asciz "nextstr: argument not a string"
 ormsg1:     .asciz "nextbool: argument not a boolean"
+setmsg1:    .asciz "set!: variable not defined"
 st2nemsg1:  .asciz "st2ne: must be a symbol name"
 stkomsg:    .asciz "chkstkovf: stack overflow"
 tcxmsg:     .asciz "tokenize: excess close parenthesis"
@@ -7150,6 +7188,8 @@ staticfuncs:
 			.word	f_quote
 	.asciz	"rem"
 			.word	f_rem
+	.asciz	"set!"
+			.word	f_set_x
 	.asciz	"stackroom"
 			.word	f_stackroom
 	.asciz	"strcmp"

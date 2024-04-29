@@ -199,3 +199,44 @@
 (heaproom)
 
 (play-game)
+
+; find the best move
+(define best-move
+    (lambda (OX board)
+        (for 0 9 1
+            (lambda (i)
+                (begin
+                    (define newboard (modify-board OX i board))
+                    (if (= newboard) #F
+
+
+; for a given board, what are chances that OX wins?
+; OX has just moved, other player is next
+(define score-board
+    (lambda (OX board)
+        (begin
+            (define other (other-player OX))
+            (define score 0)
+            (define outof 0)
+            (for 0 9 1
+                (lambda (i)
+                    (begin
+                        (define mask (<< 3 (<< i 1)))
+                        (if (= (& board mask) mask)
+                            (begin
+                                (set! score (+ score (score-board other (modify-board OX i board))))
+                                (set! outof (+ outof 1))))
+                        #F)))
+            (cond
+                ((<> outof) (/ score outof))
+                ((OX-won? OX    board)  1)
+                ((OX-won? other board) -1)
+                (#T 0)))))
+
+(define for
+    (lambda start stop step body)
+        (if (= start stop) #F
+            (begin
+                (define ret (body start))
+                (if (or (not (bool? ret)) ret) ret (for (+ start step) stop step body))))))
+
