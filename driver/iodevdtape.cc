@@ -262,9 +262,9 @@ SCRet *IODevDTape::scriptcmd (int argc, char const *const *argv)
             char *p;
             int driveno = strtol (argv[1], &p, 0);
             if ((*p != 0) || (driveno < 0) || (driveno > 7)) return new SCRetErr ("drivenumber %s not in range 0..7", argv[1]);
-            int fd = open (argv[2], loadrw ? O_RDWR : O_RDONLY);
+            int fd = open (argv[2], loadrw ? O_RDWR | O_CREAT : O_RDONLY, 0666);
             if (fd < 0) return new SCRetErr (strerror (errno));
-            if (flock (fd, (loadrw ? LOCK_EX : LOCK_SH) | LOCK_NB) < 0) {
+            if (flock (fd, (loadro ? LOCK_SH : LOCK_EX) | LOCK_NB) < 0) {
                 SCRetErr *err = new SCRetErr (strerror (errno));
                 close (fd);
                 return err;
