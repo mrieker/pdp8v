@@ -321,20 +321,22 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
         // DTRA (DTape) read status register A
         // p 396
         case 06761: {
+            fprintf (stderr, "IODevDTape::ioinstr*: read status_a %04o\n", shm->status_a);
             input |= shm->status_a;
             break;
         }
 
         // DTCA (DTape) clear status register A
         case 06762: {
+            fprintf (stderr, "IODevDTape::ioinstr*: clear status_a\n");
             shm->status_a = 0;
-            if (shm->debug > 0) printf ("IODevDTape::ioinstr: status A cleared\n");
             updateirq ();
             break;
         }
 
         // DTLA (DTape) clear and load status register A
         case 06766: {
+            fprintf (stderr, "IODevDTape::ioinstr*: clear status_a\n");
             shm->status_a = 0;
             // fall through
         }
@@ -342,16 +344,23 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
         // DTXA (DTape) load status register A
         case 06764: { 
             shm->status_a ^= input & 07774;
-            if (! (input & 00001)) shm->status_b &= ~ DTFLAG;  // clear dectape flag
-            if (! (input & 00002)) shm->status_b &= ~ ERRORS;  // clear all error flags
+            fprintf (stderr, "IODevDTape::ioinstr*: xor status_a with %04o giving %04o\n", input & 07774, shm->status_a);
+            if (! (input & 00001)) {
+                fprintf (stderr, "IODevDTape::ioinstr*: clear dectape flag\n");
+                shm->status_b &= ~ DTFLAG;  // clear dectape flag
+            }
+            if (! (input & 00002)) {
+                fprintf (stderr, "IODevDTape::ioinstr*: clear error flags\n");
+                shm->status_b &= ~ ERRORS;  // clear all error flags
+            }
             updateirq ();
 
-            if (shm->debug > 0) {
+            {
                 int drno = (shm->status_a >> 9) & 7;
-                printf ("IODevDTape::ioinstr: st_A=%04o  st_B=%04o  startio  %o %s %s %s %s  tpos=%05o  idwc=%04o  idca=%04o\n",
+                fprintf (stderr, "IODevDTape::ioinstr*: st_A=%04o  st_B=%04o  startio  %o %s %s %s %s  tpos=%04o%c\n",
                     shm->status_a, shm->status_b, (shm->status_a >> 9) & 7, CONTIN ? "CON" : "NOR",
                     (shm->status_a & REVBIT) ? "REV" : "FWD", (shm->status_a & GOBIT) ? "GO" : "ST",
-                    cmdmnes[(shm->status_a&070)>>3], shm->drives[drno].tapepos, memarray[IDWC], memarray[IDCA]);
+                    cmdmnes[(shm->status_a&070)>>3], shm->drives[drno].tapepos / 4, (shm->drives[drno].tapepos & 3) + 'a');
             }
 
             if ((shm->status_a ^ oldstata) & (GOBIT | REVBIT)) {
@@ -375,11 +384,13 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
         // DTSF (DTape) skip on flag
         case 06771: {
             if (shm->status_b & INTREQ) input |= IO_SKIP;
+            fprintf (stderr, "IODevDTape::ioinstr*: skip on flag %04o = %s\n", shm->status_b, ((input & IO_SKIP) ? "TRUE" : "FALSE"));
             break;
         }
 
         // DTRB (DTape) read status register B
         case 06772: {
+            fprintf (stderr, "IODevDTape::ioinstr*: read status_b %04o\n", shm->status_b);
             input |= shm->status_b;
             break;
         }
@@ -388,6 +399,8 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
         // DTRB (DTape) read status register B
         case 06773: {
             if (shm->status_b & INTREQ) input |= IO_SKIP;
+            fprintf (stderr, "IODevDTape::ioinstr*: read status_b %04o\n", shm->status_b);
+            fprintf (stderr, "IODevDTape::ioinstr*: skip on flag %04o = %s\n", shm->status_b, ((input & IO_SKIP) ? "TRUE" : "FALSE"));
             input |= shm->status_b;
             break;
         }
@@ -395,6 +408,7 @@ uint16_t IODevDTape::ioinstr (uint16_t opcode, uint16_t input)
         // DTXB (DTape) load status register B
         case 06774: {
             shm->status_b = (shm->status_b & 07707) | (input & 00070);
+            fprintf (stderr, "IODevDTape::ioinstr*: load status_b %04o\n", shm->status_b);
             input &= IO_LINK;
             break;
         }
@@ -469,8 +483,8 @@ void IODevDTape::thread ()
             // the file just contains the data, as 129 16-bit words, rjzf * 1474 blocks
             // seek forward always stops at 'b' or end-of-tape
             // seek reverse always stops at 'c' or beg-of-tape
-            // read/write forward always stop at 'c' or end-of-tape
-            // read/write reverse always stop at 'b' or beg-of-tape
+            // read/write forward always stops at 'c' or end-of-tape
+            // read/write reverse always stops at 'b' or beg-of-tape
             ASSERT (drive->tapepos < BLOCKSPERTAPE*4);
 
             switch ((shm->status_a & 070) >> 3) {
@@ -485,21 +499,24 @@ void IODevDTape::thread ()
 
                 // SEARCH (2.5.1.4 p 27)
                 case 1: {
-                    uint16_t idwc = memarray[IDWC];
-                    uint16_t idca = memarray[IDCA];
-                    ASSERT (idwc <= 07777);
-                    ASSERT (idca <= 07777);
-                    dyndisdma (IDWC, 1,  true, shm->dmapc);
-                    dyndisdma (IDCA, 1, false, shm->dmapc);
-                    dyndisdma (memfield + idca - memarray, 1, true, shm->dmapc);
+                    uint16_t idwc, idca;
                     do {
                         if (this->delayblk ()) goto finished;
                         if (this->stepskip (drive)) goto endtape;
 
+                        idwc = memarray[IDWC];
+                        idca = memarray[IDCA];
+                        ASSERT (idwc <= 07777);
+                        ASSERT (idca <= 07777);
+                        dyndisdma (IDWC, 1,  true, shm->dmapc);
+                        dyndisdma (IDCA, 1, false, shm->dmapc);
+                        dyndisdma (memfield + idca - memarray, 1, true, shm->dmapc);
+                        fprintf (stderr, "IODevDTape::thread*: skip idwc=%04o idca=%04o\n", idwc, idca);
+
                         memfield[idca] = drive->tapepos / 4;                    // write out mark we just hopped over
                         idwc = (idwc + 1) & 07777;
                         memarray[IDWC] = idwc;
-                        if (shm->debug > 0) printf ("IODevDTape::thread: search memfield[%04o] <= %04o  idwc=%04o\n", idca, drive->tapepos / 4, idwc);
+                        if (shm->debug > 0) fprintf (stderr, "IODevDTape::thread: search memfield[%04o] <= %04o  idwc=%04o\n", idca, drive->tapepos / 4, idwc);
                     } while (CONTIN && (idwc != 0));
                     goto normal;
                 }
@@ -530,6 +547,7 @@ void IODevDTape::thread ()
                         dyndisdma (IDWC, 1, true, shm->dmapc);
                         dyndisdma (IDCA, 1, true, shm->dmapc);
                         dyndisdma (memfield + idca - memarray, MIN (WORDSPERBLOCK, 010000 - idwc), true, shm->dmapc);
+                        fprintf (stderr, "IODevDTape::thread*: read idwc=%04o idca=%04o block=%04o\n", idwc, idca, drive->tapepos / 4);
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; -- i >= 0;) {
                                 idca = (idca + 1) & 07777;
@@ -581,6 +599,7 @@ void IODevDTape::thread ()
                         dyndisdma (IDWC, 1, true, shm->dmapc);
                         dyndisdma (IDCA, 1, true, shm->dmapc);
                         dyndisdma (memfield + idca - memarray, MIN (WORDSPERBLOCK, 010000 - idwc), false, shm->dmapc);
+                        fprintf (stderr, "IODevDTape::thread*: write idwc=%04o idca=%04o block=%04o\n", idwc, idca, drive->tapepos / 4);
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; i > 0;) {
                                 idca = (idca + 1) & 07777;
@@ -627,13 +646,15 @@ void IODevDTape::thread ()
             }
             ABORT ();
         endtape:;
+            fprintf (stderr, "IODevDTape::thread*: - end of tape\n");
             shm->status_a &= ~ GOBIT;   // end-of-tape shuts the GO bit off
             shm->status_b |=  ENDTAP;   // set up end-of-tape status
             goto finished;
         normal:;
+            fprintf (stderr, "IODevDTape::thread*: - final idwc=%04o idca=%04o\n", memarray[IDWC], memarray[IDCA]);
             shm->status_b |=  DTFLAG;   // errors do not get DTFLAG
         finished:;
-            if (shm->debug > 0) printf ("IODevDTape::thread: status B %04o\n", shm->status_b);
+            if (shm->debug > 0) fprintf (stderr, "IODevDTape::thread: status B %04o\n", shm->status_b);
 
             // maybe request an interrupt
             this->updateirq ();
@@ -754,7 +775,7 @@ bool IODevDTape::delayblk ()
 
         // the TC08 diagnostics do the I/O instruction to start the I/O THEN write IDCA and IDWC,
         // so make sure CPU has exeucted at least 100 cycles (20..30 instructions) or is doing an HLT
-        if (waitingforinterrupt) return false;                  // HLT is ok (processor won't cycle)
+        if (waitingforinterrupt) return false;                  // HLT is ok (processor won't cycle), assume IDCA,IDWC set up
         uint64_t ncycles = shadow.getcycles () - shm->cycles;   // see how many cycles since I/O started
         if (ncycles >= 100) return false;                       // if 100 cycles, assume IDCA,IDWC set up
 
