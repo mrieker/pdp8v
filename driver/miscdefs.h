@@ -38,6 +38,8 @@
 #define IRQ_RK8       00200
 #define IRQ_DTAPE     00400
 
+#define MAXSTOPATS 16
+
 typedef unsigned long long LLU; // for printf %llu format
 
 #include "gpiolib.h"
@@ -50,22 +52,25 @@ extern bool os8zap;
 extern bool quiet;
 extern bool randmem;
 extern bool scriptmode;
+extern bool skipopt;
 extern bool waitingforinterrupt;
 extern char **cmdargv;
 extern char const *haltreason;
 extern GpioLib *gpio;
 extern int cmdargc;
-extern int stopataddr;
+extern int numstopats;
 extern int watchwrite;
 extern uint16_t lastreadaddr;
 extern uint16_t startpc;
 extern uint16_t switchregister;
+extern uint16_t stopats[MAXSTOPATS];
 
 uint16_t readswitches (char const *swvar);
 void haltinstr (char const *fmt, ...);
 void haltordie (char const *reason);
-void clrintreqmask (uint16_t mask);
+void clrintreqmask (uint16_t mask, bool wake = false);
 void setintreqmask (uint16_t mask);
+void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag);
 uint16_t getintreqmask ();
 char *getexedir (char *buf, int buflen);
 

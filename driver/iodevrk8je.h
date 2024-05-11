@@ -34,11 +34,13 @@ struct IODevRK8JE : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
-    bool debug;
+    bool dskpwait;
     bool resetting;
     bool ros[4];
+    int debug;
     int fds[4];
     uint32_t nsperus;
+    uint16_t lastdebst;
 
     pthread_cond_t cond;
     pthread_cond_t cond2;

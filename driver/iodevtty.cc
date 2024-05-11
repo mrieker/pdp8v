@@ -112,6 +112,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     pthread_cond_init (&this->prcond, NULL);
     pthread_mutex_init (&this->lock, NULL);
     this->intenab  = false;
+    this->ksfwait  = false;
     this->lastpc   = 0xFFFFU;
     this->lastin   = 0xFFFFU;
     this->lastout  = 0xFFFFU;
@@ -122,7 +123,8 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->tlfd     = -1;
     this->kbtid    =  0;
     this->prtid    =  0;
-    this->mask8    = 0177;
+    this->eight    = false;
+    this->lcucin   = false;
     this->stopping = false;
     this->telnetd  = false;
     this->usperchr = 1000000 / 120;
@@ -141,15 +143,29 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
     // debug [0/1/2]
     if (strcmp (argv[0], "debug") == 0) {
         if (argc == 1) {
-            return new SCRetInt (this->debug ? 1 : 0);
+            return new SCRetInt (this->debug);
         }
 
         if (argc == 2) {
-            this->debug = atoi (argv[1]) != 0;
+            this->debug = atoi (argv[1]);
             return NULL;
         }
 
         return new SCRetErr ("iodev %s debug [0/1/2]", iodevname);
+    }
+
+    // eight [0/1]
+    if (strcmp (argv[0], "eight") == 0) {
+        if (argc == 1) {
+            return new SCRetInt (this->eight ? 1 : 0);
+        }
+
+        if (argc == 2) {
+            this->eight = atoi (argv[1]) != 0;
+            return NULL;
+        }
+
+        return new SCRetErr ("iodev %s eight [0/1]", iodevname);
     }
 
     if (strcmp (argv[0], "help") == 0) {
@@ -158,6 +174,8 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("  debug               - see if debug is enabled");
         puts ("  debug 0/1/2         - set debug printing");
+        puts ("  eight [0/1]         - allow all 8 bits to pass through");
+        puts ("  lcucin [0/1]        - lowercase->uppercase on input");
         puts ("  pipes <kb> [<pr>]   - use named pipes or /dev/pty/... for i/o");
         puts ("                        <pr> defaults to same as <kb>");
         puts ("                        dash (-) or dash dash (- -) means stdin and stdout");
@@ -168,6 +186,20 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("                        allowed range 1..65535");
         puts ("");
         return NULL;
+    }
+
+    // lcucin [0/1/2]
+    if (strcmp (argv[0], "lcucin") == 0) {
+        if (argc == 1) {
+            return new SCRetInt (this->lcucin ? 1 : 0);
+        }
+
+        if (argc == 2) {
+            this->lcucin = atoi (argv[1]) != 0;
+            return NULL;
+        }
+
+        return new SCRetErr ("iodev %s lcucin [0/1]", iodevname);
     }
 
     // pipes <kb> <pr>
@@ -256,7 +288,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev %s telnet <tcpport>", iodevname);
     }
 
-    return new SCRetErr ("unknown tty command %s - valid: debug help pipes speed telnet", argv[0]);
+    return new SCRetErr ("unknown tty command %s - valid: debug eight help lcucin pipes speed telnet", argv[0]);
 }
 
 // open the given pipes and start the threads
@@ -551,8 +583,11 @@ void IODevTTY::kbthreadlk ()
             if ((skipchars > 0) && (-- skipchars >= 0)) continue;
         }
 
+        // maybe convert lower case to upper case
+        if (this->lcucin && ((this->kbbuff & 0177) >= 'a') && ((this->kbbuff & 0177) <= 'z')) this->kbbuff += 'A' - 'a';
+
         // pdp-8 software likes top bit set (eg, focal, os/8)
-        this->kbbuff |= ~ this->mask8;
+        if (! this->eight) this->kbbuff |= 0200;
 
         if (this->debug > 0) {
             uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
@@ -624,7 +659,7 @@ void IODevTTY::prthread ()
         }
 
         // strip top bit off for printing
-        this->prbuff &= this->mask8;
+        if (! this->eight) this->prbuff &= 0177;
 
         // we know there is room, write it
         int rc = write (this->prfd, &this->prbuff, 1);
@@ -732,6 +767,12 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
         // KSF: skip if there is a kb character to be read
         case 06031: {
             if (this->kbflag) input |= IO_SKIP;
+
+            // kbflag clear, check for KSF ; JMP.-1
+            // block while waiting for keyboard input
+            // unblocks if another interrupt is posted or GUI/script halts
+            else skipoptwait (opcode, &this->lock, &this->ksfwait);
+
             break;
         }
 
@@ -777,6 +818,12 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
         // TSF: skip if printer is ready to accept a character
         case 06041: {
             if (this->prflag) input |= IO_SKIP;
+
+            // prflag clear, check for TSF ; JMP.-1
+            // block while waiting for printer ready
+            // unblocks if another interrupt is posted or GUI/script halts
+            else skipoptwait (opcode, &this->lock, &this->tsfwait);
+
             break;
         }
 
@@ -855,5 +902,7 @@ void IODevTTY::updintreqlk ()
     uint64_t newbits = intreq ? __sync_or_and_fetch (&intreqbits, 1ULL << this->iobasem3) :
                             __sync_and_and_fetch (&intreqbits, ~ (1ULL << this->iobasem3));
     if (newbits) setintreqmask (IRQ_TTYKBPR);
-            else clrintreqmask (IRQ_TTYKBPR);
+    else clrintreqmask (IRQ_TTYKBPR,
+                (this->ksfwait & this->kbflag) |
+                (this->tsfwait & this->prflag));
 }

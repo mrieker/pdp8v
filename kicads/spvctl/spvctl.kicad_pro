@@ -472,37 +472,7 @@
       "text_offset_ratio": 0.08
     },
     "legacy_lib_dir": "",
-    "legacy_lib_list": [
-      "power",
-      "device",
-      "transistors",
-      "conn",
-      "linear",
-      "regul",
-      "74xx",
-      "cmos4000",
-      "adc-dac",
-      "memory",
-      "xilinx",
-      "microcontrollers",
-      "dsp",
-      "microchip",
-      "analog_switches",
-      "motorola",
-      "texas",
-      "intel",
-      "audio",
-      "interface",
-      "digital-audio",
-      "philips",
-      "display",
-      "cypress",
-      "siliconi",
-      "opto",
-      "atmel",
-      "contrib",
-      "valves"
-    ],
+    "legacy_lib_list": [],
     "meta": {
       "version": 1
     },
@@ -517,6 +487,11 @@
     "subpart_first_id": 65,
     "subpart_id_separator": 0
   },
-  "sheets": [],
+  "sheets": [
+    [
+      "43091a75-1ec9-41c6-b6f6-25cc619ad0a0",
+      ""
+    ]
+  ],
   "text_variables": {}
 }

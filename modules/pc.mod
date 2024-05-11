@@ -21,6 +21,14 @@
 // program counter register
 // synchronous incrementable, synchronous loadable, asynchronously resettable 12-bit counter
 
+//  input:
+//   _aluq = output from the ALU
+//   clok2 = clock signal from raspi
+//   _pc_aluq = asserted (low) means load PC from ALU at end of cycle
+//   _pc_inc = asserted (low) means increment PC at end of cycle
+//   reset = reset signal from raspi
+//  output:
+//   pcq = PC value
 module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00], in reset)
 {
     wire clok0a, clok0b, clok0c, _reseta, _resetb, _resetc, _resetd;
@@ -37,6 +45,7 @@ module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00
     _resetc = ~ reset;
     _resetd = ~ reset;
 
+    // generate signal saying everything to right of bit is all ones (active low)
     _allones[01] =  _pcq[00];
     _allones[02] = ~(pcq[00] & pcq[01]);
     _allones[03] = ~(pcq[00] & pcq[01] & pcq[02]);
@@ -49,8 +58,11 @@ module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00
     _allones[10] = ~(allones[06] & pcq[06] & pcq[07] & pcq[08] & pcq[09]);
     _allones[11] = ~(allones[06] & pcq[06] & pcq[07] & pcq[08] & pcq[09] & pcq[10]);
 
+    // active high version of the above active lows
     allones = ~ _allones;
 
+    // buffer the control signals to handle fanout
+    // HOLD means clock the unaltered PC value back into itself
     pc_aluqa = ~ _pc_aluq;
     pc_aluqb = ~ _pc_aluq;
     pc_inca  = ~ _pc_inc;
@@ -59,6 +71,7 @@ module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00
     pc_holda = ~ (pc_inca | pc_aluqa);
     pc_holdb = ~ (pc_incb | pc_aluqb);
 
+    // set up multiplexor to select value to write to PC at end of cycle
     nextpc[00] = ~(pc_inca &               pcq[00] |                                     pc_aluqa & _aluq[00] | pc_holda & _pcq[00]);
     nextpc[01] = ~(pc_inca & allones[01] & pcq[01] | pc_inca & _allones[01] & _pcq[01] | pc_aluqa & _aluq[01] | pc_holda & _pcq[01]);
     nextpc[02] = ~(pc_inca & allones[02] & pcq[02] | pc_inca & _allones[02] & _pcq[02] | pc_aluqa & _aluq[02] | pc_holda & _pcq[02]);
@@ -72,6 +85,7 @@ module pccirc (in _aluq[11:00], in clok2, in _pc_aluq, in _pc_inc, out pcq[11:00
     nextpc[10] = ~(pc_incc & allones[10] & pcq[10] | pc_incc & _allones[10] & _pcq[10] | pc_aluqb & _aluq[10] | pc_holdb & _pcq[10]);
     nextpc[11] = ~(pc_incc & allones[11] & pcq[11] | pc_incc & _allones[11] & _pcq[11] | pc_aluqb & _aluq[11] | pc_holdb & _pcq[11]);
 
+    // PC register flipflops
     pc00: DFF (_PC:_reseta, _PS:1, D:nextpc[00], T:clok0a, Q:pcq[00], _Q:_pcq[00]);
     pc01: DFF (_PC:_reseta, _PS:1, D:nextpc[01], T:clok0a, Q:pcq[01], _Q:_pcq[01]);
     pc02: DFF (_PC:_reseta, _PS:1, D:nextpc[02], T:clok0a, Q:pcq[02], _Q:_pcq[02]);

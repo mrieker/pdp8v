@@ -25,7 +25,7 @@
  *  export cpuhz=<cpuhz>
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
  *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printinstr]
- *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-startpc <address>] [-stopat <address>]
+ *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt] [-startpc <address>] [-stopat <address>]
  *          [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
@@ -48,11 +48,12 @@
  *      -pipelib     : simulate via pipe connected to NetGen
  *      -printinstr  : print message at beginning of each instruction
  *      -printstate  : print message at beginning of each state
- *      -quiet       : don't print undefined/unsupported opcode messages
+ *      -quiet       : don't print undefined/unsupported opcode/os8zap messages
  *      -randmem     : supply random opcodes and data for testing
  *      -resetonerr  : reset if error is detected
  *      -rimloader   : load file is in rimloader format
  *      -script      : load file is a TCL script
+ *      -skipopt     : optimize ioskip/jmp.-1 loops
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
  *      -watchwrite  : print message if the given address is written to
@@ -101,12 +102,13 @@ bool os8zap;
 bool quiet;
 bool randmem;
 bool scriptmode;
+bool skipopt;
 bool waitingforinterrupt;
 char **cmdargv;
 ExtArith extarith;
 GpioLib *gpio;
 int cmdargc;
-int stopataddr;
+int numstopats;
 int watchwrite;
 MemExt memext;
 Shadow shadow;
@@ -114,6 +116,7 @@ uint16_t lastreadaddr;
 uint16_t startpc;
 uint16_t switchregister;
 uint16_t *memory;
+uint16_t stopats[MAXSTOPATS];
 
 static pthread_t mintimestid;
 static pthread_cond_t mintimescond = PTHREAD_COND_INITIALIZER;
@@ -129,6 +132,7 @@ uint32_t haltsample;
 static bool guimode;
 static bool haltcont;
 static bool haltprint;
+static bool setintreqcalled;
 static uint16_t intreqmask;
 static uint16_t lastreaddata;
 static uint32_t syncintreq;
@@ -164,7 +168,6 @@ int main (int argc, char **argv)
     setlinebuf (stdout);
 
     startpc = 0xFFFFU;
-    stopataddr = -1;
     watchwrite = -1;
 
     for (int i = 0; ++ i < argc;) {
@@ -286,6 +289,10 @@ int main (int argc, char **argv)
             scriptmode = true;
             continue;
         }
+        if (strcasecmp (argv[i], "-skipopt") == 0) {
+            skipopt = true;
+            continue;
+        }
         if (strcasecmp (argv[i], "-startpc") == 0) {
             if ((++ i >= argc) || (argv[i][0] == '-')) {
                 fprintf (stderr, "raspictl: missing address after -startpc\n");
@@ -299,11 +306,16 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -stopat\n");
                 return 1;
             }
-            stopataddr = strtol (argv[i], &p, 8);
-            if ((*p != 0) || (stopataddr < 0) || (stopataddr > 077777)) {
+            uint32_t stopat = strtoul (argv[i], &p, 8);
+            if ((*p != 0) || (stopat < 0) || (stopat > 077777)) {
                 fprintf (stderr, "raspictl: bad -stopat address '%s'\n", argv[i]);
                 return 1;
             }
+            if (numstopats == MAXSTOPATS) {
+                fprintf (stderr, "raspictl: too many -stopats\n");
+                return 1;
+            }
+            stopats[numstopats++] = stopat;
             continue;
         }
         if (strcasecmp (argv[i], "-watchwrite") == 0) {
@@ -479,6 +491,8 @@ reseteverything:;
         haltordie (haltreason);
     }
 
+    uint16_t lastos8zap = 0;
+
     try {
         for ever {
 
@@ -531,9 +545,12 @@ reseteverything:;
                 uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
                 ASSERT (addr < MEMSIZE);
 
-                if (addr == (unsigned) stopataddr) {
-                    fprintf (stderr, "raspictl: stopat %05o\n", addr);
-                    haltordie ("STOPAT");
+                for (int i = 0; i < numstopats; i ++) {
+                    if (addr == stopats[i]) {
+                        fprintf (stderr, "raspictl: stopat %05o\n", addr);
+                        haltordie ("STOPAT");
+                        break;
+                    }
                 }
 
                 if (sample & G_READ) {
@@ -543,8 +560,16 @@ reseteverything:;
                         // read memory contents
                         if (randmem) {
                             lastreaddata = randuint16 () & 07777;
-                        } else if (os8zap && (lastreadaddr == 007424) && (lastreaddata == 02351) && (addr == 007551) && (memarray[007425] == 05224)) {
-                            lastreaddata = 07777;   // patch 07424: ISZ 07551 / JMP 07424 to read value 07777
+                        } else if (os8zap &&
+                                ((lastreaddata & 07600) == 02200) &&                            // page+x+0: ISZ page+y
+                                (addr == (lastreadaddr & 07600) + (lastreaddata & 00177)) &&    // reading from page+y
+                                ((lastreadaddr & 00177) != 00177) &&                            // not at end of page
+                                (memarray[lastreadaddr+1] == 05200 + (lastreadaddr & 00177))) { // page+x+1: JMP page+x+0
+                            if (! quiet && (lastos8zap != lastreadaddr)) {
+                                lastos8zap = lastreadaddr;
+                                fprintf (stderr, "raspictl: os8zap at %05o\n", lastreadaddr);
+                            }
+                            lastreaddata = 07777;   // patch to read value 07777
                         } else {
                             lastreaddata = memarray[addr];
                         }
@@ -972,19 +997,56 @@ static void dumpregs ()
             shadow.r.link, shadow.r.ac, memext.iframe | shadow.r.pc);
 }
 
+// called in main thread by ioinstr() methods that are handling a 'skip when flag set' instruction
+// should be called with the given mutex locked
+// to wake when io completes, call setintreqmask(), possibly with 0 if not requesting interrupt
+void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
+{
+    if (! skipopt) return;                                  // can't do it if not enabled by -skipopt
+    if ((lastreadaddr & 00177) == 00177) return;            // can't do it if ioskp is last word of page
+    if (memarray[lastreadaddr] != skipopcode) return;       // can't do if it's not an ioskip opcode
+    uint16_t jmpskip = 05200 | (lastreadaddr & 00177);      // verify that ioskip followed by jmp ioskip
+    if (memarray[lastreadaddr+1] != jmpskip) return;
+
+    *flag = true;
+    pthread_mutex_unlock (lock);
+
+    bool sigint = ctl_lock ();
+    if (! (haltflags & HF_HALTIT) && (! memext.intenabd () || (intreqmask == 0))) {
+        if (setintreqcalled) setintreqcalled = false;
+        else {
+            waitingforinterrupt = true;
+            pthread_cond_wait (&haltcond, &haltmutex);
+            waitingforinterrupt = false;
+        }
+    }
+    ctl_unlock (sigint);
+
+    pthread_mutex_lock (lock);
+    *flag = false;
+}
+
 // set the interrupt request bits
+// wake from HLT or optimized ioskip
 void setintreqmask (uint16_t mask)
 {
     bool sigint = ctl_lock ();
     intreqmask |= mask;
+    setintreqcalled = true;
     pthread_cond_broadcast (&haltcond);
     ctl_unlock (sigint);
 }
 
-void clrintreqmask (uint16_t mask)
+// clear the interrupt request bits
+// optionally wake from HLT or optimized ioskip
+void clrintreqmask (uint16_t mask, bool wake)
 {
     bool sigint = ctl_lock ();
     intreqmask &= ~ mask;
+    if (wake) {
+        setintreqcalled = true;
+        pthread_cond_broadcast (&haltcond);
+    }
     ctl_unlock (sigint);
 }
 

@@ -19,9 +19,8 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // test of iowarrior-100-based 32-pin paddles plugged into nothing
-// can test from 1 to 4 paddles at a time (except -free only tests the first one given)
 // can run on pc or raspi
-//  sudo ./iow100test.`uname -m` [-delayus microsecs] [-free] serialnumbers ...
+//  sudo ./iow100test.`uname -m` [-delayus microsecs] [-free] serialnumber
 //   -delayus : usec delay after write before read (default 1000)
 //   -free : test free-standing iow100 module not plugged into panel
 
@@ -44,14 +43,11 @@ static IOWKIT100_IO_REPORT const allonepins = { 0, { 255, 255, 255, 255, 255, 25
 // ask io-warrior-100 for state of all pins
 static IOWKIT100_SPECIAL_REPORT const reqallpins[] = { 255 };
 
-#define MAXTESTIOWHS 4
-static char const *testsns[MAXTESTIOWHS];
-static int ntestiowhs;
-static IOWKIT_HANDLE testiowhs[MAXTESTIOWHS];
+static char const *testsn;
+static IOWKIT_HANDLE testiowh;
 static sigset_t sigintmask;
 static uint32_t delayus;
 
-static void each (void *ctx, char const *dn, int pipe, char const *sn, int pid, int rev);
 static void writeallpins (IOWKIT_HANDLE iowh, uint64_t allpins);
 static uint64_t readallpins (IOWKIT_HANDLE iowh);
 static void blocksigint ();
@@ -59,6 +55,7 @@ static void allowsigint ();
 static uint32_t randuint32 ();
 static void freetest ();
 static void fulltest ();
+static char *bintostr (uint32_t bin, char *str);
 
 int main (int argc, char **argv)
 {
@@ -90,14 +87,14 @@ int main (int argc, char **argv)
             fprintf (stderr, "bad option %s\n", argv[i]);
             return 1;
         }
-        if (ntestiowhs < MAXTESTIOWHS) {
-            testsns[ntestiowhs++] = argv[i];
+        if (testsn == NULL) {
+            testsn = argv[i];
             continue;
         }
         fprintf (stderr, "bad argument %s\n", argv[i]);
         return 1;
     }
-    if (ntestiowhs == 0) {
+    if (testsn == NULL) {
         fprintf (stderr, "missing serialnumber argument\n");
         return 1;
     }
@@ -106,37 +103,11 @@ int main (int argc, char **argv)
     sigaddset (&sigintmask, SIGINT);
     sigaddset (&sigintmask, SIGTERM);
 
-    IowKit::list (each, NULL);
-
-    for (int j = 0; j < ntestiowhs; j ++) {
-        if (testiowhs[j] == NULL) {
-            fprintf (stderr, "did not find %s\n", testsns[j]);
-            return 1;
-        }
+    testiowh = new IowKit;
+    if (! testiowh->openbysn (testsn)) {
+        fprintf (stderr, "error opening sn %s\n", testsn);
+        return 1;
     }
-
-    if (freeflag) freetest ();
-             else fulltest ();
-
-    return 0;
-}
-
-static void each (void *ctx, char const *dn, int pipe, char const *sn, int pid, int rev)
-{
-    if (pipe != 0) return;
-    printf ("  %s %d: pid=%X sn=%s\n", dn, pipe, pid, sn);
-    if (pid != IOWKIT_PRODUCT_ID_IOW100) return;
-
-    IOWKIT_HANDLE iowh = NULL;
-    for (int j = 0; j < ntestiowhs; j ++) {
-        if (strcasecmp (sn, testsns[j]) == 0) {
-            iowh = new IowKit;
-            if (! iowh->openbysn (sn)) abort ();
-            testiowhs[j] = iowh;
-            break;
-        }
-    }
-    if (iowh == NULL) return;
 
     // write 1s to open-drain all pins
     IOWKIT100_IO_REPORT writeones;
@@ -144,10 +115,13 @@ static void each (void *ctx, char const *dn, int pipe, char const *sn, int pid, 
     memset (writeones.Bytes, 0xFFU, sizeof writeones.Bytes);
 
     blocksigint ();
-
-    iowh->write (IOW_PIPE_IO_PINS, (char *) &writeones, sizeof writeones);
-
+    testiowh->write (IOW_PIPE_IO_PINS, (char *) &writeones, sizeof writeones);
     allowsigint ();
+
+    if (freeflag) freetest ();
+             else fulltest ();
+
+    return 0;
 }
 
 // ask io-warrior-100 for state of all pins
@@ -331,9 +305,9 @@ static void freetest ()
     uint32_t count = 0;
     while (true) {
         uint64_t sendval = (((uint64_t) randuint32 ()) << 32) | randuint32 ();
-        writeallpins (testiowhs[0], sendval);
+        writeallpins (testiowh, sendval);
 
-        uint64_t readval = readallpins (testiowhs[0]);
+        uint64_t readval = readallpins (testiowh);
 
         printf ("%10u %10u:  %016llX  %016llX  %016llX", ++ count, error,
             (unsigned long long) sendval, (unsigned long long) readval, (unsigned long long) (sendval ^ readval));
@@ -358,12 +332,6 @@ struct Paddle {
 // reads of multiple paddles are overlapped to save time
 static void fulltest ()
 {
-    Paddle pads[ntestiowhs];
-    memset (pads, 0, sizeof pads);
-    for (int j = 0; j < ntestiowhs; j ++) {
-        pads[j].iowh = testiowhs[j];
-    }
-
     // send out random 32-bit numbers and read them back
     // tests going through the output 2N3904s and coming back through the input 2N7000s
     uint32_t error = 0;
@@ -373,23 +341,21 @@ static void fulltest ()
         if (++ count % 10000 == 0) longest = 0;
         blocksigint ();
 
-        // write random 32-bit numbers to each paddle
+        // write random 32-bit number to paddle
         uint64_t t0 = getnowns ();
-        for (int j = 0; j < ntestiowhs; j ++) {
-            Paddle *pad = &pads[j];
-            uint32_t val = pad->sendval = randuint32 ();
-            IOWKIT100_IO_REPORT writepins;
-            memset (&writepins, 0, sizeof writepins);
-            memset (writepins.Bytes, 0xFFU, sizeof writepins.Bytes);
-            for (int i = 0; i < 32; i ++) {
-                if (val & 1) {  // output 2N3904 inverts
-                    uint32_t p = outputpinmap100[i];
-                    writepins.Bytes[p/8] &= ~ (1ULL << (p % 8));
-                }
-                val /= 2;
+        uint32_t sendval = randuint32 ();
+        uint32_t val = sendval;
+        IOWKIT100_IO_REPORT writepins;
+        memset (&writepins, 0, sizeof writepins);
+        memset (writepins.Bytes, 0xFFU, sizeof writepins.Bytes);
+        for (int i = 0; i < 32; i ++) {
+            if (val & 1) {  // output 2N3904 inverts
+                uint32_t p = outputpinmap100[i];
+                writepins.Bytes[p/8] &= ~ (1ULL << (p % 8));
             }
-            pad->iowh->write (IOW_PIPE_IO_PINS, &writepins, sizeof writepins);
+            val /= 2;
         }
+        testiowh->write (IOW_PIPE_IO_PINS, &writepins, sizeof writepins);
         usleep (delayus);
         uint64_t t1 = getnowns ();
 
@@ -398,31 +364,24 @@ static void fulltest ()
         while (true) {
             uint64_t t2 = getnowns ();
 
-            // tell iow100s to send back what they have on their pins
-            for (int j = 0; j < ntestiowhs; j ++) {
-                Paddle *pad = &pads[j];
-                pad->iowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins, sizeof reqallpins);
-            }
+            // tell iow100 to send back what it has on its pins
+            testiowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins, sizeof reqallpins);
 
             // read iow100 pins and extract 32 inputs from each
-            bool diff = false;
-            for (int j = 0; j < ntestiowhs; j ++) {
-                Paddle *pad = &pads[j];
-                IOWKIT100_SPECIAL_REPORT readpins;
-                memset (&readpins, 0, sizeof readpins);
-                pad->iowh->read (IOW_PIPE_SPECIAL_MODE, &readpins, sizeof readpins);
-                if (readpins.ReportID != 255) {
-                    fprintf (stderr, "fulltest: got report id %02X reading pins\n", readpins.ReportID);
-                    abort ();
-                }
-                uint32_t val = 0;
-                for (int i = 32; -- i >= 0;) {
-                    uint8_t p = inputpinmap100[i];
-                    val += val + ((readpins.Bytes[p/8] >> (p % 8)) & 1);
-                }
-                pad->readval = ~ val;
-                diff |= (pad->sendval != pad->readval);
+            IOWKIT100_SPECIAL_REPORT readpins;
+            memset (&readpins, 0, sizeof readpins);
+            testiowh->read (IOW_PIPE_SPECIAL_MODE, &readpins, sizeof readpins);
+            if (readpins.ReportID != 255) {
+                fprintf (stderr, "fulltest: got report id %02X reading pins\n", readpins.ReportID);
+                abort ();
             }
+            uint32_t val = 0;
+            for (int i = 32; -- i >= 0;) {
+                uint8_t p = inputpinmap100[i];
+                val += val + ((readpins.Bytes[p/8] >> (p % 8)) & 1);
+            }
+            uint32_t readval = ~ val;
+            bool diff = ((sendval & 0xFFFFFFFEU) != (readval & 0xFFFFFFFEU));
 
             uint64_t t3 = getnowns ();
             uint64_t delta = t3 - t0;
@@ -436,10 +395,27 @@ static void fulltest ()
                 break;
             }
             if (nreads > 3) {
-                printf ("%10u %10u:  **MISMATCH**\n", count, ++ error);
+                char sendstr[40], readstr[40], diffstr[40];
+                uint32_t diffbin = sendval ^ readval;
+                printf ("%10u %10u:  **MISMATCH**   %s  %s  %s\n", count, ++ error,
+                        bintostr (sendval, sendstr),
+                        bintostr (readval, readstr),
+                        bintostr (diffbin, diffstr));
                 break;
             }
         }
         allowsigint ();
     }
+}
+
+static char *bintostr (uint32_t bin, char *str)
+{
+    int len = 40;
+    while (len > 0) {
+        if (len % 5 == 0) str[--len] = ' ';
+        str[--len] = (bin & 1) + '0';
+        bin >>= 1;
+    }
+    str[39] = 0;
+    return str;
 }

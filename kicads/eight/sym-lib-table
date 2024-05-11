@@ -1,5 +1,5 @@
 (sym_lib_table
-  (version 0)
+  (version 7)
   (lib (name "eight-rescue")(type "Legacy")(uri "${KIPRJMOD}/eight-rescue.lib")(options "")(descr ""))
-  (lib (name "partlibrary")(type "Legacy")(uri "${KIPRJMOD}/partlibrary.lib")(options "")(descr ""))
+  (lib (name "eight-partlibrary")(type "KiCad")(uri "${KIPRJMOD}/partlibrary.kicad_sym")(options "")(descr ""))
 )

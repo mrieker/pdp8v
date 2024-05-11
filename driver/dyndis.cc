@@ -92,7 +92,7 @@ void dyndisdma (uint16_t addr, uint16_t size, bool write, uint16_t iopc)
     if (dyndisena) {
         while (size != 0) {
             addaccess (addr, write, Shadow::DMA, iopc);
-            addr ++;
+            addr = (addr & 070000) | ((addr + 1) & 007777);
             -- size;
         }
     }

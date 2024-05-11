@@ -80,6 +80,7 @@ module seqcirc (
     wire arith1q, arith2q, and2q, tad2q, isz1q, isz2q, isz3q, dca1q, dca2q, jms1q, jms2q, jms3q, jmp1q;
     wire grpb1q, iot1q, opr1q, grpa1q;
 
+    // buffer the clock and reset signals for fanout
     _clok1 = ~ clok2;
     clok0a = ~ _clok1;
     clok0b = ~ _clok1;
@@ -89,24 +90,63 @@ module seqcirc (
     _resetb = ~ reset;
     _resetc = ~ reset;
 
+    // the MA register holds the address of an auto-increment location (0010..0017)
+    // valid from beginning of defer1 cuz it gets loaded from opcode coming from raspi at end of fetch2
+    //   to end of defer2 cuz it gets loaded with pointer coming from raspi at end of defer2
     _autoidx = ~ (_maq[11] & _maq[10] & _maq[09] & _maq[08] & _maq[07] & _maq[06] & _maq[05] & _maq[04] & maq[03]);
     autoidx  = ~ _autoidx;
-    meminst  = ~ (mq[11] & mq[10]);     // valid at end of fetch2 only
+
+    // the raspi is sending us a memory reference instruction (incl JMP, JMS)
+    // valid at end of fetch2 only cuz that's when the opcode is on the mq bus coming from raspi
+    meminst  = ~ (mq[11] & mq[10]);
     _meminst = ~ meminst;
 
     // determine next state based on current state and inputs
 
+    // - determine if this is the last cycle of the instruction
+    //   AND has 2 cycles
+    //   TAD has 3 cycles
+    //   DCA has 2 cycles
+    //   ISZ has 3 cycles
+    //   IOT has 2 cycles
+    //   Group 1 has 1 cycle
+    //  JMP,JMS,Group 2 overlap FETCH1 with their last cycle so don't count here
     _endinst = ~ (and2q | tad3q | dca2q | isz3q | iot2q | grpa1q);
+
+    // buffer interrupt request for fanout
     _intrq   = ~ intrq;
 
+    // - INTAK1: interrupt acknowledge
+    //   follows the last cycle of an instruction where there is an interrupt request
+    //     end of non-JMP,JMS,Group 2
+    //     JMP1
+    //     JMS3
+    //     Group 2
     _intak1d = ~ (~ _endinst & intrq | jmp1q & intrq | jms3q & intrq | grpb1q & intrq);
+
+    // - FETCH1: send PC to raspi to fetch instruction
+    //   follows the last cycle of an instruction when there is no interrupt request
+    //     end of non-JMP,JMS
+    //   does not follow JMP,JMS,Group 2 because they overlap fetching with their last cycle
     fetch1d  = ~ (_endinst | intrq);
+
+    // - FETCH2: receive opcode from raspi into instruction register and memory address register
+    //   follows FETCH1, or JMP1 with no int request, or JMS3 with no int request, or Group 2 with no int request
     _fetch2d = ~ (fetch1q  | jmp1q & _intrq | jms3q & _intrq | grpb1q & _intrq);
 
+    // - DEFER1: send pointer address to raspi to read pointer
+    //   follows FETCH2 for memory reference instructions with indirect bit set
     _defer1d = ~ (fetch2qa & meminst & mq[08]);
+
+    // - DEFER2: read pointer value from raspi into MA
+    //   follows DEFER1
     _defer2d = _defer1q;
+
+    // - DEFER3: add 1 to MA via the ALU and send to raspi and write to MA at end of cycle
+    //   follows DEFER2 if an autoincrement location was used
     _defer3d = ~ (defer2q & autoidx);
 
+    // decode the opcode based on contents of instruction register
     _ir_arth = ~ (_irq[11] & _irq[10]);
     _ir_and  = ~ (_irq[11] & _irq[10] & _ir_tad);
     _ir_tad  = ~ (_irq[11] & _irq[10] &  irq[09] & ~ acqzero);
@@ -120,18 +160,33 @@ module seqcirc (
                    irq_11  &  irq[10] & maq[08] & maq[00]);     // includes group 3
     _ir_opr  = ~ ( irq_11  &  irq[10] &  irq[09] & _ir_iot);    // excludes group 2 with OSR and/or HLT and group 3
 
+    // - EXEC1: first instruction execution cycle
+    //   follows
+    //     FETCH2 for direct address memory reference instructions
+    //     DEFER2 for non-autoindex indirect mem ref instructions
+    //     DEFER3 for autoindex indirect memory ref instructions
+    //     FETCH2 for all non-memory reference instructions
     _exec1d  = ~ (fetch2qa & ~ mq[08] |                         // memory instuction direct addressing
                   defer2q & _autoidx |                          // deferred non-auto-index
                   defer3q |                                     // deferred auto-index
                   fetch2qa & _meminst);                         // non-memory instruction
+
+    // - EXEC2: second instruction execution cycle
+    //   follows
+    //    EXEC1 for AND,TAD,ISZ,DCA,JMS,IOT
+    //    INTAK1  (INTAK1 is like JMS1)
     _exec2d  = ~ (exec1q & ~ (irq[11] & _ir_jms & _ir_iot) |    // arith2, isz2, dca2, jms2, iot2
                   intak1q);                                     // also jms2 follows intak1q
+
+    // - EXEC3: third instruction execution cycle
+    //   follows
+    //     EXEC2 for TAD,ISZ,JMS
      exec3d  = ~ (_exec2q | _ir_tad & _ir_isz & _ir_jms);       // tad3, isz3, jms3
 
     // split exec1,2,3 states into instruction states
 
-    arith1q = ~ (_exec1q | _ir_arth);
-    arith2q = ~ (_exec2q | _ir_arth);
+    arith1q = ~ (_exec1q | _ir_arth);           // AND and TAD
+    arith2q = ~ (_exec2q | _ir_arth);           // AND and TAD
     and2q   = ~ (_exec2q | _ir_and);
     tad2q   = ~ (_exec2q | _ir_tad);
     tad3q   = ~ (_exec3q | _ir_tad);
@@ -153,36 +208,169 @@ module seqcirc (
 
     // generate control signals from state
 
-    _mread  = ~ (fetch1q | defer1q | arith1q | isz1q | jmp1q & _intrq | jms3q & _intrq | grpb1q & _intrq);  // read memory
-    _mwrite = ~ (defer1q & autoidx | jms1q | dca1q | isz1q | intak1q);      // write memory
-    _dfrm   = ~ (exec1q & _irq[11] & irq_8);                                // use data frame to access memory this cycle
-    _jump   = ~ (exec1q & irq_11 & _irq[10]);                               // doing a JMP/JMS instruction
-    _intak  = _intak1q;                                                     // interrupt acknowledge
-    ioinst  = iot1q;                                                        // doing IOT/Group3 instruction
+    // MREAD: memory address is being sent to raspi via ALU, raspi responds with contents next cycle
+    //   set when FETCH1 - to send PC for fetching instruction
+    //            DEFER1 - to send pointer address for reading pointer value
+    //            ARITH1 - to send operand address for reading operand value
+    //            ISZ1 - to send operand address for reading and writing operand value
+    //            JMP1 with no int req - to send new PC for fetching instruction
+    //            JMS3 with no int req - to send new PC for fetching instruction
+    //            Group 2 with no int req - to send PC (possibly incremented by skip) for fetching instruction
+    _mread  = ~ (fetch1q | defer1q | arith1q | isz1q | jmp1q & _intrq | jms3q & _intrq | grpb1q & _intrq);
 
-    _alu_add = ~ (defer3q | exec3q | grpb1q);                               // ALU should perform ADD A + B
-    _alu_and = ~ (_alu_add & _grpa1q);                                      // ALU should perform AND A & B
-    inc_axb  = ~ (_grpa1q | _maq[0]);                                       // ALU should perform INC (A ^ B) + 1
+    // MWRITE: memory address is being sent to raspi via ALU, data will be sent to raspi via ALU next cycle
+    //   set when DEFER1 and autoindex - to write incremented pointer back to memory
+    //            JMS1 - to write program counter to memory
+    //            DCA1 - to write ALU contents to memory
+    //            ISZ1 - to write incremented value to memory
+    //            INTAK1 - to write program counter to memory
+    _mwrite = ~ (defer1q & autoidx | jms1q | dca1q | isz1q | intak1q);
 
-    _ac_sc   = ~ (dca2q | grpb1q & maq[7]);                                             // write zero to AC instead of from ALU at end of cycle
-    _ac_aluq = ~ (and2q | tad3q | dca2q | grpa1q | grpb1q & maq[7] | iot2q);            // write AC from ALU output at end of cycle
-    _ln_wrt  = ~ (tad3q | grpa1q | iot2q);                                              // write link from various sources at end of cycle
-                                                                                        // - must be subset of _ac_aluq
+    // DFRM: tell raspi to use data frame instead of instruction frame for this memory access
+    //   set when doing AND,TAD,ISZ,DCA with indirect address
+    _dfrm   = ~ (exec1q & _irq[11] & irq_8);
+
+    // JUMP: tell raspi that memory references from here on use new instruction frame
+    //   set in first execution cycle of JMP,JMP
+    _jump   = ~ (exec1q & irq_11 & _irq[10]);
+
+    // INTAK: interrupt is being acknowledged, raspi should stop requesting interrupt
+    //   set when in interrupt acknowledge state
+    _intak  = _intak1q;
+
+    // IOINST: tell raspi to do an IO instruction
+    //   set when doing first cycle of an IO instruction (including Group 2 with HLT,OSR and Group 3)
+    ioinst  = iot1q;
+
+    // ALU_ADD: ALU should perform an addition
+    //   set when in DEFER3 to increment the pointer
+    //               EXEC3 for TAD to perform addition
+    //                         ISZ to increment counter
+    //                         JMS to increment MA to point to first instruction of subroutine
+    //               Group 2 to increment the PC if skipping
+    //   note that EXEC3 is used only for TAD,ISZ,JMS so it is sufficient to decode EXEC3
+    _alu_add = ~ (defer3q | exec3q | grpb1q);
+
+    // ALU_AND: ALU should perform an anding
+    //   set when not doing an ADD and not doing Group 1
+    _alu_and = ~ (_alu_add & _grpa1q);
+
+    // INC_AXB: ALU should increment the A ^ B value
+    //   set when doing a Group 1 with the IAC bit
+    inc_axb  = ~ (_grpa1q | _maq[0]);
+
+    // AC_SC: synchronously clear accumulator at end of cycle
+    //   set when in DCA2 to clear AC after sending its contents to raspi
+    //               Group 2 with CLA bit set
+    _ac_sc   = ~ (dca2q | grpb1q & maq[7]);
+
+    // AC_ALUQ: load accumulator with ALU output at end of cycle
+    //   set when in AND2 - result of anding is at ALU output
+    //               TAD3 - result of addition is at ALU output
+    //               DCA2 - needed to clock the zero set up by AC_SC
+    //            Group 1 - result of CLA,CMA,IAC,shifts gets clocked into AC
+    //            Group 2 - needed to clock the zero set up by AC_SC
+    //               IOT2 - clock the new AC value generated by the I/O instruction
+    _ac_aluq = ~ (and2q | tad3q | dca2q | grpa1q | grpb1q & maq[7] | iot2q);
+
+    // LN_WRT: write link from various sources at end of cycle (must be subset of AC_ALUQ)
+    //   set when in TAD3 - result of addition
+    //            Group 1 - update link from CLL, CML, IAC, rotates
+    //               IOT2 - clock the new link value generated by I/O instruction
+    //                      (specifically Group 3 is handled as I/O instruction)
+    _ln_wrt  = ~ (tad3q | grpa1q | iot2q);
+
+    // MA_ALUQ: write MA from ALU output at end of cycle
+    //   set when in FETCH2 - for mem ref instrs: memory address calculated from instruction bits being received from raspi
+    //                        for non-mem ref: captures all instruction bits being received from raspi
+    //               DEFER2 - captures pointer value received from raspi
+    //               DEFER3 - captures incremented pointer value being incremented by ALU and sent to raspi
+    //                 TAD2 - captures memory value to be added to accumulator next cycle
+    //                 ISZ2 - captures memory value to be incremented via ALU in next cycle
+    //               INTAK1 - captures 0 being output by ALU like it is the address from a JMS 0 instruction
     _ma_aluq = ~ (fetch2qa | defer2q | defer3q | tad2q | isz2q | intak1q);              // write MA from ALU output at end of cycle
-    _pc_aluq = ~ (jmp1q | jms3q | grpb1q);                                              // write PC from ALU output at end of cycle
-    _pc_inc  = ~ (fetch2qa | isz3q & ~ _alucout | iot2q & ioskp);                       // increment PC at end of cycle
 
-    _alua_ma    = ~ (defer1q | defer3q | exec1q & _irq[11] | exec1q & _irq[10] | exec3q);  // gate MA into ALU A input
-    _alua_m1    = ~ (dca2q | iot1q | grpa1q & maq[5]);                                  // gate 7777 into ALU A input
-    alua_mq1107 = fetch2qa & _meminst | defer2q | arith2q | isz2q | iot2q;              // gate MQ[11:07] into ALU A[11:07]
-    alua_mq0600 = fetch2qa | defer2q | arith2q | isz2q | iot2q;                         // gate MQ[06:00] into ALU A[06:00]
-    alua_pc1107 = fetch1q | fetch2qa & meminst & mq[07] | jms2q | grpb1q;               // gate PC[11:07] into ALU A[11:07]
-    alua_pc0600 = fetch1q | jms2q | grpb1q;                                             // gate PC[06:00] into ALU A[06:00]
+    // PC_ALUQ: write PC from ALU output at end of cycle
+    //   set when in JMP1 - captures jump-to address
+    //               JMS3 - captures incremented jump-to address
+    //            Group 2 - captures possibly incremented address from skip instruction
+    _pc_aluq = ~ (jmp1q | jms3q | grpb1q);
 
-    _alub_ac = ~ (and2q | tad3q | dca2q | iot1q | grpa1q & _maq[07]);                   // gate AC into ALU B
-    _alub_m1 = ~ (fetch1q | fetch2q | defer1q | defer2q | jmp1q | jms1q | jms2q |       // gate 7777 into ALU B
+    // PC_INC: increment PC at end of cycle (independent of ALU)
+    //   set when in FETCH2 - increment PC to point to next instruction in line
+    //                 ISZ3 and result zero - increment to skip next instruction
+    //                 IOT2 and raspi is saying to skip - increment to skip next instruction
+    _pc_inc  = ~ (fetch2qa | isz3q & ~ _alucout | iot2q & ioskp);
+
+    // ALU_MA: gate MA into ALU A input
+    //   set when in DEFER1 - sends mem-ref pointer address to raspi
+    //               DEFER3 - sends not-yet-incremented pointer value to ALU for incrementing and writing to memory via raspi
+    //                EXEC1 for AND,TAD,ISZ,DCA,JMS - sends memory address to raspi via ALU for reading and/or writing
+    //                EXEC1 for JMP - sends memory address to PC via ALU
+    //                EXEC3 - sends memory value to ALU for addition with accumulator
+    _alua_ma    = ~ (defer1q | defer3q | exec1q & _irq[11] | exec1q & _irq[10] | exec3q);
+
+    // ALU_M1: gate 7777 to ALU A input
+    //   set when in DCA2 - to pass accumulator sent to ALU B input through to raspi to write to memory
+    //               IOT1 - to pass accumulator sent to ALU B input through to raspi for processing I/O
+    //            Group 1 with CMA - to complement accumulator set to ALU B input by XORing with all ones
+    _alua_m1    = ~ (dca2q | iot1q | grpa1q & maq[5]);
+
+    // ALUA_MQ1107: gate MQ[11:07] (MQ=value from raspi) to ALU A[11:07]  (upper 5 bits)
+    //   set when in FETCH2 and IOT,OPR - route upper instruction bits through ALU for writing to MA
+    //               DEFER2 - route pointer value bits through ALU for writing to MA
+    //               ARITH2 - route operand value bits through ALU for arithmetic
+    //                 ISZ2 - route operand value bits through ALU for writing to MA
+    //                 IOT2 - route return value from I/O instruction throug ALU for writing to AC
+    alua_mq1107 = fetch2qa & _meminst | defer2q | arith2q | isz2q | iot2q;
+
+    // ALUA_MQ0600: gate MQ[06:00] (MQ=value from raspi) to ALU A[06:00]  (lower 5 bits)
+    //   set when in FETCH2 - route lower instruction bits through ALU for writing to MA
+    //               DEFER2 - route pointer value bits through ALU for writing to MA
+    //               ARITH2 - route operand value bits through ALU for arithmetic
+    //                 ISZ2 - route operand value bits through ALU for writing to MA
+    //                 IOT2 - route return value from I/O instruction throug ALU for writing to AC
+    alua_mq0600 = fetch2qa | defer2q | arith2q | isz2q | iot2q;
+
+    // ALUA_PC1107: gate PC[11:07] to ALU A[11:07]  (upper 5 bits)
+    //   set when in FETCH1 - route upper PC bits through ALU to send to raspi for fetching instruction
+    //               FETCH2 & meminst & page-n : route upper PC bits through ALU for writing to MA
+    //                 JMS2 - route upper PC bits through ALU to raspi for writing to memory
+    //              Group 2 - route upper PC bits through ALU for possible incrementing for skip instruction
+    alua_pc1107 = fetch1q | fetch2qa & meminst & mq[07] | jms2q | grpb1q;
+
+    // ALU_PC0600: gate PC[06:00] to ALU A[06:00]  (lower 7 bits)
+    //   set when in FETCH1 - route lower PC bits through ALU to send to raspi for fetching instruction
+    //                 JMS2 - route lower PC bits through ALU to send to raspi for writing to memory
+    //              Group 2 - route lower PC bits through ALU for possible incrementing for skip instruction
+    alua_pc0600 = fetch1q | jms2q | grpb1q;
+
+
+    // ALUB_AC: gate AC to ALU B input
+    //   set when in AND2 - route AC to ALU B input for anding with value from memory being sent to ALU A
+    //               TAD3 - route AC to ALU B input for addition with value from MA being sent to ALU A
+    //               DCA2 - route AC to ALU B input for writing to memory via raspi
+    //               IOT1 - route AC to ALU B input for I/O processing via raspi
+    //            Group 1 and not CLA - route AC to ALU B for arithmetic
+    _alub_ac = ~ (and2q | tad3q | dca2q | iot1q | grpa1q & _maq[07]);
+
+    // ALUB_M1: gate 7777 to ALU B input
+    //   set when in FETCH1 - so PC being routed to ALU A input goes unaltered to raspi
+    //               FETCH2 - so instr being routed to ALU A input goes unaltered to MA
+    //               DEFER1 - so MA being routed to ALU A input goes unaltered to raspi
+    //               DEFER2 - so MQ value routed from raspi to ALU A input goes unlatered to MA
+    //                 JMP1 - so PC being routed to ALU A input goes unaltered to PC and raspi for fetching
+    //                 JMS1 - so MA being routed to ALU A input goes unaltered to raspi
+    //                 JMS2 - so PC being routed to ALU A input goes unaltered to raspi
+    _alub_m1 = ~ (fetch1q | fetch2q | defer1q | defer2q | jmp1q | jms1q | jms2q |
                   arith1q | tad2q | dca1q | isz1q | isz2q | iot2q | and2q & irq[09]);
-    alub_1   = defer3q | jms3q | isz3q | grpb1q & grpb_skip;                            // gate 0001 into ALU B
+
+    // ALUB_1: gate 0001 to ALU B input
+    //   set when in DEFER3 - to increment pointer value and send to raspi and MA
+    //                 JMS3 - to increment address to write to PC and send to raspi for fetching
+    //                 ISZ3 - to increment value read from memory and send to raspi
+    //              Group 2 with skip true - to increment PC and write to PC and send to raspi for fetching
+    alub_1   = defer3q | jms3q | isz3q | grpb1q & grpb_skip;
 
     // state flip flops
 
@@ -200,7 +388,7 @@ module seqcirc (
     exec2:  DFF (_PS:_resetc, _PC:1, T:clok0c, D:_exec2d, Q:_exec2q, _Q:exec2q);
     exec3:  DFF (_PC:_resetc, _PS:1, T:clok0c, D:exec3d,  Q:exec3q, _Q:_exec3q);
 
-    // instruction register
+    // instruction register (latch)
 
     irq_11 = ~ _irq[11];
 

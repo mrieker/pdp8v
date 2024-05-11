@@ -180,6 +180,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
         case 06011: {
             this->rdrstart ();
             if (this->rdrflag) input |= IO_SKIP;
+            else skipoptwait (opcode, &this->lock, &this->rsfwait);
             break;
         }
 
@@ -225,6 +226,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
         case 06021: {
             this->punstart ();
             if (this->punflag) input |= IO_SKIP;
+            else skipoptwait (opcode, &this->lock, &this->psfwait);
             break;
         }
 
@@ -517,6 +519,8 @@ void IODevPTape::updintreq ()
     if (this->intenab & (this->rdrflag | this->punflag)) {
         setintreqmask (IRQ_TTYKBPR);
     } else {
-        clrintreqmask (IRQ_TTYKBPR);
+        clrintreqmask (IRQ_TTYKBPR,
+            (this->rsfwait & this->rdrflag) |
+            (this->psfwait & this->punflag));
     }
 }

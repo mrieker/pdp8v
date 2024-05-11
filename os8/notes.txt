@@ -1,0 +1,55 @@
+
+run with ./ock-boot.sh [-csrclib]
+
+
+.R RESORC
+*/X
+SYS,DSK,RKA0,RKB0,RKA1,RKB1,RKA2,RKB2,TTY,LPT,DTA0,DTA1,PTP,PTR
+
+*/E
+
+89 FILES IN 1429 BLOCKS USING 3 SEGMENTS
+1763 FREE BLOCKS
+
+#  NAME TYPE MODE SIZ BLK KIND U V ENT USER
+01 SYS  RK8E RWF 3248 SYS      0 C  07
+02 DSK  RK8E RWF 3248 SYS      1 C  21
+03 RKA0 RK8E RWF 3248 SYS      0 C  07
+04 RKB0 RK8E RWF 3248 SYS      1 C  21
+05 RKA1 RK8E RWF 3248 16  RK05 1 A  22
+06 RKB1 RK8E RWF 3248 16  RK05 1 A  23
+07 RKA2 RK8E RWF 3248 16  RK05 2 A  24
+10 RKB2 RK8E RWF 3248 16  RK05 2 A  25
+11 TTY  TTY  RW       17+ KL8E   E 176
+12 LPT  LPTR W        20  LPSV   C  05
+13 DTA0 TC08 RWF  737 21       0 A  10
+14 DTA1 TC08 RWF  737 21       1 A  11
+15 PTP  PTP  W        22  PT8E   A  00
+16 PTR  PTR  R        22  PT8E   A 112
+
+FREE DEVICE SLOTS: 01,  FREE BLOCK SLOTS: 03
+OS/8 V3T
+
+*^C
+
+.
+
+accessing drive 0:
+
+    DIR RKA0:   << same as DIR SYS:
+    DIR RKB0:   << same as DIR
+
+accessing drive 1:
+
+    ZERO RKA1:
+    ZERO RKB1:
+
+    DIR RKA1:
+    DIR RKB1:
+
+copy file to paper tape:
+
+    raspictl> iodev ptape load punch x.x
+
+    .COPY PTP:<RKA2:FILE.NM
+

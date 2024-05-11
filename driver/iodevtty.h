@@ -37,16 +37,20 @@ struct IODevTTY : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
+    bool eight;         // allow 8-bit I/O
+    bool intenab;       // interrupts enabled
     bool kbflag;        // there is a char in kbbuff that processor hasn't read yet
     bool kbsetup;       // processor has tried to do i/o on this device since the beginning or since last connection dropped
                         //   if kbfd <  0, keyboard needs tcsetattr() immediately on connect if it's a tty
                         //   if kbfd >= 0, the tcsetattr() has already been done for the dev if it's a tty
     bool kbstdin;       // keyboard is using stdin
-    bool intenab;       // interrupts enabled
+    bool ksfwait;       // doing wait for kbflag optimization
+    bool lcucin;        // lowercase->uppercase on input
     bool prflag;        // processor has written a char to prbuff that hasn't been printed yet (processor can set/clear at will)
     bool prfull;        // processor has written a char to prbuff that hasn't been printed yet
     bool stopping;      // threads are being stopped
     bool telnetd;       // being serviced in telnet daemon mode
+    bool tsfwait;       // doing wait for prflag optimization
     char ttydevname[8];
     int debug;
     int kbfd;           // -1: kb shut down or being shut down; else: fd for keyboard i/o

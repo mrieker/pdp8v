@@ -922,6 +922,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
             if (strcmp (opname, "printstate") == 0) { retint = shadow.printstate; goto ret; }
             if (strcmp (opname, "quiet")      == 0) { retint = quiet;             goto ret; }
             if (strcmp (opname, "randmem")    == 0) { retint = randmem;           goto ret; }
+            if (strcmp (opname, "skipopt")    == 0) { retint = skipopt;           goto ret; }
 
             if (strcmp (opname, "cmdargs") == 0) {
                 Tcl_Obj *cmdobjs[cmdargc];
@@ -933,8 +934,13 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 return TCL_OK;
             }
 
-            if (strcmp (opname, "stopat") == 0) {
-                Tcl_SetObjResult (interp, Tcl_NewIntObj (stopataddr));
+            if (strcmp (opname, "stopats") == 0) {
+                Tcl_Obj *stopatobjs[numstopats];
+                for (int i = 0; i < numstopats; i ++) {
+                    stopatobjs[i] = Tcl_NewIntObj (stopats[i]);
+                }
+                Tcl_Obj *stopatlist = Tcl_NewListObj (numstopats, stopatobjs);
+                Tcl_SetObjResult (interp, stopatlist);
                 return TCL_OK;
             }
 
@@ -970,7 +976,8 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("  printstate - print each cycle executed");
         puts ("  quiet      - don't print illegal instruction messages");
         puts ("  randmem    - provide random memory contents");
-        puts ("  stopat     - stop when accessing the memory address (-1 to disable)");
+        puts ("  skipopt    - optimize ioskip/jmp.-1 to blocking");
+        puts ("  stopats    - stop when accessing any of the memory addresses");
         puts ("  watchwrite - stop when writing to the memory address (-1 to disable)");
         puts ("");
         return (subcmd[0] == 0) ? TCL_ERROR : TCL_OK;
@@ -1001,6 +1008,27 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
             return TCL_OK;
         }
 
+        if (strcmp (opname, "stopats") == 0) {
+
+            numstopats = 0;
+            for (int i = 3; i < objc; i ++) {
+                if (numstopats >= MAXSTOPATS) {
+                    Tcl_SetResult (interp, (char *) "too many stopat addresses", TCL_STATIC);
+                    return TCL_ERROR;
+                }
+                int addr;
+                int rc = Tcl_GetIntFromObj (interp, objv[i], &addr);
+                if (rc != TCL_OK) return rc;
+                if ((addr < 0) || (addr > 077777)) {
+                    Tcl_SetResultF (interp, "stopat address 0%o not in range 0..077777", addr);
+                    return TCL_ERROR;
+                }
+                stopats[numstopats++] = addr;
+            }
+
+            return TCL_OK;
+        }
+
         bool *boolptr;
         if (objc == 4) {
             if (strcmp (opname, "ctrlc")      == 0) { boolptr = &ctrlcflag;  goto setbool; }
@@ -1011,6 +1039,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
             if (strcmp (opname, "printstate") == 0) { boolptr = &shadow.printstate; goto setbool; }
             if (strcmp (opname, "quiet")      == 0) { boolptr = &quiet;      goto setbool; }
             if (strcmp (opname, "randmem")    == 0) { boolptr = &randmem;    goto setbool; }
+            if (strcmp (opname, "skipopt")    == 0) { boolptr = &skipopt;    goto setbool; }
 
             if (strcmp (opname, "mintimes") == 0) {
                 int val;
@@ -1033,16 +1062,15 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 return rc;
             }
 
-            if ((strcmp (opname, "stopat") == 0) || (strcmp (opname, "watchwrite") == 0)) {
+            if (strcmp (opname, "watchwrite") == 0) {
                 int val;
                 int rc = Tcl_GetIntFromObj (interp, objv[3], &val);
                 if (rc == TCL_OK) {
                     if ((val < -1) || (val > 077777)) {
-                        Tcl_SetResultF (interp, "%s address %d not in range -1..077777", opname, val);
+                        Tcl_SetResultF (interp, "watchwrite address 0%o not in range -1..077777", val);
                         return TCL_ERROR;
                     }
-                    if (opname[0] == 's') stopataddr = val;
-                    if (opname[0] == 'w') watchwrite = val;
+                    watchwrite = val;
                 }
                 return rc;
             }

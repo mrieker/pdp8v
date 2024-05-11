@@ -1,3 +1,4 @@
 (fp_lib_table
-  (lib (name footlibrary)(type KiCad)(uri "$(KIPRJMOD)/footlibrary.pretty")(options "")(descr ""))
+  (version 7)
+  (lib (name "footlibrary")(type "KiCad")(uri "$(KIPRJMOD)/footlibrary.pretty")(options "")(descr ""))
 )

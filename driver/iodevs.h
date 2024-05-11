@@ -110,8 +110,4 @@ uint16_t ioinstr (uint16_t opcode, uint16_t input);
 char const *iodisas (uint16_t opcode);
 void ioreset ();
 
-void clrintreqmask (uint16_t mask);
-void setintreqmask (uint16_t mask);
-uint16_t getintreqmask ();
-
 #endif

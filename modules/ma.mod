@@ -18,8 +18,15 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-// MA register
-
+// MA register - simple 12-bit register
+//  input:
+//   _aluq = output of the ALU
+//   clok2 = clock signal from raspi
+//   _ma_aluq = asserted (low) means load MA from _aluq at end of cycle
+//   reset = reset signal from raspi
+//  output:
+//   _maq = active low output
+//    maq = active high output
 module macirc (in _aluq[11:00], in clok2, in _ma_aluq, out _maq[11:00], out maq[11:00], in reset)
 {
     wire _mag, mata, matb, matc;
@@ -27,6 +34,8 @@ module macirc (in _aluq[11:00], in clok2, in _ma_aluq, out _maq[11:00], out maq[
 
     _clok1 = ~ clok2;
     _reset = ~ reset;
+
+    // see acl.mod for timing
 
     mawff: DFF (_PS:_reset, _PC:1, D:_ma_aluq, T:_clok1, Q:_mag);
 

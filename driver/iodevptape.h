@@ -33,6 +33,7 @@ struct IODevPTape : IODev {
 
 private:
     bool intenab;
+    bool psfwait;
     bool punflag;
     bool punfull;
     bool punrun;
@@ -42,6 +43,7 @@ private:
     bool rdrnext;
     bool rdrrun;
     bool rdrwarn;
+    bool rsfwait;
     int punfd;
     int rdrfd;
     uint8_t punbuff;

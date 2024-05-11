@@ -41,6 +41,9 @@ module aclcirc (
 
     grpa1q   = ~ _grpa1q;
 
+    // decode how much to rotate by and which direction
+    // - NOP when not doing group 1 instruction
+    // - NOP when doing group 1 with 0 rotate code
     _rotcin  = _newlink;
     _rot_nop = ~ (_maq[3] & _maq[2] & _maq[1] | _grpa1q);
     _rot_bsw = ~ (_maq[3] & _maq[2] &  maq[1] & grpa1q);
@@ -49,6 +52,7 @@ module aclcirc (
     _rot_rar = ~ ( maq[3] & _maq[2] & _maq[1] & grpa1q);
     _rot_rtr = ~ ( maq[3] & _maq[2] &  maq[1] & grpa1q);
 
+    // buffer the rotate decoder
     rot_nopa = ~ _rot_nop;
     rot_nopb = ~ _rot_nop;
     rot_bswa = ~ _rot_bsw;
@@ -62,6 +66,7 @@ module aclcirc (
     rot_rtra = ~ _rot_rtr;
     rot_rtrb = ~ _rot_rtr;
 
+    // do the actual rotate with muxes
     rotq[00] = ~ (rot_nopa & _aluq[00] | rot_bswa & _aluq[06] | rot_rala & _rotcin   | rot_rtla & _aluq[11] | rot_rara & _aluq[01] | rot_rtra & _aluq[02]);
     rotq[01] = ~ (rot_nopa & _aluq[01] | rot_bswa & _aluq[07] | rot_rala & _aluq[00] | rot_rtla & _rotcin   | rot_rara & _aluq[02] | rot_rtra & _aluq[03]);
     rotq[02] = ~ (rot_nopa & _aluq[02] | rot_bswa & _aluq[08] | rot_rala & _aluq[01] | rot_rtla & _aluq[00] | rot_rara & _aluq[03] | rot_rtra & _aluq[04]);
@@ -81,20 +86,61 @@ module aclcirc (
     _clok1 = ~ clok2;
     _reset = ~ reset;
 
+    // flipflop triggers in middle of cycles where AC is going to be written at end of cycle
+    //   _ac_aluq = asserted (low) near beginning of cycle where AC will be written at end of cycle
+    //   _acg = asserted (low) near middle of such cycle through to middle of next cycle
+    //
+    // example:
+    //   TAD1 - sends address to raspi
+    //   TAD2 - gets value from raspi into MA
+    //   TAD3 - gates AC,L and MA to ALU for adding, write new AC,L at end of cycle
+    //   FETCH1 - reads next opcode from raspi
+    //
+    //                  ________________                  ________________
+    //    clok2   _____/                \________________/                \________  (coming out of rpi board)
+    //
+    //            _______                  ________________                  ______
+    //   _clok1          \________________/                \________________/        (one level of inverter)
+    //
+    //            TAD2 -- ] [ ----------- TAD3 ------------ ] [ ---------- FETCH1 -
+    //                      ________________                  ________________
+    //    clok0   _________/                \________________/                \____  (two levels of inverter, such as on seq board)
+    //
+    //            _____________                                   _________________
+    // _ac_aluq                \_________________________________/                   (asserts near beginning of TAD3 saying to write AC,L at end of TAD3,
+    //                                                                                drops near beginning of next state)
+    //
+    //            __________________________                                   ____
+    //     _acg                             \_________________________________/      (half cycle delay of the _ac_aluq signal)
+    //
+    //                                                        ________________
+    // acta,b,c   ___________________________________________/                \____  (clocking signal for AC and LINK, same timing as clok0)
+    //
+    //                                                        ^-AC,L written here with ALU output
+
     acwff: DFF (_PS:_reset, _PC:1, D:_ac_aluq, T:_clok1, Q:_acg);
 
+    // generate clock pulse at end of cycle where AC is to be written
+    // remain zero if not writing AC
+    // has the timing of a clok0 pulse cuz there's one triode between _clok1 and the T inputs below
     acta = ~ (_acg | _clok1);
     actb = ~ (_acg | _clok1);
     actc = ~ (_acg | _clok1);
 
+    // buffer 'synchronously clear accumulator' signal
      ac_sca = ~ _ac_sc;
     _ac_sca = ~ ac_sca;
 
+    // generate new link bit
+    //   for TADs and group 1s, it comes from rotator
+    //   for IOTs incl group 2 w/HLT,OSR and group 3, it comes from RasPI MQL
+    //   for everything else, just keep it the same
     _lnd = ~ (tad3q & rotcout |         // TAD
               grpa1q & rotcout |        // group 1
               iot2q & mql |             // iot (for group 3 EAE)
               _ln_wrt & lnq);           // keep link the same
 
+    // accumulator and link flipflops
     aclo:  DFF 4 _SC (_PC:1, _PS:1, D:rotq[03:00], Q:acq[03:00], _Q:_acq[03:00], T:acta, _SC:_ac_sc);
     acmid: DFF 4 _SC (_PC:1, _PS:1, D:rotq[07:04], Q:acq[07:04], _Q:_acq[07:04], T:actb, _SC:_ac_sca);
     achi:  DFF 4 _SC (_PC:1, _PS:1, D:rotq[11:08], Q:acq[11:08], _Q:_acq[11:08], T:actc, _SC:_ac_sca);

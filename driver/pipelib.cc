@@ -59,11 +59,30 @@ PipeLib::PipeLib (char const *modname)
 // open connections to the java program
 void PipeLib::open ()
 {
-    char const *netgen = getenv ("pipelib_netgen");
-    if (netgen == NULL) netgen = "../netgen/netgen.sh";
-    char const *modfile = getenv ("pipelib_modfile");
-    if (modfile == NULL) modfile = "../modules/whole.mod";
-    fprintf (stderr, "PipeLib::open: netgen=%s modfile=%s\n", netgen, modfile);
+    char exedir[256], netgen[256+22], modfile[256+22];
+
+    getexedir (exedir, sizeof exedir);
+
+    char const *netgenenv = getenv ("pipelib_netgen");
+    if (netgenenv == NULL) {
+        strcpy (netgen, exedir);
+        strcat (netgen, "../netgen/netgen.sh");
+    } else {
+        strncpy (netgen, netgenenv, sizeof netgen);
+        netgen[sizeof netgen-1] = 0;
+    }
+
+    char const *modfileenv = getenv ("pipelib_modfile");
+    if (modfileenv == NULL) {
+        strcpy (modfile, exedir);
+        strcat (modfile, "../modules/whole.mod");
+    } else {
+        strncpy (modfile, modfileenv, sizeof modfile);
+        modfile[sizeof modfile-1] = 0;
+    }
+
+    fprintf (stderr, "PipeLib::open: netgen=%s\n", netgen);
+    fprintf (stderr, "PipeLib::open: modfile=%s\n", modfile);
 
     // fork subprocess that runs simulator
     int frnetgenfds[2] = { -1, -1 };
