@@ -58,6 +58,7 @@ static uint32_t outpins[NPADS+1];   // latest pin values we have sent to boards
 
 static bool nopads;
 static GpioLib *gpiolib;
+static GpioLib *shadlib;
 static Tcl_Interp *interp;
 
 static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...);
@@ -71,18 +72,20 @@ static Tcl_ObjCmdProc cmd_listmods;
 
 struct FunDef {
     Tcl_ObjCmdProc *func;
+    void *data;
     char const *name;
     char const *help;
 };
 
-static FunDef fundefs[] = {
-    { cmd_exam,       "exam",       "exam <pinname> ..." },
-    { cmd_force,      "force",      "force <pinname> <pinvalu> ..." },
-    { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
-    { cmd_help,       "help",       "print this help" },
-    { cmd_listmods,   "listmods",   "return list of selected modules" },
-    { cmd_listpins,   "listpins",   "return list all pin names of selected modules" },
-    { NULL, NULL, NULL }
+static FunDef const fundefs[] = {
+    { cmd_exam,       &gpiolib, "exam",       "examine tube board pins" },
+    { cmd_exam,       &shadlib, "examsh",     "examine shadow pins" },
+    { cmd_force,      NULL,     "force",      "force <pinname> <pinvalu> ..." },
+    { cmd_halfcycle,  NULL,     "halfcycle",  "delay a half cycle" },
+    { cmd_help,       NULL,     "help",       "print this help" },
+    { cmd_listmods,   NULL,     "listmods",   "return list of selected modules" },
+    { cmd_listpins,   NULL,     "listpins",   "return list all pin names of selected modules" },
+    { NULL, NULL, NULL, NULL }
 };
 
 int main (int argc, char **argv)
@@ -167,12 +170,18 @@ int main (int argc, char **argv)
     if (! nopads) gpiolib->writepads (allins, outpins);
     if (allins[NPADS] != 0) gpiolib->writegpio (false, 0);
 
+    // set up shadow for comparing
+    shadlib = new CSrcLib (modnames.c_str ());
+    shadlib->open ();
+    shadlib->writepads (allins, outpins);
+    shadlib->writegpio (false, 0);
+
     // initialize tcl
     Tcl_FindExecutable (argv[0]);
     interp = Tcl_CreateInterp ();
     if (Tcl_Init (interp) != TCL_OK) ABORT ();
     for (int i = 0; fundefs[i].name != NULL; i ++) {
-        if (Tcl_CreateObjCommand (interp, fundefs[i].name, fundefs[i].func, NULL, NULL) == NULL) ABORT ();
+        if (Tcl_CreateObjCommand (interp, fundefs[i].name, fundefs[i].func, fundefs[i].data, NULL) == NULL) ABORT ();
     }
 
     // maybe there is a script init file
@@ -251,6 +260,8 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
     uint32_t padlvalus[NPADS+1];
 
     // read the pins coming from the tubes + values we are outputting to the tubes
+    // ...or likewise with shadow pins
+    GpioLib *gpiolib = *(GpioLib **) clientdata;
     if (! nopads) {
         gpiolib->readpads (padlvalus);
         for (int j = 0; j < NPADS; j ++) {
@@ -455,8 +466,14 @@ static int cmd_force (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     }
 
     // actually write paddles and/or gpio
-    if (writepads) gpiolib->writepads (allins, outpins);
-    if (writegpio) gpiolib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
+    if (writepads) {
+        gpiolib->writepads (allins, outpins);
+        shadlib->writepads (allins, outpins);
+    }
+    if (writegpio) {
+        gpiolib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
+        shadlib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
+    }
 
     return TCL_OK;
 }
@@ -487,6 +504,7 @@ static int cmd_halfcycle (ClientData clientdata, Tcl_Interp *interp, int objc, T
         }
     }
     gpiolib->halfcycle (addcyc);
+    shadlib->halfcycle (addcyc);
     return TCL_OK;
 }
 
