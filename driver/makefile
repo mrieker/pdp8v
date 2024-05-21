@@ -22,7 +22,7 @@ LIBS = lib.a.$(MACH)
 .PRECIOUS: csrcmod_%.cc csrcmod_%.so.$(MACH)
 
 default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) loopedboardtest.$(MACH) \
-	manualboardtest.$(MACH) raspictl.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
+	manualboardtest.$(MACH) raspictl.$(MACH) tclboardtest.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
 lib.a.$(MACH): \
@@ -144,6 +144,9 @@ pc7676.$(MACH): pc7676.o.$(MACH) $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 raspictl.$(MACH): raspictl.o.$(MACH) $(LIBS)
+	$(GPP) -o $@ $^ $(LNKFLG)
+
+tclboardtest.$(MACH): tclboardtest.o.$(MACH) $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 testboard.$(MACH): testboard.o.$(MACH) $(LIBS)

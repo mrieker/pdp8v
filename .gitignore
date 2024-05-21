@@ -62,6 +62,7 @@ kicads/ma
 kicads/pc
 kicads/rpi
 kicads/seq
+kicads/*/*-backups
 maindec/objs
 modules/stuckon.mod
 modules/testpads_*.mod
