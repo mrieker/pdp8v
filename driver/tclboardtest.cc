@@ -62,6 +62,7 @@ static GpioLib *shadlib;
 static Tcl_Interp *interp;
 
 static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...);
+static void updatebidirgpio ();
 
 static Tcl_ObjCmdProc cmd_exam;
 static Tcl_ObjCmdProc cmd_force;
@@ -256,11 +257,11 @@ static int cmpelements (void const *va, void const *vb)
 
 static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    Tcl_Obj *results[objc];
-    uint32_t padlvalus[NPADS+1];
-
     // read the pins coming from the tubes + values we are outputting to the tubes
     // ...or likewise with shadow pins
+    // - allins[0..NPADS-1] = mask of pins we are sending to the bus via paddles (they go to inputs on some boards)
+    // - allouts[0..NPADS-1] = mask of pins we are reading from the bus via paddles (they come from outputs on some boards)
+    uint32_t padlvalus[NPADS+1];
     GpioLib *gpiolib = *(GpioLib **) clientdata;
     if (! nopads) {
         gpiolib->readpads (padlvalus);
@@ -268,6 +269,8 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
             padlvalus[j] = (padlvalus[j] & allouts[j]) | (outpins[j] & allins[j]);
         }
     }
+    // - allins[NPADS] = mask of pins we are sending to rpi board via gpio connector (inputs to the rpi board)
+    // - allouts[NPADS] = mask of pins we are reading from rpi board via gpio connector (outputs from the rpi board)
     padlvalus[NPADS] = outpins[NPADS] & allins[NPADS];
     if (allouts[NPADS] != 0) padlvalus[NPADS] |= gpiolib->readgpio () & allouts[NPADS];
 
@@ -294,10 +297,12 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
 
                 // loop through all possible pins
                 for (int pad = 0; pad <= NPADS; pad ++) {
+                    uint32_t insandouts = mod->outs[pad] | mod->ins[pad];
+                    if ((pad == NPADS) && (insandouts != 0)) insandouts |= G_LINK | G_DATA;
                     for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
 
                         // see if this pin is being output by the module or is an input to the module
-                        if (pin->pinmask & (mod->outs[pad] | mod->ins[pad])) {
+                        if (pin->pinmask & insandouts) {
 
                             // get pin name and bitnumber
                             int namelen = strlen (pin->varname);
@@ -342,6 +347,7 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
     }
 
     // specifically listed pins (can be a bus name such as pcq meaning all 12 bits of program counter)
+    Tcl_Obj *results[objc-1];
     for (int i = 0; ++ i < objc;) {
         char const *namestr = Tcl_GetString (objv[i]);
         int namelen = strlen (namestr);
@@ -374,10 +380,10 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
         }
 
         // add value to output list
-        results[i] = Tcl_NewIntObj (value);
+        results[i-1] = Tcl_NewIntObj (value);
     }
 
-    Tcl_SetObjResult (interp, Tcl_NewListObj (objc - 1, results + 1));
+    Tcl_SetObjResult (interp, Tcl_NewListObj (objc - 1, results));
     return TCL_OK;
 }
 
@@ -447,12 +453,7 @@ static int cmd_force (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
                         if (val & 1) outpins[pad] |= pmask;
                               else outpins[pad] &= ~ pmask;
 
-                        // if QENA is set, allow LINK and DATA to be written so they will be sent to the RPI board via GPIO connector
-                        if (outpins[NPADS] & G_QENA) {
-                            allins[NPADS] |=    G_LINK | G_DATA;
-                        } else {
-                            allins[NPADS] &= ~ (G_LINK | G_DATA);
-                        }
+                        updatebidirgpio ();
 
                         foundit = true;
                     }
@@ -548,6 +549,7 @@ static int cmd_listpins (ClientData clientdata, Tcl_Interp *interp, int objc, Tc
     int numpins = 0;
     for (int pad = 0; pad <= NPADS; pad ++) {
         uint32_t padmask = allins[pad] | allouts[pad];
+        if ((pad == NPADS) && (padmask != 0)) padmask |= G_LINK | G_DATA;
         for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
             if (pin->pinmask & padmask) {
                 numpins ++;
@@ -559,6 +561,7 @@ static int cmd_listpins (ClientData clientdata, Tcl_Interp *interp, int objc, Tc
     numpins = 0;
     for (int pad = 0; pad <= NPADS; pad ++) {
         uint32_t padmask = allins[pad] | allouts[pad];
+        if ((pad == NPADS) && (padmask != 0)) padmask |= G_LINK | G_DATA;
         for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
             if (pin->pinmask & padmask) {
                 pinnames[numpins++] = Tcl_NewStringObj (pin->varname, strlen (pin->varname));
@@ -578,4 +581,22 @@ static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...)
     if (vasprintf (&buf, fmt, ap) < 0) ABORT ();
     va_end (ap);
     Tcl_SetResult (interp, buf, (void (*) (char *)) free);
+}
+
+// in case DENA or QENA changed, update list of input and output pins
+static void updatebidirgpio ()
+{
+    // if DENA is set, allow LINK and DATA to be read so they will be received from the RPI board via GPIO connector
+    if (outpins[NPADS] & G_DENA) {
+        allouts[NPADS] |=    G_LINK | G_DATA;
+    } else {
+        allouts[NPADS] &= ~ (G_LINK | G_DATA);
+    }
+
+    // if QENA is set, allow LINK and DATA to be written so they will be sent to the RPI board via GPIO connector
+    if (outpins[NPADS] & G_QENA) {
+        allins[NPADS] |=    G_LINK | G_DATA;
+    } else {
+        allins[NPADS] &= ~ (G_LINK | G_DATA);
+    }
 }
