@@ -175,6 +175,22 @@ int main (int argc, char **argv)
         if (Tcl_CreateObjCommand (interp, fundefs[i].name, fundefs[i].func, NULL, NULL) == NULL) ABORT ();
     }
 
+    // maybe there is a script init file
+    char const *tcltestini = getenv ("tcltestini");
+    char *inihelp = NULL;
+    if ((tcltestini != NULL) && (tcltestini[0] != 0)) {
+        int rc = Tcl_EvalFile (interp, tcltestini);
+        if (rc != TCL_OK) {
+            char const *err = Tcl_GetStringResult (interp);
+            if ((err == NULL) || (err[0] == 0)) fprintf (stderr, "error %d evaluating tcltestini %s\n", rc, tcltestini);
+                                  else fprintf (stderr, "error %d evaluating tcltestini %s: %s\n", rc, tcltestini, err);
+            Tcl_EvalEx (interp, "puts $::errorInfo", -1, TCL_EVAL_GLOBAL);
+            return 1;
+        }
+        char const *res = Tcl_GetStringResult (interp);
+        if ((res != NULL) && (res[0] != 0)) inihelp = strdup (res);
+    }
+
     // if given a filename, process that file as a whole
     if (scriptfile != NULL) {
         int rc = Tcl_EvalFile (interp, scriptfile);
@@ -191,6 +207,10 @@ int main (int argc, char **argv)
     // either way, prompt and process commands from stdin
     // to have a script file with no stdin processing, end script file with 'exit'
     puts ("\nTCL scripting, do 'help' for tclboardtest-specific commands");
+    if (inihelp != NULL) {
+        puts (inihelp);
+        free (inihelp);
+    }
     for (char const *line;;) {
         line = readprompt ("tclboardtest> ");
         if (line == NULL) break;
