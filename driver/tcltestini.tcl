@@ -22,13 +22,6 @@
 ##  can be overridden with envar tcltestini:
 ##  export tcltestini=somethingelse.tcl
 
-# see if a particular board is connected
-proc isboard {board} {
-    set bds [listmods]
-    set idx [lsearch -exact $bds $board]
-    return [expr {$idx >= 0}]
-}
-
 # dump board and compare with shadow
 proc dumpboard {board} {
     halfcycle                   ;# make sure state up-to-date
@@ -160,11 +153,64 @@ proc dumpboard {board} {
     }
 }
 
+# return source of alu A operand
+proc examalua {} {
+    set x [exam _alua_m1 _alua_ma alua_mq1107 alua_pc1107 alua_mq0600 alua_pc0600]
+    set i 0
+    set s ""
+    foreach n [list M1 MA] {
+        if {! [lindex $x $i]} {set s "$s$n"}
+        incr i
+    }
+    foreach n [list MQ1107 PC1107 MQ0600 PC0600] {
+        if {[lindex $x $i]} {set s "$s$n"}
+        incr i
+    }
+    if {$s == ""} {set $s "0"}
+    return $s
+}
+
+# return source of alu B operand
+proc examalub {} {
+    set x [exam alub_1 _alub_ac _alub_m1]
+    set s ""
+    if {[lindex $x 0]} {set s "1"}
+    set i 1
+    foreach n [list AC M1] {
+        if {! [lindex $x $i]} {set s "$s$n"}
+        incr i
+    }
+    if {$s == ""} {set $s "0"}
+    return $s
+}
+
+# examine the state - returns state in uppercase
+proc examstate {} {
+    set x [exam fetch1q fetch2q defer1q defer2q defer3q exec1q exec2q exec3q intak1q]
+    set i 0
+    set s ""
+    foreach n [list FETCH1 FETCH2 DEFER1 DEFER2 DEFER3 EXEC1 EXEC2 EXEC3 INTAK1] {
+        if {[lindex $x $i]} {set s "$s$n"}
+        incr i
+    }
+    return $s
+}
+
+# see if a particular board is connected
+proc isboard {board} {
+    set bds [listmods]
+    set idx [lsearch -exact $bds $board]
+    return [expr {$idx >= 0}]
+}
+
 # print help for commands defined herein
 proc helpini {} {
     puts ""
     puts "  dumpboard <name> - print board inputs and outputs"
-    puts "  isboard <name> - see if given board connected"
+    puts "  examalua         - examine source of alu A operand"
+    puts "  examalub         - examine source of alu B operand"
+    puts "  examstate        - examine state"
+    puts "  isboard <name>   - see if given board connected"
     puts ""
 }
 

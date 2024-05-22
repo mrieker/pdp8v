@@ -20,7 +20,7 @@
 
 // access pins of arbitrary set of boards via TCL
 
-// ./tclboardtest [-csrclib] [-nopads] [-zynqlib] <boardnames> [<scriptname>]
+// ./tclboardtest [-csrclib] [-nopads] [-zynqlib] <boardnames> [<scriptname-or-hyphen> [<scriptargs> ...]]
 //   boardnames = space separated list of acl, alu, ma, pc, rpi, seq
 //                if rpi, must be plugged into raspi gpio connector
 //                if all, all boards selected
@@ -57,11 +57,14 @@ static uint32_t allouts[NPADS+1];   // all outputs from board(s)
 static uint32_t outpins[NPADS+1];   // latest pin values we have sent to boards
 
 static bool nopads;
+static bool traceflag;
 static GpioLib *gpiolib;
 static GpioLib *shadlib;
 static Tcl_Interp *interp;
 
 static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...);
+static void tracecommand (int objc, Tcl_Obj *const *objv);
+static void traceobjarray (int objc, Tcl_Obj *const *objv);
 static void updatebidirgpio ();
 
 static Tcl_ObjCmdProc cmd_exam;
@@ -70,6 +73,8 @@ static Tcl_ObjCmdProc cmd_halfcycle;
 static Tcl_ObjCmdProc cmd_help;
 static Tcl_ObjCmdProc cmd_listpins;
 static Tcl_ObjCmdProc cmd_listmods;
+static Tcl_ObjCmdProc cmd_pinof;
+static Tcl_ObjCmdProc cmd_sigof;
 
 struct FunDef {
     Tcl_ObjCmdProc *func;
@@ -86,6 +91,8 @@ static FunDef const fundefs[] = {
     { cmd_help,       NULL,     "help",       "print this help" },
     { cmd_listmods,   NULL,     "listmods",   "return list of selected modules" },
     { cmd_listpins,   NULL,     "listpins",   "return list all pin names of selected modules" },
+    { cmd_pinof,      NULL,     "pinof",      "return pin {A..D}{1..32},G{0..31} of given signal" },
+    { cmd_sigof,      NULL,     "sigof",      "return signal of given pin" },
     { NULL, NULL, NULL, NULL }
 };
 
@@ -95,6 +102,9 @@ int main (int argc, char **argv)
     bool gotamod = false;
     bool zynqlib = false;
     char const *scriptfile = NULL;
+    int scriptindex = -1;
+
+    setlinebuf (stdout);
 
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-csrclib") == 0) {
@@ -104,6 +114,10 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-nopads") == 0) {
             nopads = true;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-trace") == 0) {
+            traceflag = true;
             continue;
         }
         if (strcasecmp (argv[i], "-zynqlib") == 0) {
@@ -135,11 +149,9 @@ int main (int argc, char **argv)
                 goto gotmod;
             }
         }
-        if (scriptfile != NULL) {
-            fprintf (stderr, "cannot have more than one scriptfile\n");
-            return 1;
-        }
+        scriptindex = i;
         scriptfile = argv[i];
+        break;
     gotmod:;
     }
     if (! gotamod) {
@@ -185,6 +197,17 @@ int main (int argc, char **argv)
         if (Tcl_CreateObjCommand (interp, fundefs[i].name, fundefs[i].func, fundefs[i].data, NULL) == NULL) ABORT ();
     }
 
+    // create argv variable
+    if (scriptindex >= 0) {
+        Tcl_Obj *argvobjs[argc-scriptindex];
+        int nargs = 0;
+        for (int i = scriptindex; i < argc; i ++) {
+            argvobjs[nargs++] = Tcl_NewStringObj (argv[i], strlen (argv[i]));
+        }
+        Tcl_Obj *argvobjlist = Tcl_NewListObj (nargs, argvobjs);
+        Tcl_ObjSetVar2 (interp, Tcl_NewStringObj ("argv", 4), NULL, argvobjlist, 0);
+    }
+
     // maybe there is a script init file
     char const *tcltestini = getenv ("tcltestini");
     char *inihelp = NULL;
@@ -202,7 +225,9 @@ int main (int argc, char **argv)
     }
 
     // if given a filename, process that file as a whole
-    if (scriptfile != NULL) {
+    if ((scriptfile != NULL) && (strcmp (scriptfile, "-") != 0)) {
+
+        // evaluate the file as a whole
         int rc = Tcl_EvalFile (interp, scriptfile);
         char const *res = Tcl_GetStringResult (interp);
         if (rc != TCL_OK) {
@@ -257,6 +282,9 @@ static int cmpelements (void const *va, void const *vb)
 
 static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
+    tracecommand (objc, objv);
+    fputs (" =>", stdout);
+
     // read the pins coming from the tubes + values we are outputting to the tubes
     // ...or likewise with shadow pins
     // - allins[0..NPADS-1] = mask of pins we are sending to the bus via paddles (they go to inputs on some boards)
@@ -283,6 +311,7 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
             puts ("  exam <pinname> ... - get list values of the given pins, alternating name value ...");
             puts ("                       may be bus name such as pcq for all 12 bits as single value");
             puts ("");
+            if (traceflag) fputc ('\n', stdout);
             return TCL_OK;
         }
 
@@ -341,6 +370,8 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
 
                 // return the list
                 Tcl_SetObjResult (interp, Tcl_NewListObj (nelements * 2, tclist));
+                traceobjarray (nelements * 2, tclist);
+                if (traceflag) fputc ('\n', stdout);
                 return TCL_OK;
             }
         }
@@ -376,6 +407,7 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
         }
         if (! foundit) {
             Tcl_SetResultF (interp, "bad pin name %s", namestr);
+            if (traceflag) fputc ('\n', stdout);
             return TCL_ERROR;
         }
 
@@ -384,12 +416,17 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
     }
 
     Tcl_SetObjResult (interp, Tcl_NewListObj (objc - 1, results));
+    traceobjarray (objc - 1, results);
+    if (traceflag) fputc ('\n', stdout);
     return TCL_OK;
 }
 
 // force <name1> <value1> ...
 static int cmd_force (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
+    tracecommand (objc, objv);
+    if (traceflag) fputc ('\n', stdout);
+
     bool writegpio = false;
     bool writepads = false;
 
@@ -482,6 +519,9 @@ static int cmd_force (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
 // delay half a cycle
 static int cmd_halfcycle (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
+    tracecommand (objc, objv);
+    if (traceflag) fputc ('\n', stdout);
+
     int addcyc = 1;
     switch (objc) {
         case 1: break;
@@ -573,6 +613,61 @@ static int cmd_listpins (ClientData clientdata, Tcl_Interp *interp, int objc, Tc
     return TCL_OK;
 }
 
+// get pin for given signal
+static int cmd_pinof (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    if (objc == 2) {
+        char const *sig = Tcl_GetString (objv[1]);
+        for (int pad = 0; pad <= NPADS; pad ++) {
+            for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
+                if (strcmp (pin->varname, sig) == 0) {
+                    int pinnum = __builtin_ctz (pin->pinmask) + 1;
+                    char pinlet = pad + 'A';
+                    if (pad == NPADS) {
+                        pinlet = 'G';
+                        -- pinnum;
+                    }
+                    Tcl_SetResultF (interp, "%c%d", pinlet, pinnum);
+                    return TCL_OK;
+                }
+            }
+        }
+        Tcl_SetResultF (interp, "unknown signal %s", sig);
+        return TCL_ERROR;
+    }
+    Tcl_SetResultF (interp, "wrong num args - pinof <signalname>");
+    return TCL_ERROR;
+}
+
+// get signal for given pin
+static int cmd_sigof (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    if (objc == 2) {
+        char const *pinxx = Tcl_GetString (objv[1]);
+        char pinlet = pinxx[0];
+        char *p;
+        int pinnum = strtol (pinxx + 1, &p, 0);
+        if ((pinlet >= 'a') && (pinlet <= 'z')) pinlet -= 'a' - 'A';
+        int pad = pinlet - 'A';
+        if (pinlet == 'G') {
+            pad = NPADS;
+            pinnum ++;
+        }
+        if ((pad >= 0) && (pad <= NPADS) && (pinnum >= 1) && (pinnum <= 32) && (*p == 0)) {
+            for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
+                if (pin->pinmask == 1U << (pinnum - 1)) {
+                    Tcl_SetResult (interp, (char *) pin->varname, TCL_STATIC);
+                    return TCL_OK;
+                }
+            }
+        }
+        Tcl_SetResultF (interp, "unknown pin %s", pinxx);
+        return TCL_ERROR;
+    }
+    Tcl_SetResultF (interp, "wrong num args - sigof <pinname>");
+    return TCL_ERROR;
+}
+
 static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...)
 {
     char *buf = NULL;
@@ -581,6 +676,24 @@ static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...)
     if (vasprintf (&buf, fmt, ap) < 0) ABORT ();
     va_end (ap);
     Tcl_SetResult (interp, buf, (void (*) (char *)) free);
+}
+
+static void tracecommand (int objc, Tcl_Obj *const *objv)
+{
+    if (traceflag) {
+        fputc ('+', stdout);
+        traceobjarray (objc, objv);
+    }
+}
+
+static void traceobjarray (int objc, Tcl_Obj *const *objv)
+{
+    if (traceflag) {
+        for (int i = 0; i < objc; i ++) {
+            fputc (' ', stdout);
+            fputs (Tcl_GetString (objv[i]), stdout);
+        }
+    }
 }
 
 // in case DENA or QENA changed, update list of input and output pins
