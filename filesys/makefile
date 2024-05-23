@@ -12,36 +12,36 @@ else
 endif
 
 OBJS = \
-	dumpfile.o.$(MACH) \
-	filesys.o.$(MACH) \
-	fsuck.o.$(MACH) \
+	dumpfile.$(MACH).o \
+	filesys.$(MACH).o \
+	fsuck.$(MACH).o \
 
 default: dumpdisk.$(MACH) initvol.$(MACH) listdisk.$(MACH) readdisk.$(MACH) test.$(MACH) test2.$(MACH) writedisk.$(MACH) nullboot.obj
 
-dumpdisk.$(MACH): dumpdisk.o.$(MACH) $(OBJS)
+dumpdisk.$(MACH): dumpdisk.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-initvol.$(MACH): initvol.o.$(MACH) $(OBJS)
+initvol.$(MACH): initvol.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-listdisk.$(MACH): listdisk.o.$(MACH) $(OBJS)
+listdisk.$(MACH): listdisk.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-readdisk.$(MACH): readdisk.o.$(MACH) $(OBJS)
+readdisk.$(MACH): readdisk.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-test.$(MACH): test.o.$(MACH) $(OBJS)
+test.$(MACH): test.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-test2.$(MACH): test2.o.$(MACH) $(OBJS)
+test2.$(MACH): test2.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
-writedisk.$(MACH): writedisk.o.$(MACH) $(OBJS)
+writedisk.$(MACH): writedisk.$(MACH).o $(OBJS)
 	$(GPP) -o $@ $^
 
 nullboot.obj: nullboot.asm
 	../asm/assemble.x86_64 nullboot.asm nullboot.obj > nullboot.lis
 
-%.o.$(MACH): %.cc *.h
+%.$(MACH).o: %.cc *.h
 	$(GPP) -DUNIPROC=$(UNIPROC) -c -o $@ $<
 

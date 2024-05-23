@@ -17,7 +17,7 @@ ifeq ($(MACH),armv7l)
 	LNKFLG := $(LNKFLG) -latomic
 endif
 
-LIBS = lib.a.$(MACH)
+LIBS = lib.$(MACH).a
 
 .PRECIOUS: csrcmod_%.cc csrcmod_%.so.$(MACH)
 
@@ -25,76 +25,76 @@ default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) \
 	raspictl.$(MACH) tclboardtest.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
-lib.a.$(MACH): \
-		abcd.o.$(MACH) \
-		binloader.o.$(MACH) \
-		controls.o.$(MACH) \
-		csrclib.o.$(MACH) \
-		disassemble.o.$(MACH) \
-		dyndis.o.$(MACH) \
-		extarith.o.$(MACH) \
-		getexedir.o.$(MACH) \
-		gpiolib.o.$(MACH) \
-		iodevs.o.$(MACH) \
-		iodevdtape.o.$(MACH) \
-		iodevptape.o.$(MACH) \
-		iodevrk8.o.$(MACH) \
-		iodevrk8je.o.$(MACH) \
-		iodevrtc.o.$(MACH) \
-		iodevtty.o.$(MACH) \
-		linc.o.$(MACH) \
-		linkloader.o.$(MACH) \
-		makepipelibmod.o.$(MACH) \
-		memext.o.$(MACH) \
-		memory.o.$(MACH) \
-		myiowkit.o.$(MACH) \
-		nohwlib.o.$(MACH) \
-		physlib.o.$(MACH) \
-		pindefs.o.$(MACH) \
-		pipelib.o.$(MACH) \
-		rdcyc.o.$(MACH) \
-		readprompt.o.$(MACH) \
-		rimloader.o.$(MACH) \
-		scncall.o.$(MACH) \
-		script.o.$(MACH) \
-		shadow.o.$(MACH) \
-		strprintf.o.$(MACH) \
-		timedlib.o.$(MACH) \
-		zynqlib.o.$(MACH)
-	rm -f lib.a.$(MACH)
+lib.$(MACH).a: \
+		abcd.$(MACH).o \
+		binloader.$(MACH).o \
+		controls.$(MACH).o \
+		csrclib.$(MACH).o \
+		disassemble.$(MACH).o \
+		dyndis.$(MACH).o \
+		extarith.$(MACH).o \
+		getexedir.$(MACH).o \
+		gpiolib.$(MACH).o \
+		iodevs.$(MACH).o \
+		iodevdtape.$(MACH).o \
+		iodevptape.$(MACH).o \
+		iodevrk8.$(MACH).o \
+		iodevrk8je.$(MACH).o \
+		iodevrtc.$(MACH).o \
+		iodevtty.$(MACH).o \
+		linc.$(MACH).o \
+		linkloader.$(MACH).o \
+		makepipelibmod.$(MACH).o \
+		memext.$(MACH).o \
+		memory.$(MACH).o \
+		myiowkit.$(MACH).o \
+		nohwlib.$(MACH).o \
+		physlib.$(MACH).o \
+		pindefs.$(MACH).o \
+		pipelib.$(MACH).o \
+		rdcyc.$(MACH).o \
+		readprompt.$(MACH).o \
+		rimloader.$(MACH).o \
+		scncall.$(MACH).o \
+		script.$(MACH).o \
+		shadow.$(MACH).o \
+		strprintf.$(MACH).o \
+		timedlib.$(MACH).o \
+		zynqlib.$(MACH).o
+	rm -f lib.$(MACH).a
 	ar rc $@ $^
 
-clockit.$(MACH): clockit.o.$(MACH) $(LIBS)
+clockit.$(MACH): clockit.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-counter.$(MACH): counter.o.$(MACH) $(LIBS)
+counter.$(MACH): counter.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptest.$(MACH): exptest.o.$(MACH) $(LIBS)
+exptest.$(MACH): exptest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingall.$(MACH): exptimingall.o.$(MACH) $(LIBS)
+exptimingall.$(MACH): exptimingall.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingdfrm.$(MACH): exptimingdfrm.o.$(MACH) $(LIBS)
+exptimingdfrm.$(MACH): exptimingdfrm.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingiak.$(MACH): exptimingiak.o.$(MACH) $(LIBS)
+exptimingiak.$(MACH): exptimingiak.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingioin.$(MACH): exptimingioin.o.$(MACH) $(LIBS)
+exptimingioin.$(MACH): exptimingioin.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingjmp.$(MACH): exptimingjmp.o.$(MACH) $(LIBS)
+exptimingjmp.$(MACH): exptimingjmp.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingmd0.$(MACH): exptimingmd0.o.$(MACH) $(LIBS)
+exptimingmd0.$(MACH): exptimingmd0.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingmd1.$(MACH): exptimingmd1.o.$(MACH) $(LIBS)
+exptimingmd1.$(MACH): exptimingmd1.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-exptimingmwt.$(MACH): exptimingmwt.o.$(MACH) $(LIBS)
+exptimingmwt.$(MACH): exptimingmwt.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
 GUI.jar: GUI.java GUIRasPiCtl.h
@@ -103,44 +103,44 @@ GUI.jar: GUI.java GUIRasPiCtl.h
 	jar cf GUI.jar GUI*.class
 	rm -f GUI.class GUI\$$*.class
 
-iow56list.$(MACH): iow56list.o.$(MACH) $(LIBS)
+iow56list.$(MACH): iow56list.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-iow56testpair.$(MACH): iow56testpair.o.$(MACH) $(LIBS)
+iow56testpair.$(MACH): iow56testpair.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ -lpthread -lreadline
 
-iowlist.$(MACH): iowlist.o.$(MACH) $(LIBS)
+iowlist.$(MACH): iowlist.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-iow100test.$(MACH): iow100test.o.$(MACH) $(LIBS)
+iow100test.$(MACH): iow100test.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
 
-libGUIRasPiCtl.$(MACH).so: GUIRasPiCtl.cc GUIRasPiCtl.h raspictl.o.$(MACH) $(LIBS)
-	$(GPP) -shared -o libGUIRasPiCtl.$(MACH).so -I/opt/jdk/include -I/opt/jdk/include/linux GUIRasPiCtl.cc raspictl.o.$(MACH) $(LIBS) $(LNKFLG)
+libGUIRasPiCtl.$(MACH).so: GUIRasPiCtl.cc GUIRasPiCtl.h raspictl.$(MACH).o $(LIBS)
+	$(GPP) -shared -o libGUIRasPiCtl.$(MACH).so -I/opt/jdk/include -I/opt/jdk/include/linux GUIRasPiCtl.cc raspictl.$(MACH).o $(LIBS) $(LNKFLG)
 
 GUIRasPiCtl.h: GUIRasPiCtl.java
 	rm -f GUIRasPiCtl.class GUIRasPiCtl.h
 	CLASSPATH=. javac -h . GUIRasPiCtl.java
 
-autoboardtest.$(MACH): autoboardtest.o.$(MACH) $(LIBS)
+autoboardtest.$(MACH): autoboardtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-dtapestatus.$(MACH): dtapestatus.o.$(MACH) $(LIBS)
+dtapestatus.$(MACH): dtapestatus.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-gpioudpserver.$(MACH): gpioudpserver.o.$(MACH) $(LIBS)
+gpioudpserver.$(MACH): gpioudpserver.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-raspictl.$(MACH): raspictl.o.$(MACH) $(LIBS)
+raspictl.$(MACH): raspictl.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-tclboardtest.$(MACH): tclboardtest.o.$(MACH) $(LIBS)
+tclboardtest.$(MACH): tclboardtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-testboard.$(MACH): testboard.o.$(MACH) $(LIBS)
+testboard.$(MACH): testboard.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-zynqtest.$(MACH): zynqtest.o.$(MACH) $(LIBS)
+zynqtest.$(MACH): zynqtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 csrcmod_%.so.$(MACH): csrcmod_%.cc csrcmod.cc
@@ -155,9 +155,9 @@ csrcmod_%.cc: ../modules/whole.mod ../netgen/classes/NetGen.class
 ../modules/whole.mod:
 	cd ../modules ; make whole.mod
 
-rdcyc.o.$(MACH): $(RDCYC) *.h
+rdcyc.$(MACH).o: $(RDCYC) *.h
 	$(GPP) -DUNIPROC=$(UNIPROC) -c -o $@ $<
 
-%.o.$(MACH): %.cc *.h
+%.$(MACH).o: %.cc *.h
 	$(GPP) -DUNIPROC=$(UNIPROC) -c -o $@ $<
 
