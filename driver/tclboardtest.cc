@@ -75,6 +75,7 @@ static Tcl_ObjCmdProc cmd_listpins;
 static Tcl_ObjCmdProc cmd_listmods;
 static Tcl_ObjCmdProc cmd_pinof;
 static Tcl_ObjCmdProc cmd_sigof;
+static Tcl_ObjCmdProc cmd_syncsh;
 
 struct FunDef {
     Tcl_ObjCmdProc *func;
@@ -93,6 +94,7 @@ static FunDef const fundefs[] = {
     { cmd_listpins,   NULL,     "listpins",   "return list all pin names of selected modules" },
     { cmd_pinof,      NULL,     "pinof",      "return pin {A..D}{1..32},G{0..31} of given signal" },
     { cmd_sigof,      NULL,     "sigof",      "return signal of given pin" },
+    { cmd_syncsh,     NULL,     "syncsh",     "synchronize shadow to tubes" },
     { NULL, NULL, NULL, NULL }
 };
 
@@ -666,6 +668,106 @@ static int cmd_sigof (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     }
     Tcl_SetResultF (interp, "wrong num args - sigof <pinname>");
     return TCL_ERROR;
+}
+
+// synchronize shadow state to tubes
+static int cmd_syncsh (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    struct FFBit { char const *pinname; char const *acthiff; char const *actloff; int rbit; };
+    static FFBit const ffbits[] = {
+
+        { "acq[0]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   0 },
+        { "acq[1]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   1 },
+        { "acq[2]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   2 },
+        { "acq[3]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   3 },
+        { "acq[4]",  "Q/acmid/aclcirc",   "_Q/acmid/aclcirc",  0 },
+        { "acq[5]",  "Q/acmid/aclcirc",   "_Q/acmid/aclcirc",  1 },
+        { "acq[6]",  "Q/acmid/aclcirc",   "_Q/acmid/aclcirc",  2 },
+        { "acq[7]",  "Q/acmid/aclcirc",   "_Q/acmid/aclcirc",  3 },
+        { "acq[8]",  "Q/achi/aclcirc",    "_Q/achi/aclcirc",   0 },
+        { "acq[9]",  "Q/achi/aclcirc",    "_Q/achi/aclcirc",   1 },
+        { "acq[10]", "Q/achi/aclcirc",    "_Q/achi/aclcirc",   2 },
+        { "acq[11]", "Q/achi/aclcirc",    "_Q/achi/aclcirc",   3 },
+
+        { "defer1q", "_Q/defer1/seqcirc", "Q/defer1/seqcirc",  0 },
+        { "defer2q", "_Q/defer2/seqcirc", "Q/defer2/seqcirc",  0 },
+        { "defer3q", "_Q/defer3/seqcirc", "Q/defer3/seqcirc",  0 },
+        { "exec1q",  "_Q/exec1/seqcirc",  "Q/exec1/seqcirc",   0 },
+        { "exec2q",  "_Q/exec2/seqcirc",  "Q/exec2/seqcirc",   0 },
+        { "exec3q",  "Q/exec3/seqcirc",   "_Q/exec3/seqcirc",  0 },
+        { "fetch1q", "Q/fetch1/seqcirc",  "_Q/fetch1/seqcirc", 0 },
+        { "fetch2q", "_Q/fetch2/seqcirc", "Q/fetch2/seqcirc",  0 },
+        { "intak1q", "_Q/intak1/seqcirc", "Q/intak1/seqcirc",  0 },
+
+        { "irq[9]",  "Q/ireg09/seqcirc",  "_Q/ireg09/seqcirc", 0 },
+        { "irq[10]", "Q/ireg10/seqcirc",  "_Q/ireg10/seqcirc", 0 },
+        { "irq[11]", "Q/ireg11/seqcirc",  "_Q/ireg11/seqcirc", 0 },
+
+        { "lnq",     "_Q/lnreg/aclcirc",  "Q/lnreg/aclcirc",   0 },
+
+        { "maq[0]",  "_Q/malo/macirc",    "Q/malo/macirc",     0 },
+        { "maq[1]",  "_Q/malo/macirc",    "Q/malo/macirc",     1 },
+        { "maq[2]",  "_Q/malo/macirc",    "Q/malo/macirc",     2 },
+        { "maq[3]",  "_Q/malo/macirc",    "Q/malo/macirc",     3 },
+        { "maq[4]",  "_Q/mamid/macirc",   "Q/mamid/macirc",    0 },
+        { "maq[5]",  "_Q/mamid/macirc",   "Q/mamid/macirc",    1 },
+        { "maq[6]",  "_Q/mamid/macirc",   "Q/mamid/macirc",    2 },
+        { "maq[7]",  "_Q/mamid/macirc",   "Q/mamid/macirc",    3 },
+        { "maq[8]",  "_Q/mahi/macirc",    "Q/mahi/macirc",     0 },
+        { "maq[9]",  "_Q/mahi/macirc",    "Q/mahi/macirc",     1 },
+        { "maq[10]", "_Q/mahi/macirc",    "Q/mahi/macirc",     2 },
+        { "maq[11]", "_Q/mahi/macirc",    "Q/mahi/macirc",     3 },
+
+        { "pcq[0]",  "Q/pc00/pccirc",     "_Q/pc00/pccirc",    0 },
+        { "pcq[1]",  "Q/pc01/pccirc",     "_Q/pc01/pccirc",    0 },
+        { "pcq[2]",  "Q/pc02/pccirc",     "_Q/pc02/pccirc",    0 },
+        { "pcq[3]",  "Q/pc03/pccirc",     "_Q/pc03/pccirc",    0 },
+        { "pcq[4]",  "Q/pc04/pccirc",     "_Q/pc04/pccirc",    0 },
+        { "pcq[5]",  "Q/pc05/pccirc",     "_Q/pc05/pccirc",    0 },
+        { "pcq[6]",  "Q/pc06/pccirc",     "_Q/pc06/pccirc",    0 },
+        { "pcq[7]",  "Q/pc07/pccirc",     "_Q/pc07/pccirc",    0 },
+        { "pcq[8]",  "Q/pc08/pccirc",     "_Q/pc08/pccirc",    0 },
+        { "pcq[9]",  "Q/pc09/pccirc",     "_Q/pc09/pccirc",    0 },
+        { "pcq[10]", "Q/pc10/pccirc",     "_Q/pc10/pccirc",    0 },
+        { "pcq[11]", "Q/pc11/pccirc",     "_Q/pc11/pccirc",    0 },
+
+        { NULL, NULL, NULL, 0 } };
+
+    if (traceflag) fputs ("+ syncsh\n", stdout);
+
+    // read tube values
+    uint32_t padlvalus[NPADS];
+    if (! nopads) {
+        gpiolib->readpads (padlvalus);
+        for (int j = 0; j < NPADS; j ++) {
+            padlvalus[j] = (padlvalus[j] & allouts[j]) | (outpins[j] & allins[j]);
+        }
+    }
+
+    // for each tube flipflop pin, write corresponding shadow flipflop bit
+    for (FFBit const *ff = ffbits; ff->pinname != NULL; ff ++) {
+        for (int pad = 0; pad < NPADS; pad ++) {
+            for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
+                if (strcmp (pin->varname, ff->pinname) == 0) {
+                    bool tubepin = (padlvalus[pad] & pin->pinmask) != 0;
+                    bool *acthi = shadlib->getvarbool (ff->acthiff, ff->rbit);
+                    bool *actlo = shadlib->getvarbool (ff->actloff, ff->rbit);
+                    if (acthi != NULL) {
+                        *acthi =   tubepin;
+                        if (traceflag) printf ("  %17s[%d] <=   %d %s\n", ff->acthiff, ff->rbit, tubepin, ff->pinname);
+                    }
+                    if (actlo != NULL) {
+                        *actlo = ! tubepin;
+                        if (traceflag) printf ("  %17s[%d] <= ~ %d %s\n", ff->actloff, ff->rbit, tubepin, ff->pinname);
+                    }
+                    goto found;
+                }
+            }
+        }
+    found:;
+    }
+
+    return TCL_OK;
 }
 
 static void Tcl_SetResultF (Tcl_Interp *interp, char const *fmt, ...)
