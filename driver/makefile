@@ -21,8 +21,8 @@ LIBS = lib.a.$(MACH)
 
 .PRECIOUS: csrcmod_%.cc csrcmod_%.so.$(MACH)
 
-default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) loopedboardtest.$(MACH) \
-	manualboardtest.$(MACH) raspictl.$(MACH) tclboardtest.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
+default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) \
+	raspictl.$(MACH) tclboardtest.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
 lib.a.$(MACH): \
@@ -129,18 +129,6 @@ dtapestatus.$(MACH): dtapestatus.o.$(MACH) $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 gpioudpserver.$(MACH): gpioudpserver.o.$(MACH) $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
-
-loopedboardtest.$(MACH): loopedboardtest.o.$(MACH) $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
-
-manualboardtest.$(MACH): manualboardtest.o.$(MACH) $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
-
-maseqcountdn.$(MACH): maseqcountdn.o.$(MACH) $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
-
-pc7676.$(MACH): pc7676.o.$(MACH) $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 raspictl.$(MACH): raspictl.o.$(MACH) $(LIBS)
