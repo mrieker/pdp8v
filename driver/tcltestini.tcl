@@ -22,8 +22,104 @@
 ##  can be overridden with envar tcltestini:
 ##  export tcltestini=somethingelse.tcl
 
+# determine current alu equation
+proc alueqn {} {
+
+    # must have alu or seq board so the control pins will be defined
+    set hasalu [isboard alu]
+    array set v [exam [expr {$hasalu ? "alu" : "seq"}]]
+
+    # compute alu A operand source and if alu present, get its value
+    set aluasrc ""
+    set aluaval 0
+    if {! $v(_alua_m1)} {
+        set aluasrc "${aluasrc}7777"
+        if {$hasalu} {set aluaval 07777}
+    }
+    if {! $v(_alua_ma)} {
+        set aluasrc "${aluasrc}ma"
+        if {$hasalu} {set aluaval [expr {$aluaval | $v(maq)}]}
+    }
+    if {$v(alua_mq1107)} {
+        set aluasrc "${aluasrc}mq1107"
+        if {$hasalu} {set aluaval [expr {$aluaval | ($v(mq) & 07600)}]}
+    }
+    if {$v(alua_pc1107)} {
+        set aluasrc "${aluasrc}pc1107"
+        if {$hasalu} {set aluaval [expr {$aluaval | ($v(pcq) & 07600)}]}
+    }
+    if {$v(alua_mq0600)} {
+        set aluasrc "${aluasrc}mq0600"
+        if {$hasalu} {set aluaval [expr {$aluaval | ($v(mq) & 00177)}]}
+    }
+    if {$v(alua_pc0600)} {
+        set aluasrc "${aluasrc}pc0600"
+        if {$hasalu} {set aluaval [expr {$aluaval | ($v(pcq) & 00177)}]}
+    }
+    if {$aluasrc == ""} {
+        set aluasrc "0000"
+    }
+
+    # compute alu B operand source and if alu present, get its value
+    set alubsrc ""
+    set alubval 0
+    if {$v(alub_1)} {
+        set alubsrc "${alubsrc}0001"
+        if {$hasalu} {set alubval [expr {$alubval | 00001}]}
+    }
+    if {! $v(_alub_ac)} {
+        set alubsrc "${alubsrc}ac"
+        if {$hasalu} {set alubval [expr {$alubval | $v(acq)}]}
+    }
+    if {! $v(_alub_m1)} {
+        set alubsrc "${alubsrc}7777"
+        if {$hasalu} {set alubval [expr {$alubval | 07777}]}
+    }
+    if {$alubsrc == ""} {
+        set alubsrc "0000"
+    }
+
+    # compute alu operator and if alu present, do computation
+    set aluop ""
+    set aluqval 0
+    if {! $v(_alu_add)} {
+        set aluop "${aluop}+"
+        if {$hasalu} {set aluqval [expr {$aluqval | ($aluaval + $alubval)}]}
+    }
+    if {! $v(_alu_and)} {
+        set aluop "${aluop}&"
+        if {$hasalu} {set aluqval [expr {$aluqval | ($aluaval & $alubval)}]}
+    }
+    if {! $v(_grpa1q)} {
+        set aluop "${aluop}^"
+        if {$hasalu} {set aluqval [expr {$aluqval | ($aluaval ^ $alubval)}]}
+    }
+
+    # maybe increment value
+    set inc ""
+    if {$v(inc_axb)} {
+        set inc " + 1"
+        if {$hasalu} {incr aluqval}
+    }
+
+    # format output string
+    if {$hasalu} {
+        set aluaval [format "%04o" $aluaval]
+        set alubval [format "%04o" $alubval]
+        set aluaval [expr {($aluaval == $aluasrc) ? "" : " = $aluaval"}]
+        set alubval [expr {($alubval == $alubsrc) ? "" : " = $alubval"}]
+        set aluqval [format " => %04o" $aluqval]
+    } else {
+        set aluaval ""
+        set alubval ""
+        set aluqval ""
+    }
+
+    return "$aluasrc$aluaval $aluop $alubsrc$alubval$inc$aluqval"
+}
+
 # dump board and compare with shadow
-proc dumpboard {board} {
+proc dump {board} {
     halfcycle                   ;# make sure state up-to-date
     array set v [exam $board]   ;# read tube state
     array set s [examsh $board] ;# read shadow state
@@ -69,6 +165,8 @@ proc dumpboard {board} {
             puts "     _alucout = $v(_alucout)$x(_alucout)"
             puts "        _aluq = [format %04o $v(_aluq)]$x(_aluq)"
             puts "     _newlink = $v(_newlink)$x(_newlink)"
+            puts ""
+            puts "alu:  [alueqn]"
             puts ""
         }
         ma {
@@ -149,6 +247,8 @@ proc dumpboard {board} {
             puts "  alua_pc0600 = $v(alua_pc0600)$x(alua_pc0600)        intak1q = $v(intak1q)$x(intak1q)            irq = [format %04o $v(irq)]$x(irq)"
             puts "  alua_pc1107 = $v(alua_pc1107)$x(alua_pc1107)         ioinst = $v(ioinst)$x(ioinst)"
             puts ""
+            puts "alu:  [alueqn]"
+            puts ""
         }
     }
 }
@@ -203,14 +303,41 @@ proc isboard {board} {
     return [expr {$idx >= 0}]
 }
 
+# reset tubes and sync shadow to match
+proc reset {} {
+    set res [expr {[isboard rpi] ? "RESET" : "reset"}]
+    force $res 1
+    halfcycle
+    halfcycle
+    halfcycle
+    force $res 0
+    halfcycle
+    syncsh
+}
+
+# step tubes through next state
+# assumes tubes at end of previous state with clock low
+# leaves tubes at end of next state with clock low
+proc step {} {
+    set clk [expr {[isboard rpi] ? "CLOCK" : "clok2"}]
+    force $clk 1
+    halfcycle
+    force $clk 0
+    halfcycle
+    syncsh
+}
+
 # print help for commands defined herein
 proc helpini {} {
     puts ""
-    puts "  dumpboard <name> - print board inputs and outputs"
+    puts "  alueqn           - get alu equation being computed"
+    puts "  dump <name>      - print board inputs and outputs"
     puts "  examalua         - examine source of alu A operand"
     puts "  examalub         - examine source of alu B operand"
     puts "  examstate        - examine state"
     puts "  isboard <name>   - see if given board connected"
+    puts "  reset            - reset tubes and sync shadow"
+    puts "  step             - step to end of next state"
     puts ""
 }
 

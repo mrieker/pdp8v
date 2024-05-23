@@ -285,7 +285,7 @@ static int cmpelements (void const *va, void const *vb)
 static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     tracecommand (objc, objv);
-    fputs (" =>", stdout);
+    if (traceflag) fputs (" =>", stdout);
 
     // read the pins coming from the tubes + values we are outputting to the tubes
     // ...or likewise with shadow pins
