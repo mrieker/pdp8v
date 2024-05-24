@@ -56,12 +56,12 @@ default: $(addprefix $(CLASSDIR)/,$(CLASSFILES))
 clean:
 	rm -rf $(CLASSDIR)
 
-$(CLASSDIR)/%.class: %.java jacl141
+$(CLASSDIR)/%.class: %.java jacl141/lib/tcljava1.4.1/tcljava.jar
 	mkdir -p $(CLASSDIR)
 	rm -f $@ $(@:.class=\$$*.class)
 	CLASSPATH=$(CP) $(JAVAC) $<
 
-jacl141: jaclBinary141.zip
+jacl141/lib/tcljava1.4.1/tcljava.jar: jaclBinary141.zip
 	unzip jaclBinary141.zip
 
 jaclBinary141.zip:

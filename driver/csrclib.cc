@@ -22,7 +22,7 @@
 // ...to provide for simulation
 
 // module-specific code is loaded from .so files generated via make:
-//  make csrcmod_<modname>.so.$(MACH)
+//  make csrcmod_<modname>.$(MACH).so
 //   <modname> = proc : whole processor (ACL + ALU + MA + PC + RPI + SEQ boards) accessed via GPIO connector
 //           proc_seq : just SEQ board + RPI board to hook up to GPIO connector
 //            seqcirc : just SEQ board, no GPIO simulation, simulates A,B,C,D paddles for testing
@@ -56,15 +56,15 @@ CSrcLib::CSrcLib (char const *modname)
     modname = makepipelibmod (modname);
 
     // get .so loaded that contains generated simulation code derived from the module files
-    // name is <this-executable-directory>/csrcmod_<modname>.so.<this-executable-machname>
+    // name is <this-executable-directory>/csrcmod_<modname>.<this-executable-machname>.so
     std::string soname;
     soname.append (linkbuf);
     soname.append ("csrcmod_");
     soname.append (modname);
-    soname.append (".so");
     if (mach != NULL) {
         soname.append (mach);
     }
+    soname.append (".so");
 
     // if .so file doesn't exist, try to make it
     char const *sonamestr = soname.c_str ();
@@ -78,10 +78,10 @@ CSrcLib::CSrcLib (char const *modname)
         makecmd.append (linkbuf);
         makecmd.append (" ; make csrcmod_");
         makecmd.append (modname);
-        makecmd.append (".so");
         if (mach != NULL) {
             makecmd.append (mach);
         }
+        makecmd.append (".so");
         fprintf (stderr, "CSrcLib::CSrcLib: %s\n", makecmd.c_str ());
         int rc = system (makecmd.c_str ());
         if (rc != 0) fprintf (stderr, "CSrcLib::CSrcLib: - make status %d, errno %d\n", rc, errno);

@@ -19,7 +19,7 @@ endif
 
 LIBS = lib.$(MACH).a
 
-.PRECIOUS: csrcmod_%.cc csrcmod_%.so.$(MACH)
+.PRECIOUS: csrcmod_%.cc csrcmod_%.$(MACH).so
 
 default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) \
 	raspictl.$(MACH) tclboardtest.$(MACH) testboard.$(MACH) zynqtest.$(MACH) \
@@ -143,7 +143,7 @@ testboard.$(MACH): testboard.$(MACH).o $(LIBS)
 zynqtest.$(MACH): zynqtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-csrcmod_%.so.$(MACH): csrcmod_%.cc csrcmod.cc
+csrcmod_%.$(MACH).so: csrcmod_%.cc csrcmod.cc
 	$(GPP) -shared -o $@ $^
 
 csrcmod_%.cc: ../modules/whole.mod ../netgen/classes/NetGen.class
