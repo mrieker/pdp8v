@@ -124,7 +124,7 @@ proc dump {board} {
     array set v [exam $board]   ;# read tube state
     array set s [examsh $board] ;# read shadow state
     foreach key [array names v] {
-        set x($key) [expr {($v($key) != $s($key)) ? "<<" : "  "}]
+        set x($key) [expr {($v($key) != $s($key)) ? " \033\[5m<\033\[m" : "  "}]
     }
 
     switch $board {

@@ -58,7 +58,7 @@ static uint32_t outpins[NPADS+1];   // latest pin values we have sent to boards
 
 static bool nopads;
 static bool traceflag;
-static GpioLib *gpiolib;
+static GpioLib *physlib;
 static GpioLib *shadlib;
 static Tcl_Interp *interp;
 
@@ -85,7 +85,7 @@ struct FunDef {
 };
 
 static FunDef const fundefs[] = {
-    { cmd_exam,       &gpiolib, "exam",       "examine tube board pins" },
+    { cmd_exam,       &physlib, "exam",       "examine tube board pins" },
     { cmd_exam,       &shadlib, "examsh",     "examine shadow pins" },
     { cmd_force,      NULL,     "force",      "force <pinname> <pinvalu> ..." },
     { cmd_halfcycle,  NULL,     "halfcycle",  "delay a half cycle" },
@@ -174,16 +174,16 @@ int main (int argc, char **argv)
         if (mod->selected) modnames.append (mod->name);
     }
 
-    // access the paddles and maybe gpio connector
-    gpiolib =
+    // access the physical paddles and maybe gpio connector
+    physlib =
         csrclib ? (GpioLib *) new CSrcLib (modnames.c_str ()) :
         zynqlib ? (GpioLib *) new ZynqLib (modnames.c_str ()) :
                   (GpioLib *) new PhysLib ();
-    gpiolib->open ();
+    physlib->open ();
 
     // write all input pins with zeroes
-    if (! nopads) gpiolib->writepads (allins, outpins);
-    if (allins[NPADS] != 0) gpiolib->writegpio (false, 0);
+    if (! nopads) physlib->writepads (allins, outpins);
+    if (allins[NPADS] != 0) physlib->writegpio (false, 0);
 
     // set up shadow for comparing
     shadlib = new CSrcLib (modnames.c_str ());
@@ -507,11 +507,11 @@ static int cmd_force (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
 
     // actually write paddles and/or gpio
     if (writepads) {
-        gpiolib->writepads (allins, outpins);
+        physlib->writepads (allins, outpins);
         shadlib->writepads (allins, outpins);
     }
     if (writegpio) {
-        gpiolib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
+        physlib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
         shadlib->writegpio ((outpins[NPADS] & G_QENA) != 0, outpins[NPADS]);
     }
 
@@ -546,7 +546,7 @@ static int cmd_halfcycle (ClientData clientdata, Tcl_Interp *interp, int objc, T
             return TCL_ERROR;
         }
     }
-    gpiolib->halfcycle (addcyc);
+    physlib->halfcycle (addcyc);
     shadlib->halfcycle (addcyc);
     return TCL_OK;
 }
@@ -676,6 +676,7 @@ static int cmd_syncsh (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
     struct FFBit { char const *pinname; char const *acthiff; char const *actloff; int rbit; };
     static FFBit const ffbits[] = {
 
+        // padlpin    same as padlpin      comp of padlpin
         { "acq[0]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   0 },
         { "acq[1]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   1 },
         { "acq[2]",  "Q/aclo/aclcirc",    "_Q/aclo/aclcirc",   2 },
@@ -738,7 +739,7 @@ static int cmd_syncsh (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
     // read tube values
     uint32_t padlvalus[NPADS];
     if (! nopads) {
-        gpiolib->readpads (padlvalus);
+        physlib->readpads (padlvalus);
         for (int j = 0; j < NPADS; j ++) {
             padlvalus[j] = (padlvalus[j] & allouts[j]) | (outpins[j] & allins[j]);
         }
@@ -749,16 +750,27 @@ static int cmd_syncsh (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         for (int pad = 0; pad < NPADS; pad ++) {
             for (PinDefs const *pin = pindefss[pad]; pin->pinmask != 0; pin ++) {
                 if (strcmp (pin->varname, ff->pinname) == 0) {
+
+                    // read value from tubes via the paddles
                     bool tubepin = (padlvalus[pad] & pin->pinmask) != 0;
+
+                    // update csrclib shadowlib bits to match the value read from tubes via the paddles
                     bool *acthi = shadlib->getvarbool (ff->acthiff, ff->rbit);
                     bool *actlo = shadlib->getvarbool (ff->actloff, ff->rbit);
                     if (acthi != NULL) {
                         *acthi =   tubepin;
-                        if (traceflag) printf ("  %17s[%d] <=   %d %s\n", ff->acthiff, ff->rbit, tubepin, ff->pinname);
+                        if (traceflag) printf ("  shad  %17s[%d] <=   %d %s\n", ff->acthiff, ff->rbit, tubepin, ff->pinname);
                     }
                     if (actlo != NULL) {
                         *actlo = ! tubepin;
-                        if (traceflag) printf ("  %17s[%d] <= ~ %d %s\n", ff->actloff, ff->rbit, tubepin, ff->pinname);
+                        if (traceflag) printf ("  shad  %17s[%d] <= ~ %d %s\n", ff->actloff, ff->rbit, tubepin, ff->pinname);
+                    }
+
+                    // maybe using another copy of csrclib instead of tubes, make sure complement is consistent
+                    bool *cmpl = physlib->getvarbool (ff->actloff, ff->rbit);
+                    if (cmpl != NULL) {
+                        *cmpl = ! tubepin;
+                        if (traceflag) printf ("  phys  %17s[%d] <= ~ %d %s\n", ff->actloff, ff->rbit, tubepin, ff->pinname);
                     }
                     goto found;
                 }

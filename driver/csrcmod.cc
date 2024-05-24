@@ -20,7 +20,9 @@
 
 // contains base methods for netgen -csource generated code that simulates a module
 
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "csrcmod.h"
 
@@ -33,6 +35,23 @@ CSrcMod::CSrcMod (bool *ba, unsigned bc, Var const *va, unsigned vc, char const 
     vararray  = va;
     varcount  = vc;
     modname   = mn;
+
+    // set everything to random values
+    uint8_t rands[(bc+7)/8];
+    int randfd = open ("/dev/urandom", O_RDONLY);
+    if (randfd >= 0) {
+        int rc = 0;
+        for (unsigned i = 0; i < sizeof rands; i += rc) {
+            rc = read (randfd, rands + i, sizeof rands - i);
+            if (rc <= 0) break;
+        }
+        close (randfd);
+        if (rc > 0) {
+            for (unsigned i = 0; i < bc; i ++) {
+                ba[i] = (rands[i/8] >> (i & 7)) & 1;
+            }
+        }
+    }
 }
 
 CSrcMod::~CSrcMod ()
