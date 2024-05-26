@@ -513,6 +513,10 @@ public class DFFModule extends Module {
         {
             fnand.printLocOut (ps, genmod, " f   Q out: ");
             enand.printLocOut (ps, genmod, " e  _Q out: ");
+            if (dnand != null) dnand.printLocOut (ps, genmod, " d   Q one: ");
+            if (cnand != null) cnand.printLocOut (ps, genmod, " c  _Q one: ");
+            if (bnand != null) bnand.printLocOut (ps, genmod, " b  _Q zer: ");
+            if (anand != null) anand.printLocOut (ps, genmod, " a   Q zer: ");
             if (anand != null) anand.printLocIns (ps, genmod, datnet, " a   D  in: ");
             if (bnand != null) bnand.printLocIns (ps, genmod, clknet, " b   T  in: ");
             if (cnand != null) cnand.printLocIns (ps, genmod, clknet, " c   T  in: ");

@@ -63,6 +63,7 @@ $(CLASSDIR)/%.class: %.java jacl141/lib/tcljava1.4.1/tcljava.jar
 
 jacl141/lib/tcljava1.4.1/tcljava.jar: jaclBinary141.zip
 	unzip jaclBinary141.zip
+	touch jacl141/lib/tcljava1.4.1/*.jar
 
 jaclBinary141.zip:
 	wget --no-check-certificate https://phoenixnap.dl.sourceforge.net/project/tcljava/jacl/1.4.1/jaclBinary141.zip
