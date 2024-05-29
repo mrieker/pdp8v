@@ -26,7 +26,7 @@
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
  *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printinstr]
  *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt] [-startpc <address>] [-stopat <address>]
- *          [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -56,6 +56,7 @@
  *      -skipopt     : optimize ioskip/jmp.-1 loops
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
+ *      -tubesaver   : do random instructions during halt/skipopt time
  *      -watchwrite  : print message if the given address is written to
  *      -zynqlib     : running on Zynq with circuit loaded
  */
@@ -103,6 +104,7 @@ bool quiet;
 bool randmem;
 bool scriptmode;
 bool skipopt;
+bool tubesaver;
 bool waitingforinterrupt;
 char **cmdargv;
 ExtArith extarith;
@@ -117,6 +119,8 @@ uint16_t startpc;
 uint16_t switchregister;
 uint16_t *memory;
 uint16_t stopats[MAXSTOPATS];
+
+__thread bool thisismainthread;
 
 static pthread_t mintimestid;
 static pthread_cond_t mintimescond = PTHREAD_COND_INITIALIZER;
@@ -133,6 +137,7 @@ static bool guimode;
 static bool haltcont;
 static bool haltprint;
 static bool setintreqcalled;
+static bool volatile wakefromhalt;
 static uint16_t intreqmask;
 static uint16_t lastreaddata;
 static uint32_t syncintreq;
@@ -144,6 +149,9 @@ static bool haltcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
 static uint16_t randuint16 ();
 static void dumpregs ();
+static void haltwait ();
+static uint32_t ts_senddata (bool intrq, uint16_t data);
+static uint32_t ts_recvdata (bool intrq);
 static bool senddata (uint16_t data, bool retry);
 static uint16_t recvdata (void);
 static void nullsighand (int signum);
@@ -166,6 +174,7 @@ int main (int argc, char **argv)
     uint32_t cyclelimit = 0;
 
     setlinebuf (stdout);
+    thisismainthread = true;
 
     startpc = 0xFFFFU;
     watchwrite = -1;
@@ -316,6 +325,10 @@ int main (int argc, char **argv)
                 return 1;
             }
             stopats[numstopats++] = stopat;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-tubesaver") == 0) {
+            tubesaver = true;
             continue;
         }
         if (strcasecmp (argv[i], "-watchwrite") == 0) {
@@ -655,10 +668,10 @@ reseteverything:;
                                                                 // update irq in case i/o instr updates it
                                                                 // should be time for it to soak in for processor
                                                                 // ...to decide FETCH1 or INTAK1 state next
-                // - in middle of IOT2 clock high
+                // - in middle of IOT2 with clock still high
                 //   for LINC, we are in DEFER2 and so are sending updated PC
                 if (senddata (skplac, false)) senddata (skplac, true); // we send SKIP,LINK,AC in final cycle
-                // - in middle of FETCH1/INTAK1 clock high
+                // - in middle of FETCH1/INTAK1 with clock still high
             }
 
             // update irq pin in middle of cycle so it has time to soak in by the next clock up time
@@ -884,6 +897,7 @@ static bool haltcheck ()
 }
 
 // group 2 with OSR and/or HLT gets passed to raspi like an i/o instruction
+// called and returns in middle of IOT2 with clock still high
 static uint16_t group2io (uint32_t opcode, uint16_t input)
 {
     // group 2 (p 134 / v 3-8)
@@ -941,6 +955,7 @@ uint16_t readswitches (char const *swvar)
 
 // processor has encountered an HALT instruction
 // decide what to do
+// called and returns in middle of IOT2 with clock still high
 void haltinstr (char const *fmt, ...)
 {
     bool sigint = ctl_lock ();
@@ -963,10 +978,8 @@ void haltinstr (char const *fmt, ...)
 
         // wait for an interrupt request
         if (! randmem && ! haltcont) {
-            waitingforinterrupt = true;
-            do pthread_cond_wait (&haltcond, &haltmutex);
+            do haltwait ();
             while ((intreqmask == 0) && ! (haltflags & HF_HALTIT));
-            waitingforinterrupt = false;
         }
     }
     ctl_unlock (sigint);
@@ -1000,10 +1013,11 @@ static void dumpregs ()
 // called in main thread by ioinstr() methods that are handling a 'skip when flag set' instruction
 // should be called with the given mutex locked
 // to wake when io completes, call setintreqmask(), possibly with 0 if not requesting interrupt
+// called and returns in middle of IOT2 with clock still high
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 {
     if (! skipopt) return;                                  // can't do it if not enabled by -skipopt
-    if ((lastreadaddr & 00177) == 00177) return;            // can't do it if ioskp is last word of page
+    if ((lastreadaddr & 00177) == 00177) return;            // can't do it if ioskip is last word of page
     if (memarray[lastreadaddr] != skipopcode) return;       // can't do if it's not an ioskip opcode
     uint16_t jmpskip = 05200 | (lastreadaddr & 00177);      // verify that ioskip followed by jmp ioskip
     if (memarray[lastreadaddr+1] != jmpskip) return;
@@ -1014,16 +1028,148 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     bool sigint = ctl_lock ();
     if (! (haltflags & HF_HALTIT) && (! memext.intenabd () || (intreqmask == 0))) {
         if (setintreqcalled) setintreqcalled = false;
-        else {
-            waitingforinterrupt = true;
-            pthread_cond_wait (&haltcond, &haltmutex);
-            waitingforinterrupt = false;
-        }
+        else haltwait ();
     }
     ctl_unlock (sigint);
 
     pthread_mutex_lock (lock);
     *flag = false;
+}
+
+// called in main thread to wait to be woken with haltwake()
+// used as part of HLT instruction or IOSKIP/JMP.-1 combination
+// called and returns with haltmutex locked
+// called and returns in middle of IOT2 with clock still high
+static void haltwait ()
+{
+    // we can do tube saving only from the main thread and we are doing an HLT or an I/O instruction
+    // ...otherwise it is some other wait on the condition so better leave it as a pthread_cond_wait()
+    if (! tubesaver || ! thisismainthread) {
+        waitingforinterrupt = true;
+        int rc = pthread_cond_wait (&haltcond, &haltmutex);
+        if (rc != 0) ABORT ();
+        waitingforinterrupt = false;
+    } else if (! wakefromhalt) {
+        pthread_mutex_unlock (&haltmutex);
+
+        // depend on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction
+        ASSERT (shadow.r.state == Shadow::IOT2);
+
+        // save PC of the HLT/IOT instruction
+        // any skip has not been applied yet
+        uint16_t savedpc = (shadow.r.pc - 1) & 07777;
+
+        // mark all recorded state as being for tubesaver mode
+        shadow.r.tsaver = true;
+
+        // in middle of IOT2 with clock still high, send random IOS/LINK/AC
+        ASSERT ((G_IOS == 020000 * G_DATA0) && (G_LINK == 010000 * G_DATA0));
+        uint16_t data = randuint16 () & 037777;
+        uint32_t sample = ts_senddata (false, data);
+        // now in middle of FETCH1 with clock still high
+
+        bool intrq = false;
+        do {
+            // in middle of some cycle with clock still high
+            // sample was taken just before clock driven high
+
+            // if reading memory, send out a random number
+            if (sample & G_READ) {
+                // send random 12-bit data (maybe opcode) word to tubes
+                data = randuint16 () & 07777;
+                ts_senddata (intrq, data);
+            }
+
+            // if writing memory, clock in and discard the data
+            if (sample & G_WRITE) {
+                ts_recvdata (intrq);
+            }
+
+            // if doing I/O, send out random IOS/LINK/AC
+            if (sample & G_IOIN) {
+                ASSERT (shadow.r.state == Shadow::IOT2);
+                ASSERT ((G_IOS == 020000 * G_DATA0) && (G_LINK == 010000 * G_DATA0));
+                data = randuint16 () & 037777;
+                ts_senddata (intrq, data);      // mid IOT2 -> mid FETCH1
+            }
+
+            // maybe start requesting interrupt
+            intrq = (randuint16 () & 63) == 36;
+
+            // clock to middle of next cycle with clock still high
+            sample = ts_recvdata (intrq);
+
+            // maybe stop requesting interrupt
+            if (sample & G_IAK) intrq = false;
+
+            // keep feeding random stuff until woken at FETCH2
+        } while (! wakefromhalt || (shadow.r.state != Shadow::FETCH2));
+
+        // woken from wait, restore state
+        // in middle of FETCH2 with clock still high
+
+        // restore program counter with JMP to point to beginning of original halting HLT or IOT instruction
+        if (shadow.r.pc != savedpc) {
+            uint16_t jmpop;
+            if ((savedpc & 07600) == 0) {
+                // JMP page 0
+                jmpop = 05000 + savedpc;
+            } else if (((shadow.r.pc ^ savedpc) & 07600) == 0) {
+                // JMP same page
+                jmpop = 05200 + (savedpc & 00177);
+            } else {
+                // JMPI 0/savedpc
+                ts_senddata (false, 05400);     // mid FETCH2 -> mid DEFER1
+                ts_recvdata (false);            // mid DEFER1 -> mid DEFER2
+                jmpop = savedpc;
+            }
+            ts_senddata (false, jmpop);         // mid FETCH2/DEFER2 -> mid EXEC1/JMP
+            sample = ts_recvdata (false);       // mid EXEC1/JMP -> FETCH2
+            ASSERT ((sample & G_DATA) == (savedpc * G_DATA0));
+        }
+
+        // get back to middle of IOT2 with clock still high, as expected by caller
+        // doesn't have to be same HLT/IOT opcode cuz the original has already been processed
+        // ...so just use generic 6000 opcode
+        ts_senddata (false, 06000);             // mid FETCH2 -> mid EXEC1/IOT
+        ts_recvdata (false);                    // mid EXEC1/IOT -> mid EXEC2/IOT
+
+        ASSERT (shadow.r.state == Shadow::IOT2);
+
+        // now we're back to normal cycles
+        shadow.r.tsaver = false;
+
+        // caller will write IOS/LINK/AC as the result of original HLT/IOT processing
+
+        pthread_mutex_lock (&haltmutex);
+    }
+    wakefromhalt = false;
+}
+
+// in middle of cycle with clock still high looking for data
+// send it out then return in middle of next cycle with clock still high
+static uint32_t ts_senddata (bool intrq, uint16_t data)
+{
+    gpio->writegpio (true, data * G_DATA0 | (intrq ? G_IRQ : 0));
+    gpio->halfcycle (shadow.aluadd ());
+    uint32_t sample = gpio->readgpio ();
+    shadow.clock (sample);
+    gpio->writegpio (true, data * G_DATA0 | (intrq ? G_IRQ : 0) | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+    return sample;
+}
+
+// in middle of cycle with clock still high
+// return in middle of next cycle with clock still high
+static uint32_t ts_recvdata (bool intrq)
+{
+    gpio->writegpio (false, (intrq ? G_IRQ : 0));
+    gpio->halfcycle (shadow.aluadd ());
+    uint32_t sample = gpio->readgpio ();
+    shadow.clock (sample);
+    gpio->writegpio (false, (intrq ? G_IRQ : 0) | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+    return sample;
 }
 
 // set the interrupt request bits
@@ -1033,19 +1179,19 @@ void setintreqmask (uint16_t mask)
     bool sigint = ctl_lock ();
     intreqmask |= mask;
     setintreqcalled = true;
-    pthread_cond_broadcast (&haltcond);
+    haltwake ();
     ctl_unlock (sigint);
 }
 
 // clear the interrupt request bits
-// optionally wake from HLT or optimized ioskip
+// optionally wake from HLT or optimized IOSKIP/JMP.-1
 void clrintreqmask (uint16_t mask, bool wake)
 {
     bool sigint = ctl_lock ();
     intreqmask &= ~ mask;
     if (wake) {
         setintreqcalled = true;
-        pthread_cond_broadcast (&haltcond);
+        haltwake ();
     }
     ctl_unlock (sigint);
 }
@@ -1053,6 +1199,14 @@ void clrintreqmask (uint16_t mask, bool wake)
 uint16_t getintreqmask ()
 {
     return intreqmask;
+}
+
+// wake from HLT instruction or IOSKIP/JMP.-1 combination
+void haltwake ()
+{
+    wakefromhalt = true;
+    int rc = pthread_cond_broadcast (&haltcond);
+    if (rc != 0) ABORT ();
 }
 
 // start/stop mintimes thread
@@ -1244,7 +1398,7 @@ static void sighandler (int signum)
             haltreason = "CONTROL_C";
         }
         haltflags |= HF_HALTIT;
-        pthread_cond_broadcast (&haltcond);
+        haltwake ();
         ctl_unlock (sigint);
         return;
     }

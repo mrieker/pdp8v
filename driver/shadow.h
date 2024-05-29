@@ -62,6 +62,7 @@ struct Shadow {
         State state;
         bool link;
         bool reset;
+        bool tsaver;
         uint16_t ac, ir, ma, pc, irpc;
     };
 

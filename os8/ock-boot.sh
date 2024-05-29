@@ -3,9 +3,12 @@
 #  Run OS/8 with 3 disks
 #
 #   $1 =          : run on tubes
-#   $1 = -csrclib : various simulators
-#        -nohwlib
-#        -zynqlib
+#   $1 = -csrclib : gate-level PC simulation
+#        -nohwlib : cycle-level PC simulation
+#        -zynqlib : gate-level FPGA simulation
+#
+#  Downloads bootable OS/8 to rkab0.rk05 (saves backup copy in ock.rk05)
+#  Creates empty rkab1.rk05 and rkab2.rk05
 #
 cd `dirname $0`
 set -e

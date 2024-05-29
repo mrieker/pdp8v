@@ -897,11 +897,21 @@ void IODevTTY::updintreq ()
 
 void IODevTTY::updintreqlk ()
 {
-    ASSERT ((this->iobasem3 >= 0) && (this->iobasem3 <= 63));
+    // see if this tty is requesting an interrupt
     bool intreq = this->intenab && (this->kbflag | this->prflag) && ! (linc.specfuncs & 0040);
+
+    // see which of 64 possible ttys are requesting an interrupt
+    ASSERT ((this->iobasem3 >= 0) && (this->iobasem3 <= 63));
     uint64_t newbits = intreq ? __sync_or_and_fetch (&intreqbits, 1ULL << this->iobasem3) :
                             __sync_and_and_fetch (&intreqbits, ~ (1ULL << this->iobasem3));
+
+    // if any of the ttys are requesting an interrupt, send request to processor
+    // ...will also unblock from skipoptwait()
     if (newbits) setintreqmask (IRQ_TTYKBPR);
+
+    // none are requesting an interrupt, clear interrupt request going to processor for tty
+    // ...but still unblock from skipoptwait()
+    // ...if waiting for kb and kb ready or waiting for tt and tt ready
     else clrintreqmask (IRQ_TTYKBPR,
                 (this->ksfwait & this->kbflag) |
                 (this->tsfwait & this->prflag));

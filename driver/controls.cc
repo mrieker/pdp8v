@@ -48,7 +48,7 @@ bool ctl_halt ()
         haltreason = "HALTBUTTON";
         haltflags |= HF_HALTIT;
     }
-    pthread_cond_broadcast (&haltcond);
+    haltwake ();
 
     // wait for raspictl.cc main to stop cycling processor
     while (! (haltflags & HF_HALTED)) {
@@ -87,7 +87,7 @@ bool ctl_reset (int addr)
     // tell main to reset but then halt immediately thereafter
     haltreason = "RESETBUTTON";
     haltflags  = HF_HALTIT | HF_RESETIT;
-    pthread_cond_broadcast (&haltcond);
+    haltwake ();
 
     // wait for raspictl.cc main to stop cycling processor
     while (! (haltflags & HF_HALTED)) {
@@ -124,7 +124,7 @@ bool ctl_run ()
     // tell raspictl.cc main to cycle the processor
     haltreason = "";
     haltflags  = 0;
-    pthread_cond_broadcast (&haltcond);
+    haltwake ();
     ctl_unlock (sigint);
     return true;
 }
@@ -152,7 +152,7 @@ bool ctl_stepcyc ()
     // tell it to start, run one cycle, then halt
     haltreason = "";
     haltflags  = HF_HALTIT;
-    pthread_cond_broadcast (&haltcond);
+    haltwake ();
 
     // wait for it to halt again
     while (! (haltflags & HF_HALTED)) {
@@ -197,7 +197,7 @@ bool ctl_stepins ()
         // tell it to start, run one cycle, then halt
         haltreason = "";
         haltflags  = HF_HALTIT;
-        pthread_cond_broadcast (&haltcond);
+        haltwake ();
 
         // wait for it to halt again
         while (! (haltflags & HF_HALTED)) {

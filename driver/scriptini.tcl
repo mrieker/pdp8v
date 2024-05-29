@@ -77,6 +77,11 @@ proc disas {{start ""} {stop ""}} {
     }
 }
 
+# get environment variable, return default value if not defined
+proc getenv {varname {defvalu ""}} {
+    return [expr {[info exists ::env($varname)] ? $::env($varname) : $defvalu}]
+}
+
 # step one instruction then disassemble surrounding instructions
 proc stepdis {} {
     stepins
@@ -86,7 +91,9 @@ proc stepdis {} {
 # print help for commands defined herein
 proc helpini {} {
     puts ""
-    puts "  disas <start> <stop> - disassemble instructions in given range"
+    puts "  disas <start> <stop>       - disassemble instructions in given range"
+    puts "  getenv <varname> <defvalu> - get environment variable"
+    puts "  stepdis                    - step one instruction then disassemble"
     puts ""
 }
 

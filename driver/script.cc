@@ -684,12 +684,24 @@ static int cmd_gpio (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
             puts ("                  do 'option set paddles 1' to access a/b/c/d");
         }
         puts ("");
+        puts ("  libname       - return library name:");
+        puts ("                  csrclib - gate-level PC simulation");
+        puts ("                  nohwlib - cycle-level PC simulation");
+        puts ("                  physlib - tubes via RasPI GPIO connector");
+        puts ("                  zynqlib - gate-level FPGA simulation");
+        puts ("");
         puts ("  set g <value> - write value to gpio connector");
         puts ("                  most likely invalidates shadow state");
         puts ("                  requiring 'reset' command to restore");
         puts ("");
         printf ("connected via %s\n", gpio->libname);
         puts ("");
+        return TCL_OK;
+    }
+
+    // libname
+    if (strcmp (argv[0], "libname") == 0) {
+        Tcl_SetResult (interp, (char *) gpio->libname, TCL_STATIC);
         return TCL_OK;
     }
 
@@ -712,7 +724,7 @@ static int cmd_gpio (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
         }
     }
 
-    scret = new SCRetErr ("unknown gpio command %s - valid: decode get help set", argv[0]);
+    scret = new SCRetErr ("unknown gpio command %s - valid: decode get help libname set", argv[0]);
 
     // process return value
 ret:;
@@ -923,6 +935,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
             if (strcmp (opname, "quiet")      == 0) { retint = quiet;             goto ret; }
             if (strcmp (opname, "randmem")    == 0) { retint = randmem;           goto ret; }
             if (strcmp (opname, "skipopt")    == 0) { retint = skipopt;           goto ret; }
+            if (strcmp (opname, "tubesaver")  == 0) { retint = tubesaver;         goto ret; }
 
             if (strcmp (opname, "cmdargs") == 0) {
                 Tcl_Obj *cmdobjs[cmdargc];
@@ -978,6 +991,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("  randmem    - provide random memory contents");
         puts ("  skipopt    - optimize ioskip/jmp.-1 to blocking");
         puts ("  stopats    - stop when accessing any of the memory addresses");
+        puts ("  tubesaver  - run random opcodes during halt/skipopt time");
         puts ("  watchwrite - stop when writing to the memory address (-1 to disable)");
         puts ("");
         return (subcmd[0] == 0) ? TCL_ERROR : TCL_OK;
@@ -1040,6 +1054,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
             if (strcmp (opname, "quiet")      == 0) { boolptr = &quiet;      goto setbool; }
             if (strcmp (opname, "randmem")    == 0) { boolptr = &randmem;    goto setbool; }
             if (strcmp (opname, "skipopt")    == 0) { boolptr = &skipopt;    goto setbool; }
+            if (strcmp (opname, "tubesaver")  == 0) { boolptr = &tubesaver;  goto setbool; }
 
             if (strcmp (opname, "mintimes") == 0) {
                 int val;

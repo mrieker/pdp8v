@@ -90,21 +90,22 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
             } else {
                 dis = this->r.reset ? "RESET" : "";
             }
-            return new SCRetStr ("ac=%05o;cycle=%llu;instr=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;state=%s;disas=%s",
+            return new SCRetStr ("ac=%05o;cycle=%llu;instr=%llu;ir=%05o;link=%o;ma=%05o;pc=%05o;state=%s;tsaver=%d;disas=%s",
                 this->r.ac, (LLU) this->getcycles (), (LLU) this->getinstrs(), this->r.ir, this->r.link, this->r.ma, this->r.pc,
-                statestr (this->r.state), dis);
+                statestr (this->r.state), this->r.tsaver, dis);
         }
 
         if (argc == 2) {
-            if (strcmp (argv[1], "ac")    == 0) return new SCRetInt  (this->r.ac);
-            if (strcmp (argv[1], "cycle") == 0) return new SCRetLong (this->getcycles ());
-            if (strcmp (argv[1], "instr") == 0) return new SCRetLong (this->getinstrs ());
-            if (strcmp (argv[1], "ir")    == 0) return new SCRetInt  (this->r.ir);
-            if (strcmp (argv[1], "link")  == 0) return new SCRetInt  (this->r.link);
-            if (strcmp (argv[1], "ma")    == 0) return new SCRetInt  (this->r.ma);
-            if (strcmp (argv[1], "pc")    == 0) return new SCRetInt  (this->r.pc);
-            if (strcmp (argv[1], "state") == 0) return new SCRetStr  (statestr (this->r.state));
-            if (strcmp (argv[1], "disas") == 0) {
+            if (strcmp (argv[1], "ac")     == 0) return new SCRetInt  (this->r.ac);
+            if (strcmp (argv[1], "cycle")  == 0) return new SCRetLong (this->getcycles ());
+            if (strcmp (argv[1], "instr")  == 0) return new SCRetLong (this->getinstrs ());
+            if (strcmp (argv[1], "ir")     == 0) return new SCRetInt  (this->r.ir);
+            if (strcmp (argv[1], "link")   == 0) return new SCRetInt  (this->r.link);
+            if (strcmp (argv[1], "ma")     == 0) return new SCRetInt  (this->r.ma);
+            if (strcmp (argv[1], "pc")     == 0) return new SCRetInt  (this->r.pc);
+            if (strcmp (argv[1], "state")  == 0) return new SCRetStr  (statestr (this->r.state));
+            if (strcmp (argv[1], "tsaver") == 0) return new SCRetInt  (this->r.tsaver);
+            if (strcmp (argv[1], "disas")  == 0) {
                 char const *dis;
                 std::string dsm;
                 if (this->r.state != FETCH1) {
@@ -204,8 +205,8 @@ void Shadow::clock (uint32_t sample)
                         dis = disstr.c_str ();
                     }
                     ASSERT (ptr + 100 + strlen (dis) < buf + sizeof buf);
-                    ptr += sprintf (ptr, "%9llu L=%d AC=%04o PC=%05o IR=%04o : %s",
-                            (LLU) cycle, r.link, r.ac, xpc, r.ir, dis);
+                    ptr += sprintf (ptr, "%c%8llu L=%d AC=%04o PC=%05o IR=%04o : %s",
+                            (r.tsaver ? '#' : ' '), (LLU) cycle, r.link, r.ac, xpc, r.ir, dis);
                 }
                 if ((r.ir >> 9) < 6) {
                     uint16_t xma = memext.iframe | r.ma;
@@ -230,7 +231,7 @@ void Shadow::clock (uint32_t sample)
                 fputs (buf, stdout);
             }
             if (printstate) {
-                printf ("%9llu                fetched %04o : %s\n", (LLU) cycle, r.ir, disassemble (r.ir, r.pc).c_str ());
+                printf ("%c%8llu                fetched %04o : %s\n", (r.tsaver ? '#' : ' '), (LLU) cycle, r.ir, disassemble (r.ir, r.pc).c_str ());
             }
             r.pc = (r.pc + 1) & 07777;
             if ((r.ir < 06000) && (r.ir & 00400)) {
@@ -443,8 +444,8 @@ void Shadow::clock (uint32_t sample)
             checkgpio (sample, G_DENA | G_IAK | G_WRITE | 0);
             if (printinstr) {
                 uint16_t xpc = memext.iframe | r.pc;
-                printf ("%9llu L=%d AC=%04o PC=%05o           INTERRUPT\n",
-                        (LLU) cycle, r.link, r.ac, xpc);
+                printf ("%c%8llu L=%d AC=%04o PC=%05o           INTERRUPT\n",
+                        (r.tsaver ? '#' : ' '), (LLU) cycle, r.link, r.ac, xpc);
             }
             r.ma = 0;
             r.state = JMS2;
@@ -469,8 +470,8 @@ void Shadow::clock (uint32_t sample)
         pthread_mutex_unlock (&gpiolib->trismutex);
         char line[96];
         int rc = snprintf (line, sizeof line,
-            "%9llu STARTING STATE %-6s  L=%o AC=%04o PC=%04o IR=%04o MA=%04o",
-            (LLU) cycle, statestr (r.state), r.link, r.ac, r.pc, r.ir, r.ma);
+            "%c%8llu STARTING STATE %-6s  L=%o AC=%04o PC=%04o IR=%04o MA=%04o",
+            (r.tsaver ? '#' : ' '), (LLU) cycle, statestr (r.state), r.link, r.ac, r.pc, r.ir, r.ma);
         ASSERT (rc > 0);
         if (ntt > 0) {
             rc += snprintf (line + rc, sizeof line - rc, "  trison=%llu/%llu=%5.2f%%",
@@ -535,7 +536,7 @@ uint16_t Shadow::computegrpa (uint16_t *aluq)
             break;
         }
         default: {                          // 6,7: undefined
-            if (! quiet) fprintf (stderr, "computegrpa: undefined rotate opcode %04o at %05o\n", r.ir, lastreadaddr);
+            if (! quiet && ! r.tsaver) fprintf (stderr, "Shadow::computegrpa: undefined rotate opcode %04o at %05o\n", r.ir, lastreadaddr);
             newac = 07777;                  // hardware has open circuit
             newlink = 1;
             break;
@@ -790,8 +791,8 @@ void Shadow::history (FILE *out, char const *pfx, unsigned offset)
                 distc = distr.c_str ();
             }
         }
-        fprintf (out, "%s%12llu  %-6s  L.AC=%o.%04o IR=%04o MA=%04o PC=%04o  %s\n",
-            pfx, (LLU) c, statestr (p->state), p->link, p->ac, p->ir, p->ma, p->pc, distc);
+        fprintf (out, "%s%c%8llu  %-6s  L.AC=%o.%04o IR=%04o MA=%04o PC=%04o  %s\n",
+            pfx, (p->tsaver ? '#' : ' '), (LLU) c, statestr (p->state), p->link, p->ac, p->ir, p->ma, p->pc, distc);
     }
 }
 
