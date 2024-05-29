@@ -70,7 +70,9 @@ void ZynqLib::close ()
 {
     fprintf (stderr, "ZynqLib::close: writecount=%llu\n", (LLU) writecount);
 
+    pthread_mutex_lock (&trismutex);
     gpiopage = NULL;
+    pthread_mutex_unlock (&trismutex);
     munmap (memptr, 4096);
     ::close (memfd);
     memptr = NULL;
@@ -84,9 +86,11 @@ void ZynqLib::halfcycle (bool aluadd)
 
     // now read the stats as to how many gates are one = triodes are off
     pthread_mutex_lock (&trismutex);
-    uint32_t nttnto = gpiopage[5];
-    numtrisoff += nttnto & 0xFFFFU;
-    ntotaltris += nttnto >> 16;
+    if (gpiopage != NULL) {
+        uint32_t nttnto = gpiopage[5];
+        numtrisoff += nttnto & 0xFFFFU;
+        ntotaltris += nttnto >> 16;
+    }
     pthread_mutex_unlock (&trismutex);
 }
 
