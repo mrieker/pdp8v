@@ -1235,6 +1235,59 @@ static void mainloop_pc ()
 #define AL(field) (abcd.field ? '-' : '*')
 #define BC(field,bitno) (((abcd.field >> bitno) & 1) ? '*' : '-')
 
+#define NLEDS 49
+static uint32_t const ledpins[NLEDS*2] = {
+        'D', D_lnq,
+        'A', A_acq_11,
+        'A', A_acq_10,
+        'A', A_acq_09,
+        'A', A_acq_08,
+        'A', A_acq_07,
+        'B', B_acq_06,
+        'B', B_acq_05,
+        'B', B_acq_04,
+        'B', B_acq_03,
+        'C', C_acq_02,
+        'C', C_acq_01,
+        'C', C_acq_00,
+        'C', C_maq_00,
+        'C', C_maq_01,
+        'C', C_maq_02,
+        'B', B_maq_03,
+        'B', B_maq_04,
+        'B', B_maq_05,
+        'B', B_maq_06,
+        'B', B_maq_07,
+        'A', A_maq_08,
+        'A', A_maq_09,
+        'A', A_maq_10,
+        'A', A_maq_11,
+        'A', A_pcq_11,
+        'A', A_pcq_10,
+        'A', A_pcq_09,
+        'A', A_pcq_08,
+        'B', B_pcq_07,
+        'B', B_pcq_06,
+        'B', B_pcq_05,
+        'B', B_pcq_04,
+        'B', B_pcq_03,
+        'C', C_pcq_02,
+        'C', C_pcq_01,
+        'C', C_pcq_00,
+        'C', C_intak1q,
+        'D', D_exec3q,
+        'D', D_exec2q,
+        'D', D_exec1q,
+        'D', D_defer3q,
+        'D', D_defer2q,
+        'D', D_defer1q,
+        'D', D_fetch2q,
+        'C', C_fetch1q,
+        'A', A_irq_09,
+        'A', A_irq_10,
+        'A', A_irq_11,
+};
+
 static bool rpiprintf (bool bad, char const *fmt, ...)
 {
     if (bad | verbose) {
@@ -1266,6 +1319,11 @@ static void mainloop_rpi ()
 
     uint32_t grand = 0;
 
+    bool ledecr = false;
+    int ledoff  = 0;
+    int ledon   = 0;
+    int ledstep = 0;
+
     for ever {
 
         // generate random values for all pins, including gpio
@@ -1275,6 +1333,31 @@ static void mainloop_rpi ()
             crand = randuint32 (32);
             drand = randuint32 (32);
             grand = randuint32 (32) & G_ALL;
+
+            if (++ ledstep % 32 == 0) {
+                ledoff = ledon;
+                if (ledecr) {
+                    if (ledon == 0) ledecr = false;
+                                     else -- ledon;
+                } else {
+                    if (ledon == NLEDS - 1) ledecr = true;
+                                            else ++ ledon;
+                }
+            }
+            uint32_t const *p = &ledpins[ledoff*2+0];
+            switch (*(p ++)) {
+                case 'A': arand &= ~ *p; break;
+                case 'B': brand &= ~ *p; break;
+                case 'C': crand &= ~ *p; break;
+                case 'D': drand &= ~ *p; break;
+            }
+            uint32_t const *q = &ledpins[ledon*2+0];
+            switch (*(q ++)) {
+                case 'A': arand |=   *q; break;
+                case 'B': brand |=   *q; break;
+                case 'C': crand |=   *q; break;
+                case 'D': drand |=   *q; break;
+            }
         }
 
         bool qena = (grand & G_QENA) != 0;
@@ -1302,6 +1385,7 @@ static void mainloop_rpi ()
 
         // maybe show what should be on LEDs
         if (verbose) {
+            printf ("\n");
             printf ("   %c   %c %c %c   %c %c %c   %c %c %c   %c %c %c   AC\n", AH(lnq), BC(acq,11), BC(acq,10), BC(acq,9), BC(acq,8), BC(acq,7), BC(acq,6), BC(acq,5), BC(acq,4), BC(acq,3), BC(acq,2), BC(acq,1), BC(acq,0));
             printf (" LINK  %c %c %c   %c %c %c   %c %c %c   %c %c %c   MA\n", BC(maq,11), BC(maq,10), BC(maq,9), BC(maq,8), BC(maq,7), BC(maq,6), BC(maq,5), BC(maq,4), BC(maq,3), BC(maq,2), BC(maq,1), BC(maq,0));
             printf ("       %c %c %c   %c %c %c   %c %c %c   %c %c %c   PC\n", BC(pcq,11), BC(pcq,10), BC(pcq,9), BC(pcq,8), BC(pcq,7), BC(pcq,6), BC(pcq,5), BC(pcq,4), BC(pcq,3), BC(pcq,2), BC(pcq,1), BC(pcq,0));
