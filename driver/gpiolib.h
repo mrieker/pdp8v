@@ -133,14 +133,14 @@ private:
 
 struct NohwLib : GpioLib {
     NohwLib (Shadow *shadow);
-    void open ();
-    void close ();
-    void halfcycle ();
-    uint32_t readgpio ();
-    void writegpio (bool wdata, uint32_t valu);
+    virtual void open ();
+    virtual void close ();
+    virtual void halfcycle ();
+    virtual uint32_t readgpio ();
+    virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();
-    void readpads (uint32_t *pinss);
-    void writepads (uint32_t const *masks, uint32_t const *pinss);
+    virtual void readpads (uint32_t *pinss);
+    virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 
 private:
     Shadow *shadow;

@@ -96,8 +96,11 @@ void GpioLib::doareset ()
         // reset CPU circuit for a couple cycles
         this->writegpio (false, G_RESET);
         this->halfcycle ();
-        this->halfcycle ();
-        this->halfcycle ();
+
+        struct timespec thirdsec;
+        memset (&thirdsec, 0, sizeof thirdsec);
+        thirdsec.tv_nsec = 333333333;
+        if (nanosleep (&thirdsec, NULL) < 0) ABORT ();
 
         // drop reset and leave clock signal low
         // enable reading data from cpu so we get initial fetch address of 0000 from processor

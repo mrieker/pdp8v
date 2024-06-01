@@ -147,11 +147,11 @@ static void clraccumlink ();
 static void *mintimesthread (void *dummy);
 static bool haltcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
-static uint16_t randuint16 ();
+static uint16_t randuint16 (int nbits);
 static void dumpregs ();
 static void haltwait ();
-static uint32_t ts_senddata (bool intrq, uint16_t data);
-static uint32_t ts_recvdata (bool intrq);
+static uint32_t ts_senddata (uint32_t intrq, uint16_t data);
+static uint32_t ts_recvdata (uint32_t intrq);
 static bool senddata (uint16_t data, bool retry);
 static uint16_t recvdata (void);
 static void nullsighand (int signum);
@@ -572,7 +572,7 @@ reseteverything:;
 
                         // read memory contents
                         if (randmem) {
-                            lastreaddata = randuint16 () & 07777;
+                            lastreaddata = randuint16 (12);
                         } else if (os8zap &&
                                 ((lastreaddata & 07600) == 02200) &&                            // page+x+0: ISZ page+y
                                 (addr == (lastreadaddr & 07600) + (lastreaddata & 00177)) &&    // reading from page+y
@@ -627,7 +627,7 @@ reseteverything:;
                     memarray[addr] = data;
                     if (dyndisena) dyndiswrite (addr);
                     if (randmem) {
-                        uint16_t r = randuint16 ();
+                        uint16_t r = randuint16 (4);
                         intreqmask = (r & 1) * IRQ_RANDMEM;
                         if ((r & 14) == 0) {
                             if (shadow.printinstr | shadow.printstate) {
@@ -927,7 +927,7 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
 // otherwise, it is assumed to be a softlink giving the octal integer
 uint16_t readswitches (char const *swvar)
 {
-    if (randmem) return randuint16 () & 077777;
+    if (randmem) return randuint16 (15);
     if ((strcmp (swvar, "switchregister") == 0) && (scriptmode | guimode)) return switchregister;
 
     char const *swenv = getenv (swvar);
@@ -986,13 +986,13 @@ void haltinstr (char const *fmt, ...)
 }
 
 // generate a random number
-static uint16_t randuint16 ()
+static uint16_t randuint16 (int nbits)
 {
     static uint64_t seed = 0x123456789ABCDEF0ULL;
 
     uint16_t randval = 0;
 
-    for (int i = 0; i < 16; i ++) {
+    while (-- nbits >= 0) {
 
         // https://www.xilinx.com/support/documentation/application_notes/xapp052.pdf
         uint64_t xnor = ~ ((seed >> 63) ^ (seed >> 62) ^ (seed >> 60) ^ (seed >> 59));
@@ -1043,8 +1043,11 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 static void haltwait ()
 {
     // we can do tube saving only from the main thread and we are doing an HLT or an I/O instruction
-    // ...otherwise it is some other wait on the condition so better leave it as a pthread_cond_wait()
-    if (! tubesaver || ! thisismainthread) {
+    // depend on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction
+    ASSERT (thisismainthread && (shadow.r.state == Shadow::IOT2));
+
+    // if tubesaver not enabled, block until some device thread or script or gui wakes us
+    if (! tubesaver) {
         waitingforinterrupt = true;
         int rc = pthread_cond_wait (&haltcond, &haltmutex);
         if (rc != 0) ABORT ();
@@ -1052,8 +1055,8 @@ static void haltwait ()
     } else if (! wakefromhalt) {
         pthread_mutex_unlock (&haltmutex);
 
-        // depend on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction
-        ASSERT (shadow.r.state == Shadow::IOT2);
+        // tubesaver enabled, feed random instructions and data to tubes
+        // ...until some device thread or script or gui wakes us
 
         // save PC of the HLT/IOT instruction
         // any skip has not been applied yet
@@ -1064,19 +1067,32 @@ static void haltwait ()
 
         // in middle of IOT2 with clock still high, send random IOS/LINK/AC
         ASSERT ((G_IOS == 020000 * G_DATA0) && (G_LINK == 010000 * G_DATA0));
-        uint16_t data = randuint16 () & 037777;
+        uint16_t data = randuint16 (14);
         uint32_t sample = ts_senddata (false, data);
         // now in middle of FETCH1 with clock still high
 
-        bool intrq = false;
+        uint32_t intrq = 0;
         do {
             // in middle of some cycle with clock still high
             // sample was taken just before clock driven high
 
+            // exercise reset circuitry
+            if (randuint16 (5) == 0) {
+
+                // reset tubes and shadow
+                gpio->writegpio (false, G_RESET);   // mid whatever -> mid FETCH1
+                gpio->halfcycle (false);
+                gpio->halfcycle (false);
+                shadow.reset ();
+                intrq = 0;
+                sample = 0;
+                continue;
+            }
+
             // if reading memory, send out a random number
             if (sample & G_READ) {
                 // send random 12-bit data (maybe opcode) word to tubes
-                data = randuint16 () & 07777;
+                data = randuint16 (12);
                 ts_senddata (intrq, data);
             }
 
@@ -1089,18 +1105,18 @@ static void haltwait ()
             if (sample & G_IOIN) {
                 ASSERT (shadow.r.state == Shadow::IOT2);
                 ASSERT ((G_IOS == 020000 * G_DATA0) && (G_LINK == 010000 * G_DATA0));
-                data = randuint16 () & 037777;
+                data = randuint16 (14);
                 ts_senddata (intrq, data);      // mid IOT2 -> mid FETCH1
             }
 
             // maybe start requesting interrupt
-            intrq = (randuint16 () & 63) == 36;
+            if (randuint16 (6) == 0) intrq = G_IRQ;
 
             // clock to middle of next cycle with clock still high
             sample = ts_recvdata (intrq);
 
             // maybe stop requesting interrupt
-            if (sample & G_IAK) intrq = false;
+            if (sample & G_IAK) intrq = 0;
 
             // keep feeding random stuff until woken at FETCH2
         } while (! wakefromhalt || (shadow.r.state != Shadow::FETCH2));
@@ -1125,7 +1141,7 @@ static void haltwait ()
             }
             ts_senddata (false, jmpop);         // mid FETCH2/DEFER2 -> mid EXEC1/JMP
             sample = ts_recvdata (false);       // mid EXEC1/JMP -> FETCH2
-            ASSERT ((sample & G_DATA) == (savedpc * G_DATA0));
+            ASSERT ((sample & G_DATA) / G_DATA0 == savedpc);
         }
 
         // get back to middle of IOT2 with clock still high, as expected by caller
@@ -1148,26 +1164,28 @@ static void haltwait ()
 
 // in middle of cycle with clock still high looking for data
 // send it out then return in middle of next cycle with clock still high
-static uint32_t ts_senddata (bool intrq, uint16_t data)
+static uint32_t ts_senddata (uint32_t intrq, uint16_t data)
 {
-    gpio->writegpio (true, data * G_DATA0 | (intrq ? G_IRQ : 0));
+    gpio->writegpio (true, data * G_DATA0 | intrq);
     gpio->halfcycle (shadow.aluadd ());
+    gpio->halfcycle (false);    // compensate for haltwait loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
-    gpio->writegpio (true, data * G_DATA0 | (intrq ? G_IRQ : 0) | G_CLOCK);
+    gpio->writegpio (true, data * G_DATA0 | intrq | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     return sample;
 }
 
 // in middle of cycle with clock still high
 // return in middle of next cycle with clock still high
-static uint32_t ts_recvdata (bool intrq)
+static uint32_t ts_recvdata (uint32_t intrq)
 {
-    gpio->writegpio (false, (intrq ? G_IRQ : 0));
+    gpio->writegpio (false, intrq);
     gpio->halfcycle (shadow.aluadd ());
+    gpio->halfcycle (false);    // compensate for haltwait loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
-    gpio->writegpio (false, (intrq ? G_IRQ : 0) | G_CLOCK);
+    gpio->writegpio (false, intrq | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     return sample;
 }
@@ -1313,9 +1331,12 @@ static void *mintimesthread (void *dummy)
 //         false: did not halt, cycle complete
 static bool senddata (uint16_t data, bool retry)
 {
-    uint32_t sample = (data & 07777) * G_DATA0 | syncintreq;
-    if (data & IO_LINK) sample |= G_LINK;   // <12> contains link (only used in io instruction)
-    if (data & IO_SKIP) sample |= G_IOS;    // <13> contains skip (only used in io instruction)
+    ASSERT (IO_DATA == 007777);
+    ASSERT (IO_LINK == 010000);
+    ASSERT (IO_SKIP == 020000);
+    ASSERT (G_LINK  == 010000 * G_DATA0);
+    ASSERT (G_IOS   == 020000 * G_DATA0);
+    uint32_t sample = (data & 037777) * G_DATA0 | syncintreq;
 
     // drop the clock and start sending skip,link,data to cpu
     gpio->writegpio (true, sample);

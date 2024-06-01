@@ -59,12 +59,7 @@ void TimedLib::open ()
 
 void TimedLib::halfcycle (bool aluadd)
 {
-    if (gpiovalu & G_RESET) {
-        struct timespec tenthsec;
-        memset (&tenthsec, 0, sizeof tenthsec);
-        tenthsec.tv_nsec = 100000000;
-        if (nanosleep (&tenthsec, NULL) < 0) ABORT ();
-    } else if (hafcycts.tv_nsec >= 1000000) {
+    if (hafcycts.tv_nsec >= 1000000) {
         if (nanosleep (&hafcycts, NULL) < 0) ABORT ();
     } else {
         uint32_t start = rdcyc ();

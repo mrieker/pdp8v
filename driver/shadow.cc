@@ -37,12 +37,16 @@
 #include "pindefs.h"
 #include "shadow.h"
 
+#if UNIPROC
+#define INCCYCLE cycle ++
+#else
+#define INCCYCLE __atomic_add_fetch (&cycle, 1, __ATOMIC_RELAXED)
+#endif
+
 Shadow::Shadow ()
 {
     printinstr = false;
     printstate = false;
-    cycle = 0;
-    instr = 0;
 }
 
 // gpiolib = instance of PhysLib: verify physical cpu board
@@ -50,6 +54,12 @@ Shadow::Shadow ()
 void Shadow::open (GpioLib *gpiolib)
 {
     this->gpiolib = gpiolib;
+    acknown = false;
+    irknown = false;
+    lnknown = false;
+    maknown = false;
+    cycle = 0;
+    instr = 0;
 }
 
 // force cpu to FETCH1 state
@@ -58,14 +68,12 @@ void Shadow::reset ()
     r.state = FETCH1;
     r.pc    = 0;
     r.reset = true;     // this FETCH1 cycle is from a reset
-    acknown = false;
-    irknown = false;
-    lnknown = false;
-    maknown = false;
+
+    INCCYCLE;
 
     if (printstate) {
-        printf ("        0 STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
-            r.link, r.ac, r.pc, r.ir, r.ma);
+        printf ("%c%8llu STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
+            (r.tsaver ? '#' : ' '), (LLU) cycle, r.link, r.ac, r.pc, r.ir, r.ma);
         pthread_mutex_lock (&gpiolib->trismutex);
         gpiolib->numtrisoff = 0;
         gpiolib->ntotaltris = 0;
@@ -455,11 +463,7 @@ void Shadow::clock (uint32_t sample)
         default: ABORT ();
     }
 
-#if UNIPROC
-    cycle ++;
-#else
-    __atomic_add_fetch (&cycle, 1, __ATOMIC_RELAXED);
-#endif
+    INCCYCLE;
 
     if (printstate) {
         pthread_mutex_lock (&gpiolib->trismutex);
