@@ -238,9 +238,17 @@ trylk:;
     gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // these pins get flipped on read to show active high
 }
 
-// we have paddles
+// we always have paddles
+// physlib open-collectors everything so do equivalent here
 bool ZynqLib::haspads ()
 {
+    if (gpiopage == NULL) {
+        opengpio ();
+    }
+    gpiopage[12] = 0xFFFFFFFFU;
+    gpiopage[13] = 0xFFFFFFFFU;
+    gpiopage[14] = 0xFFFFFFFFU;
+    gpiopage[15] = 0xFFFFFFFFU;
     return true;
 }
 

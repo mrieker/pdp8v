@@ -1,0 +1,13 @@
+#!/bin/bash
+dz=$0
+dd=`dirname $dz`
+$dd/loadmod.sh
+. $dd/iowsns.si
+$dd/iowowner.sh
+dbg=''
+if [ "$1" == "-gdb" ]
+then
+    dbg='gdb --args'
+    shift
+fi
+exec $dbg $dz.`uname -m` "$@"
