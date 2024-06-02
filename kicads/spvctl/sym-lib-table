@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 0)
+  (lib (name "spvctl-rescue")(type "Legacy")(uri "${KIPRJMOD}/spvctl-rescue.lib")(options "")(descr ""))
+)
