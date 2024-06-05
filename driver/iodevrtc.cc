@@ -19,7 +19,7 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // DK8-EP programmable real time clock
-// small-computer-handbook-1972.pdf p7-25/p245
+// small-computer-handbook-1972.pdf p7-26/p246
 
 #include <errno.h>
 #include <fcntl.h>
@@ -38,7 +38,7 @@ IODevRTC iodevrtc;
 
 static IODevOps const iodevops[] = {
     { 06130, "CLZE (RTC) clear the given enable bits" },
-    { 06131, "CLSK (RTC) skip if requesting interrupt" },
+    { 06131, "CLSK (RTC) skip on clock overflow" },
     { 06132, "CLDE (RTC) set the given enable bits" },
     { 06133, "CLAB (RTC) set buffer and counter to given value" },
     { 06134, "CLEN (RTC) read enable register" },
@@ -57,6 +57,7 @@ IODevRTC::IODevRTC ()
     pthread_cond_init (&this->cond, NULL);
     pthread_mutex_init (&this->lock, NULL);
     this->threadid = 0;
+    this->wait = false;
 }
 
 // reset the device
@@ -80,6 +81,7 @@ void IODevRTC::ioreset ()
 
     if (this->threadid != 0) {
         pthread_join (this->threadid, NULL);
+        this->threadid = 0;
     }
 }
 
@@ -103,9 +105,10 @@ uint16_t IODevRTC::ioinstr (uint16_t opcode, uint16_t input)
             break;
         }
 
-        // skip if requesting interrupt
+        // skip on clock overflow
         case 06131: {
-            if (getintreqmask () & IRQ_RTC) input |= IO_SKIP;
+            if (this->status & 04000) input |= IO_SKIP;
+            else skipoptwait (opcode, &this->lock, &this->wait);
             break;
         }
 
@@ -184,7 +187,7 @@ void IODevRTC::update ()
     // start thread if needed to post interrupt
     if (this->calcnextoflo ()) {
         pthread_cond_broadcast (&this->cond);
-        if ((this->threadid == 0) && (this->enable & 04000) && (this->nextoflons != NEXTOFLONSOFF)) {
+        if ((this->threadid == 0) && (this->nspertick != 0) && (this->nextoflons != NEXTOFLONSOFF)) {
             int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
             if (rc != 0) {
                 fprintf (stderr, "IODevRTC::update: error %d creating thread: %s\n", rc, strerror (rc));
@@ -194,11 +197,7 @@ void IODevRTC::update ()
     }
 
     // update interrupt request
-    if (this->status & this->enable & 04000) {
-        setintreqmask (IRQ_RTC);
-    } else {
-        clrintreqmask (IRQ_RTC);
-    }
+    updintreq ();
 }
 
 // thread what sets status and posts interrupt when counter overflows
@@ -234,8 +233,7 @@ void IODevRTC::thread ()
         }
     }
 
-    // all done, say we are exiting
-    this->threadid = 0;
+    // all done
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -247,7 +245,7 @@ bool IODevRTC::checkoflo ()
 
     // overflow happened in the past, so set the status bit and request interrupt
     this->status |= 04000;
-    if (this->enable & 04000) setintreqmask (IRQ_RTC);
+    updintreq ();
 
     // calculate next overflow supposedly in the future
     this->calcnextoflo ();
@@ -337,4 +335,14 @@ uint64_t IODevRTC::getnowns ()
     struct timespec nowts;
     if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
     return ((uint64_t) nowts.tv_sec) * 1000000000 + nowts.tv_nsec;
+}
+
+// update interrupt request
+void IODevRTC::updintreq ()
+{
+    if (this->status & this->enable & 04000) {
+        setintreqmask (IRQ_RTC);
+    } else {
+        clrintreqmask (IRQ_RTC, this->wait && (this->status & 04000));
+    }
 }

@@ -32,6 +32,7 @@ struct IODevRTC : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
+    bool wait;              // waiting in skipoptwait()
     pthread_cond_t cond;    // thread sleeps waiting for counter overflow
     pthread_mutex_t lock;   // freezes everything
     pthread_t threadid;     // non-zero when thread running
@@ -52,6 +53,7 @@ private:
     bool calcnextoflo ();
     uint16_t getcounter ();
     void setcounter (uint16_t counter);
+    void updintreq ();
     static uint64_t getnowns ();
 };
 

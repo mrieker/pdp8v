@@ -1012,7 +1012,7 @@ static void dumpregs ()
 
 // called in main thread by ioinstr() methods that are handling a 'skip when flag set' instruction
 // should be called with the given mutex locked
-// to wake when io completes, call setintreqmask(), possibly with 0 if not requesting interrupt
+// to wake when io completes, call setintreqmask(x) or clrintreqmask(x,flag)
 // called and returns in middle of IOT2 with clock still high
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 {
@@ -1020,7 +1020,8 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     if ((lastreadaddr & 00177) == 00177) return;            // can't do it if ioskip is last word of page
     if (memarray[lastreadaddr] != skipopcode) return;       // can't do if it's not an ioskip opcode
     uint16_t jmpskip = 05200 | (lastreadaddr & 00177);      // verify that ioskip followed by jmp ioskip
-    if (memarray[lastreadaddr+1] != jmpskip) return;
+    uint16_t jmpzero = (lastreadaddr & 07600) ? 0 : 00200;  // maybe the ioskip/jmp.-1 is on page 0
+    if ((memarray[lastreadaddr+1] | jmpzero) != jmpskip) return;
 
     *flag = true;
     pthread_mutex_unlock (lock);
@@ -1043,7 +1044,7 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 static void haltwait ()
 {
     // we can do tube saving only from the main thread and we are doing an HLT or an I/O instruction
-    // depend on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction
+    // depends on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction on return
     ASSERT (thisismainthread && (shadow.r.state == Shadow::IOT2));
 
     // if tubesaver not enabled, block until some device thread or script or gui wakes us

@@ -113,6 +113,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     pthread_mutex_init (&this->lock, NULL);
     this->intenab  = false;
     this->ksfwait  = false;
+    this->tsfwait  = false;
     this->lastpc   = 0xFFFFU;
     this->lastin   = 0xFFFFU;
     this->lastout  = 0xFFFFU;
