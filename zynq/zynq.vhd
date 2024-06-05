@@ -168,7 +168,7 @@ architecture rtl of Zynq is
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WUSER: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WUSER";
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WVALID: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WVALID";
 
-    constant VERSION : std_logic_vector (31 downto 0) := x"00000156";
+    constant VERSION : std_logic_vector (31 downto 0) := x"00000159";
 
     constant BURSTLEN : natural := 10;
 
@@ -186,7 +186,6 @@ architecture rtl of Zynq is
     signal paddlwra, paddlwrb, paddlwrc, paddlwrd : std_logic_vector (31 downto 0);
     signal boardena : std_logic_vector (5 downto 0);
     signal numtrisoff, numtottris : std_logic_vector (9 downto 0);
-    signal counts : std_logic_vector (31 downto 0);
 
     signal readaddr, writeaddr : std_logic_vector (11 downto 2);
     signal gpinput, gpoutput, gpcompos : std_logic_vector (31 downto 0);
@@ -199,7 +198,6 @@ architecture rtl of Zynq is
     signal temp0, temp1, temp2, temp3, temp4, temp5, temp6, temp7, temp8, temp9 : std_logic_vector (31 downto 0);
 
 begin
-    DEBUGS <= b"00000000000000";
 
     -- bus values that are constants
     saxi_BRESP <= b"00";        -- A3.4.4/A10.3 transfer OK
@@ -319,7 +317,6 @@ begin
                           VERSION when readaddr = b"0000000011" else
      x"000000" & b"00" & boardena when readaddr = b"0000000100" else
      b"000000" & numtottris & b"000000" & numtrisoff when readaddr = b"0000000101" else
-                --         counts when readaddr = b"0000000110" else
                          paddlrda when readaddr = b"0000001000" else
                          paddlrdb when readaddr = b"0000001001" else
                          paddlrdc when readaddr = b"0000001010" else
@@ -530,7 +527,6 @@ begin
         gpoutput => gpoutput,
         gpcompos => gpcompos,
         nto => numtrisoff,
-        ntt => numtottris,
-        counts => counts
+        ntt => numtottris
     );
 end rtl;

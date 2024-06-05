@@ -34,16 +34,18 @@
 // outputs:
 //  TRIGGR = G_TRIG GPIO bit written by ARM (debugging)
 //  DEBUGS = debug signals
-//  paddlrd[a,b,c,d} = paddle values can be read by ARM
+//  paddlrd{a,b,c,d} = paddle values can be read by ARM
 //  gpinput = GPIO bits can be read by ARM
 //  gpcompos = GPIO read bits combined with write bits
 //             ...can be read by ARM to show just what RasPI would have
+//  nto = number triodes 'one' - a couple 100MHz clock cycles behind
+//  ntt = number total triodes - a constant for a given set of boards
 
 module backplane (CLOCK, TRIGGR, DEBUGS,
         paddlrda, paddlrdb, paddlrdc, paddlrdd,
         paddlwra, paddlwrb, paddlwrc, paddlwrd,
         boardena, gpinput, gpoutput, gpcompos,
-        nto, ntt, counts);
+        nto, ntt);
     input CLOCK;
     output TRIGGR;
     output[13:00] DEBUGS;
@@ -52,16 +54,16 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     input[5:0] boardena;
     output[31:00] gpinput, gpcompos;
     input[31:00] gpoutput;
-    output[31:00] counts;
-
-    assign counts = 0; // debug
-
-    wire rpi_qena, rpi_dena;
 
     wire[12:00] denadata, qenadata;
 
     // board enables
     wire aclena, aluena, maena, pcena, rpiena, seqena;
+
+    // bus_<signal> = what would be on the backplane in real computer, available as input to boards
+    //                driven by board if board is enabled, driven by paddle if board is disabled
+    // <board>_<signal> = what is being output by board, whether it is enabled or disabled
+    // pad_<signal> = what is being output on the paddles for the given signal
 
     // signals output by the acl board
     wire[11:00] bus_acq       , acl_acq       , pad_acq      ;
@@ -70,19 +72,19 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     wire        bus__lnq      , acl__lnq      , pad__lnq     ;
     wire        bus_lnq       , acl_lnq       , pad_lnq      ;
 
-    // wires output by the alu board
+    // signals output by the alu board
     wire        bus__alucout , alu__alucout , pad__alucout;
     wire[11:00] bus__aluq    , alu__aluq    , pad__aluq   ;
     wire        bus__newlink , alu__newlink , pad__newlink;
 
-    // wires output by the ma board
+    // signals output by the ma board
     wire[11:00] bus__maq , ma__maq , pad__maq;
     wire[11:00] bus_maq  , ma_maq  , pad_maq ;
 
-    // wires output by the pc board
+    // signals output by the pc board
     wire[11:00] bus_pcq , pc_pcq , pad_pcq;
 
-    // wires output by the rpi board // we use the gpio registers
+    // signals output by the rpi board
     wire        bus_clok2 , rpi_clok2 , pad_clok2;
     wire        bus_intrq , rpi_intrq , pad_intrq;
     wire        bus_ioskp , rpi_ioskp , pad_ioskp;
@@ -90,7 +92,7 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     wire[11:00] bus_mq    , rpi_mq    , pad_mq   ;
     wire        bus_reset , rpi_reset , pad_reset;
 
-    // wires output by the seq board
+    // signals output by the seq board
     wire        bus__ac_aluq    , seq__ac_aluq    , pad__ac_aluq   ;
     wire        bus__ac_sc      , seq__ac_sc      , pad__ac_sc     ;
     wire        bus__alu_add    , seq__alu_add    , pad__alu_add   ;
@@ -139,42 +141,6 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         nto <= (aclena ? aclnto : 0) + (aluena ? alunto : 0) + (maena ? manto : 0) + (pcena ? pcnto : 0) + (seqena ? seqnto : 0);
         ntt <= (aclena ? aclntt : 0) + (aluena ? aluntt : 0) + (maena ? mantt : 0) + (pcena ? pcntt : 0) + (seqena ? seqntt : 0);
     end
-
-    // read gpio pins :0they read signals from the bus
-    assign gpinput[03:00] = 4'b0000;
-    assign gpinput[15:04] = ~ bus__aluq;      // pin isn't in G_REVIS
-    assign gpinput[16]    = ~ bus__lnq;       // pin isn't in G_REVIS
-    assign gpinput[21:17] = 5'b00000;
-    assign gpinput[22]    = ~ bus__jump;      // pin isn't in G_REVIS
-    assign gpinput[23]    = ~ bus_ioinst;     // pin is in G_REVIS
-    assign gpinput[24]    = ~ bus__dfrm;      // pin isn't in G_REVIS
-    assign gpinput[25]    = ~ bus__mread;     // pin isn't in G_REVIS
-    assign gpinput[26]    = ~ bus__mwrite;    // pin isn't in G_REVIS
-    assign gpinput[27]    = ~ bus__intak;     // pin isn't in G_REVIS
-    assign gpinput[31:28] = 4'b0000;
-
-    // write gpio pins :0they write signals to the bus only when rpi board is enabled
-    assign rpi_clok2 = ~ gpoutput[02];        // pin is in G_REVOS
-    assign rpi_reset = ~ gpoutput[03];        // pin is in G_REVOS
-    assign rpi_mq    = ~ gpoutput[15:04];     // pins are in G_REVOS
-    assign rpi_mql   = ~ gpoutput[16];        // pin is in G_REVOS
-    assign rpi_ioskp = ~ gpoutput[17];        // pin is in G_REVOS
-    assign TRIGGR    =   gpoutput[18];        // trigger scope
-    assign rpi_qena  =   gpoutput[19];        // pin isn't in G_REVOS
-    assign rpi_intrq = ~ gpoutput[20];        // pin is in G_REVOS
-    assign rpi_dena  =   gpoutput[21];        // pin isn't in G_REVOS
-
-    // composite readback
-    assign denadata = rpi_dena ? gpinput [16:04] : 13'b0000000000000;
-    assign qenadata = rpi_qena ? gpoutput[16:04] : 13'b0000000000000;
-
-    assign gpcompos[0]     = gpoutput[0];
-    assign gpcompos[1]     = 1'b0;
-    assign gpcompos[03:02] = gpoutput[3:2];
-    assign gpcompos[16:04] = denadata | qenadata;
-    assign gpcompos[21:17] = gpoutput[21:17];
-    assign gpcompos[27:22] = gpinput[27:22];
-    assign gpcompos[31:28] = 4'b0000;
 
     // paddles reading the bus bits
 
@@ -438,8 +404,8 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     assign pad_tad3q       = paddlwrd[32-1];
 
     // split board enable register into its various bits
-    // when bit is set, use the corresponding module outputs
-    // when bit is clear, use the corresponding paddle outputs
+    // when bit is set, gate the corresponding module outputs to the bus
+    // when bit is clear, gate the corresponding paddle outputs to the bus
     assign aclena = boardena[0];
     assign aluena = boardena[1];
     assign maena  = boardena[2];
@@ -582,6 +548,27 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         .ntt         (mantt)
     );
 
+    rpicirc rpiinst (
+        .gpinput     (gpinput),
+        .gpcompos    (gpcompos),
+        .gpoutput    (gpoutput),
+        ._aluq       (bus__aluq),
+        ._lnq        (bus__lnq),
+        ._jump       (bus__jump),
+        .ioinst      (bus_ioinst),
+        ._dfrm       (bus__dfrm),
+        ._mread      (bus__mread),
+        ._mwrite     (bus__mwrite),
+        ._intak      (bus__intak),
+        .clok2       (rpi_clok2),
+        .reset       (rpi_reset),
+        .mq          (rpi_mq),
+        .mql         (rpi_mql),
+        .ioskp       (rpi_ioskp),
+        .intrq       (rpi_intrq),
+        .TRIGGR      (TRIGGR)
+    );
+
     pccirc_nto pcinst (
         .uclk (CLOCK),
         ._aluq       (bus__aluq),
@@ -646,4 +633,65 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
         .nto         (seqnto),
         .ntt         (seqntt)
     );
+endmodule
+
+// RPI (raspberry pi) circuit board
+// it is just a bunch of level-converter transistors
+// ...with no logic other than to switch bi-directional gpio bus
+//  inputs:
+//   gpoutput = signals sent from gpio to the tubes
+//   _aluq,_lnq,_jmp,ioinst,_dfrm,_mread,_mwrite,_intak = signals coming from backplane
+//  outputs:
+//   gpinput = signals sent from tubes to the gpio
+//   gpcompos = mixture of gpinput & gpoutput, just like would be read by RasPI from tubes
+//   clok2,reset,mq,mql,ioskp,intrq = signals going to backplane
+//   TRIGGR = trigger signal for debugging
+module rpicirc (gpinput, gpcompos, gpoutput,
+    _aluq, _lnq, _jump, ioinst, _dfrm, _mread, _mwrite, _intak,
+    clok2, reset, mq, mql, ioskp, intrq,
+    TRIGGR);
+
+    output[31:00] gpinput, gpcompos;
+    input[31:00] gpoutput;
+
+    input[11:00] _aluq;
+    input _lnq, _jump, ioinst, _dfrm, _mread, _mwrite, _intak;
+    output clok2, reset, mql, ioskp, intrq, TRIGGR;
+    output[11:00] mq;
+
+    // read gpio pins - they read signals from the bus
+    assign gpinput[03:00] = 4'b0000;
+    assign gpinput[15:04] = ~ _aluq;      // pin isn't in G_REVIS
+    assign gpinput[16]    = ~ _lnq;       // pin isn't in G_REVIS
+    assign gpinput[21:17] = 5'b00000;
+    assign gpinput[22]    = ~ _jump;      // pin isn't in G_REVIS
+    assign gpinput[23]    = ~ ioinst;     // pin is in G_REVIS
+    assign gpinput[24]    = ~ _dfrm;      // pin isn't in G_REVIS
+    assign gpinput[25]    = ~ _mread;     // pin isn't in G_REVIS
+    assign gpinput[26]    = ~ _mwrite;    // pin isn't in G_REVIS
+    assign gpinput[27]    = ~ _intak;     // pin isn't in G_REVIS
+    assign gpinput[31:28] = 4'b0000;
+
+    // write gpio pins - they write signals to the bus only when rpi board is enabled
+    assign clok2  = ~ gpoutput[02];       // pin is in G_REVOS
+    assign reset  = ~ gpoutput[03];       // pin is in G_REVOS
+    assign mq     = ~ gpoutput[15:04];    // pins are in G_REVOS
+    assign mql    = ~ gpoutput[16];       // pin is in G_REVOS
+    assign ioskp  = ~ gpoutput[17];       // pin is in G_REVOS
+    assign TRIGGR =   gpoutput[18];       // trigger scope
+    wire   qena   =   gpoutput[19];       // pin isn't in G_REVOS
+    assign intrq  = ~ gpoutput[20];       // pin is in G_REVOS
+    wire   dena   =   gpoutput[21];       // pin isn't in G_REVOS
+
+    // composite readback - gpio connector just as would be seen on raspi gpio connector plugged into tubes
+    wire[12:00] denadata = dena ? gpinput [16:04] : 13'b0000000000000;  // tubes->raspi enabled for link,data pins
+    wire[12:00] qenadata = qena ? gpoutput[16:04] : 13'b0000000000000;  // raspi->tubes enabled for link,data pins
+
+    assign gpcompos[0]     = gpoutput[0];           // debugging
+    assign gpcompos[1]     = 1'b0;
+    assign gpcompos[03:02] = gpoutput[3:2];         // CLOCK,RESET always raspi->tubes
+    assign gpcompos[16:04] = denadata | qenadata;   // LINK,DATA bi-directional
+    assign gpcompos[21:17] = gpoutput[21:17];       // other raspi->tubes signals
+    assign gpcompos[27:22] = gpinput[27:22];        // tubes->raspi signals
+    assign gpcompos[31:28] = 4'b0000;
 endmodule
