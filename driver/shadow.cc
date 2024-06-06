@@ -779,7 +779,7 @@ void Shadow::history (FILE *out, char const *pfx, unsigned offset)
     uint16_t disir = 0xFFFFU;
     uint16_t dispc = 0xFFFFU;
 
-    for (unsigned i = offset; (i < NSAVEREGS + offset) && (i <= cycle); i ++) {
+    for (unsigned i = offset; (i < NSAVEREGS + offset) && (i < cycle); i ++) {
         uint64_t c = cycle - i;
         Regs const *p = &saveregs[c%NSAVEREGS];
         if (p->state == FETCH1) {

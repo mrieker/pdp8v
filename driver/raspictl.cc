@@ -801,7 +801,7 @@ static void clraccumlink ()
 
     // raise clock to enter EXEC1, keep sending opcode
     shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, 07300 * G_DATA0 | G_CLOCK);
+    gpio->writegpio (true, 07300 * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
 
     // drop clock, stop sending opcode
