@@ -25,11 +25,12 @@
  *
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
- *  ./autoboardtest [-mult] [-page] [-pause] [-pipelib] [-verbose] [-zynqlib] <boards>...
+ *  ./autoboardtest [-csrclib] [-mult] [-page] [-pause] [-pipelib] [-verbose] [-zynqlib] <boards>...
  *
  *      <boards> : all or any combination of acl alu ma pc rpi seq
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
+ *      -csrclib : C-based simulator for debugging autoboardtest itself on PC
  *         -mult : use mainloop_mult() even if just one board
  *      -pipelib : test autoboardtest itself with ../modules/whole.mod via netgen TCL simulator
  *         -page : paginate -verbose output
@@ -112,6 +113,7 @@ static CSrcLib *simulatr;
 static GpioLib *hardware;
 static int stepcount;
 static OnError onerror;
+static std::string multitle;
 static uint32_t cycleno;
 static uint32_t inss[NPADS], gins;
 static uint32_t outss[NPADS], gouts;
@@ -132,6 +134,7 @@ static void mainloop_mult ();
 
 int main (int argc, char **argv)
 {
+    bool csrclib = false;
     bool multflag = false;
     bool pipelib = false;
     bool zynqlib = false;
@@ -141,6 +144,12 @@ int main (int argc, char **argv)
     onerror = OnError::Pause;
 
     for (int i = 0; ++ i < argc;) {
+        if (strcasecmp (argv[i], "-csrclib") == 0) {
+            csrclib = true;
+            pipelib = false;
+            zynqlib = false;
+            continue;
+        }
         if (strcasecmp (argv[i], "-mult") == 0) {
             multflag = true;
             continue;
@@ -155,6 +164,7 @@ int main (int argc, char **argv)
             continue;
         }
         if (strcasecmp (argv[i], "-pipelib") == 0) {
+            csrclib = false;
             pipelib = true;
             zynqlib = false;
             continue;
@@ -164,6 +174,7 @@ int main (int argc, char **argv)
             continue;
         }
         if (strcasecmp (argv[i], "-zynqlib") == 0) {
+            csrclib = false;
             pipelib = false;
             zynqlib = true;
             continue;
@@ -188,7 +199,6 @@ int main (int argc, char **argv)
         fprintf (stderr, "autoboardtest: unknown module %s\n", argv[i]);
         return 1;
     gotit:;
-        continue;
     }
 
     // get selected module test function entrypoint
@@ -201,6 +211,8 @@ int main (int argc, char **argv)
         if (mod->selected) {
             mainloop = mod->mainloop;
             pipelibmodstr.append (mod->name);
+            if (nseldmods > 0) multitle.push_back (' ');
+            multitle.append (mod->name);
             ++ nseldmods;
         }
     }
@@ -227,6 +239,7 @@ int main (int argc, char **argv)
     // access tube circuitry and simulator
     hardware = zynqlib ? (GpioLib *) new ZynqLib (pipelibmodcst) :
                pipelib ? (GpioLib *) new PipeLib (pipelibmodcst) :
+               csrclib ? (GpioLib *) new CSrcLib (pipelibmodcst) :
                          (GpioLib *) new PhysLib ();
     simulatr = new CSrcLib (csrclibmodcst);
     hardware->open ();
@@ -778,7 +791,7 @@ static void multhalfcycle (bool grpbskipvalid, std::string *str, char const *des
         }
         str->clear ();
         strprintf (str, "%s" ESC_EREOL "\n", startpage);
-        strprintf (str, "---------------- cycle %10u %s  %4.1f cps" ESC_EREOL "\n", cycleno, desc, dc / 10.0);
+        strprintf (str, "%s ---------------- cycle %10u %s  %4.1f cps" ESC_EREOL "\n", multitle.c_str (), cycleno, desc, dc / 10.0);
         strprintf (str, "" ESC_EREOL "\n");
         if (endofcycle) {
             strprintf (str, "  hwacon=%08X  smacon=%08X  adiff=%08X  %s" ESC_EREOL "\n", hwacon & amask, smacon & amask, adiff, pinstring (adiff, apindefs).c_str ());
