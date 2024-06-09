@@ -710,11 +710,17 @@ static void mainloop_mult ()
         inccycleno ();
 
         // assert clock, do not change other gpio pins so the values given above hold through the transition and soak into tubes
-        smdcon |= D_clok2;
-        smgcon |= G_CLOCK;
-        if (rpimod.selected && seqmod.selected && ! *sim_fetch2d) {
-            // but if about to start FETCH2, output old IR contents to MQ bus cuz tubes open IR latch
-            smgcon = (smgcon & ~ G_DENA & ~ G_DATA) | G_QENA | (oldir * G_DATA0);
+        bool doreset = (randuint32 (4) & 15) == 0;
+        if (doreset) {
+            smdcon |= D_reset;
+            smgcon |= G_RESET;
+        } else {
+            smdcon |= D_clok2;
+            smgcon |= G_CLOCK;
+            if (rpimod.selected && seqmod.selected && ! *sim_fetch2d) {
+                // but if about to start FETCH2, output old IR contents to MQ bus cuz tubes open IR latch
+                smgcon = (smgcon & ~ G_DENA & ~ G_DATA) | G_QENA | (oldir * G_DATA0);
+            }
         }
         if (rpimod.selected) {
             hardware->writegpio ((smgcon & G_QENA) != 0, smgcon);

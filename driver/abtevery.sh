@@ -26,7 +26,7 @@ do
     sleep 1
     ./autoboardtest "$@"$boards & < /dev/null
     abtpid=$!
-    sleep 10
+    sleep 5
     kill -INT $abtpid
     wait
     echo = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
