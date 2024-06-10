@@ -275,8 +275,8 @@ void ZynqLib::writepads (uint32_t const *masks, uint32_t const *pinss)
     if (gpiopage == NULL) {
         opengpio ();
     }
-    gpiopage[12] = pinss[0];
-    gpiopage[13] = pinss[1];
-    gpiopage[14] = pinss[2];
-    gpiopage[15] = pinss[3];
+    gpiopage[12] = pinss[0] | ~ masks[0];
+    gpiopage[13] = pinss[1] | ~ masks[1];
+    gpiopage[14] = pinss[2] | ~ masks[2];
+    gpiopage[15] = pinss[3] | ~ masks[3];
 }

@@ -1285,16 +1285,16 @@
               }
             },
             "interface_nets": {
-              "s00_couplers_to_auto_pc": {
-                "interface_ports": [
-                  "S_AXI",
-                  "auto_pc/S_AXI"
-                ]
-              },
               "auto_us_to_s00_couplers": {
                 "interface_ports": [
                   "M_AXI",
                   "auto_us/M_AXI"
+                ]
+              },
+              "s00_couplers_to_auto_pc": {
+                "interface_ports": [
+                  "S_AXI",
+                  "auto_pc/S_AXI"
                 ]
               },
               "auto_pc_to_auto_us": {
@@ -1489,16 +1489,16 @@
               }
             },
             "interface_nets": {
-              "auto_pc_to_s00_couplers": {
-                "interface_ports": [
-                  "M_AXI",
-                  "auto_pc/M_AXI"
-                ]
-              },
               "s00_couplers_to_auto_pc": {
                 "interface_ports": [
                   "S_AXI",
                   "auto_pc/S_AXI"
+                ]
+              },
+              "auto_pc_to_s00_couplers": {
+                "interface_ports": [
+                  "M_AXI",
+                  "auto_pc/M_AXI"
                 ]
               }
             },
@@ -2190,16 +2190,10 @@
       }
     },
     "interface_nets": {
-      "processing_system7_0_DDR": {
+      "S00_AXI_1": {
         "interface_ports": [
-          "DDR",
-          "processing_system7_0/DDR"
-        ]
-      },
-      "axi_interconnect_1_M00_AXI": {
-        "interface_ports": [
-          "axi_interconnect_1/M00_AXI",
-          "Zynq_0/S00_AXI"
+          "axi_interconnect_0/S00_AXI",
+          "Zynq_0/M00_AXI"
         ]
       },
       "axi_interconnect_0_M00_AXI": {
@@ -2208,10 +2202,16 @@
           "processing_system7_0/S_AXI_HP0"
         ]
       },
-      "S00_AXI_1": {
+      "processing_system7_0_FIXED_IO": {
         "interface_ports": [
-          "axi_interconnect_0/S00_AXI",
-          "Zynq_0/M00_AXI"
+          "FIXED_IO",
+          "processing_system7_0/FIXED_IO"
+        ]
+      },
+      "axi_interconnect_1_M00_AXI": {
+        "interface_ports": [
+          "axi_interconnect_1/M00_AXI",
+          "Zynq_0/S00_AXI"
         ]
       },
       "processing_system7_0_M_AXI_GP0": {
@@ -2220,10 +2220,10 @@
           "axi_interconnect_1/S00_AXI"
         ]
       },
-      "processing_system7_0_FIXED_IO": {
+      "processing_system7_0_DDR": {
         "interface_ports": [
-          "FIXED_IO",
-          "processing_system7_0/FIXED_IO"
+          "DDR",
+          "processing_system7_0/DDR"
         ]
       }
     },

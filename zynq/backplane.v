@@ -22,7 +22,7 @@
 
 // inputs:
 //  CLOCK = FPGA clock (100MHz)
-//  paddlwr{a,b,c,d} = paddle values written by ARM
+//  paddlwr{a,b,c,d} = paddle values written by ARM (anded with bus)
 //  boardena = board enable bits
 //    <0> = 1 : include ACL board; 0 : ACL board outputs must be provided by paddlwr{a,b,c,d}
 //    <1> = 1 : include ALU board; 0 : ALU board outputs must be provided by paddlwr{a,b,c,d}
@@ -34,7 +34,7 @@
 // outputs:
 //  TRIGGR = G_TRIG GPIO bit written by ARM (debugging)
 //  DEBUGS = debug signals
-//  paddlrd{a,b,c,d} = paddle values can be read by ARM
+//  paddlrd{a,b,c,d} = paddle values can be read by ARM (reads the bus)
 //  gpinput = GPIO bits can be read by ARM
 //  gpcompos = GPIO read bits combined with write bits
 //             ...can be read by ARM to show just what RasPI would have
@@ -55,10 +55,10 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     output[31:00] gpinput, gpcompos;
     input[31:00] gpoutput;
 
-    wire[12:00] denadata, qenadata;
+    assign DEBUGS = 14'b0;
 
     // board enables
-    wire aclena, aluena, maena, pcena, rpiena, seqena;
+    wire acldis, aludis, madis, pcdis, rpidis, seqdis;
 
     // bus_<signal> = what would be on the backplane in real computer, available as input to boards
     //                driven by board if board is enabled, driven by paddle if board is disabled
@@ -131,15 +131,13 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     wire        bus_exec3q      , seq_exec3q      , pad_exec3q     ;
     wire[11:09] bus_irq         , seq_irq         , pad_irq        ;
 
-    assign DEBUGS = 14'b0;
-
     // count total number of gates outputting one = total number of triodes off
     output reg[9:0] nto, ntt;
     wire[9:0] aclnto, alunto, manto, pcnto, seqnto;
     wire[9:0] aclntt, aluntt, mantt, pcntt, seqntt;
     always @(posedge CLOCK) begin
-        nto <= (aclena ? aclnto : 0) + (aluena ? alunto : 0) + (maena ? manto : 0) + (pcena ? pcnto : 0) + (seqena ? seqnto : 0);
-        ntt <= (aclena ? aclntt : 0) + (aluena ? aluntt : 0) + (maena ? mantt : 0) + (pcena ? pcntt : 0) + (seqena ? seqntt : 0);
+        nto <= (acldis ? 0 : aclnto) + (aludis ? 0 : alunto) + (madis ? 0 : manto) + (pcdis ? 0 : pcnto) + (seqdis ? 0 : seqnto);
+        ntt <= (acldis ? 0 : aclntt) + (aludis ? 0 : aluntt) + (madis ? 0 : mantt) + (pcdis ? 0 : pcntt) + (seqdis ? 0 : seqntt);
     end
 
     // paddles reading the bus bits
@@ -276,6 +274,7 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
 
     // paddle bits written by the zynq ps [raspictl zynqlib]
     // to make up for missing boards when board is disabled via boardena bit
+    // assume bit has a '1' value if board output enabled (like real hdwe paddles)
 
     assign pad_acq[11]     = paddlwra[02-1];
     assign pad__aluq[11]   = paddlwra[03-1];
@@ -406,78 +405,84 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     // split board enable register into its various bits
     // when bit is set, gate the corresponding module outputs to the bus
     // when bit is clear, gate the corresponding paddle outputs to the bus
-    assign aclena = boardena[0];
-    assign aluena = boardena[1];
-    assign maena  = boardena[2];
-    assign pcena  = boardena[3];
-    assign rpiena = boardena[4];
-    assign seqena = boardena[5];
+    assign acldis = ~ boardena[0];
+    assign aludis = ~ boardena[1];
+    assign madis  = ~ boardena[2];
+    assign pcdis  = ~ boardena[3];
+    assign rpidis = ~ boardena[4];
+    assign seqdis = ~ boardena[5];
+
+    wire[11:00] acld12 = { 12 { acldis } };
+    wire[11:00] alud12 = { 12 { aludis } };
+    wire[11:00] mad12  = { 12 { madis  } };
+    wire[11:00] pcd12  = { 12 { pcdis  } };
+    wire[11:00] rpid12 = { 12 { rpidis } };
 
     // for bus signals output by the acl board, select either the module or the paddles
-    assign bus_acq       = aclena ? acl_acq       : pad_acq;
-    assign bus_acqzero   = aclena ? acl_acqzero   : pad_acqzero;
-    assign bus_grpb_skip = aclena ? acl_grpb_skip : pad_grpb_skip;
-    assign bus__lnq      = aclena ? acl__lnq      : pad__lnq;
-    assign bus_lnq       = aclena ? acl_lnq       : pad_lnq;
+    assign bus_acq         = (acld12 | acl_acq        ) & pad_acq;
+    assign bus_acqzero     = (acldis | acl_acqzero    ) & pad_acqzero;
+    assign bus_grpb_skip   = (acldis | acl_grpb_skip  ) & pad_grpb_skip;
+    assign bus__lnq        = (acldis | acl__lnq       ) & pad__lnq;
+    assign bus_lnq         = (acldis | acl_lnq        ) & pad_lnq;
 
     // for bus signals output by the alu board, select either the module or the paddles
-    assign bus__alucout = aluena ? alu__alucout : pad__alucout;
-    assign bus__aluq    = aluena ? alu__aluq    : pad__aluq;
-    assign bus__newlink = aluena ? alu__newlink : pad__newlink;
+    assign bus__alucout    = (aludis | alu__alucout   ) & pad__alucout;
+    assign bus__aluq       = (alud12 | alu__aluq      ) & pad__aluq;
+    assign bus__newlink    = (aludis | alu__newlink   ) & pad__newlink;
 
     // for bus signals output by the ma board, select either the module or the paddles
-    assign bus__maq  = maena ? ma__maq  : pad__maq;
-    assign bus_maq   = maena ? ma_maq   : pad_maq;
+    assign bus__maq        = (mad12 | ma__maq         ) & pad__maq;
+    assign bus_maq         = (mad12 | ma_maq          ) & pad_maq;
 
     // for bus signals output by the pc board, select either the module or the paddles
-    assign bus_pcq = pcena ? pc_pcq : pad_pcq;
+    assign bus_pcq         = (pcd12 | pc_pcq          ) & pad_pcq;
 
     // for bus signals output by the rpi board, select either the gpio signals or the paddles
-    assign bus_clok2 = rpiena ? rpi_clok2 : pad_clok2;
-    assign bus_intrq = rpiena ? rpi_intrq : pad_intrq;
-    assign bus_ioskp = rpiena ? rpi_ioskp : pad_ioskp;
-    assign bus_mql   = rpiena ? rpi_mql   : pad_mql;
-    assign bus_mq    = rpiena ? rpi_mq    : pad_mq;
-    assign bus_reset = rpiena ? rpi_reset : pad_reset;
+    assign bus_clok2       = (rpidis | rpi_clok2      ) & pad_clok2;
+    assign bus_intrq       = (rpidis | rpi_intrq      ) & pad_intrq;
+    assign bus_ioskp       = (rpidis | rpi_ioskp      ) & pad_ioskp;
+    assign bus_mql         = (rpidis | rpi_mql        ) & pad_mql;
+    assign bus_mq          = (rpid12 | rpi_mq         ) & pad_mq;
+    assign bus_reset       = (rpidis | rpi_reset      ) & pad_reset;
 
     // for bus signals output by the seq board, select either the module or the paddles
-    assign bus__ac_aluq    = seqena ? seq__ac_aluq    : pad__ac_aluq;
-    assign bus__ac_sc      = seqena ? seq__ac_sc      : pad__ac_sc;
-    assign bus__alu_add    = seqena ? seq__alu_add    : pad__alu_add;
-    assign bus__alu_and    = seqena ? seq__alu_and    : pad__alu_and;
-    assign bus__alua_m1    = seqena ? seq__alua_m1    : pad__alua_m1;
-    assign bus__alua_ma    = seqena ? seq__alua_ma    : pad__alua_ma;
-    assign bus_alua_mq0600 = seqena ? seq_alua_mq0600 : pad_alua_mq0600;
-    assign bus_alua_mq1107 = seqena ? seq_alua_mq1107 : pad_alua_mq1107;
-    assign bus_alua_pc0600 = seqena ? seq_alua_pc0600 : pad_alua_pc0600;
-    assign bus_alua_pc1107 = seqena ? seq_alua_pc1107 : pad_alua_pc1107;
-    assign bus_alub_1      = seqena ? seq_alub_1      : pad_alub_1;
-    assign bus__alub_ac    = seqena ? seq__alub_ac    : pad__alub_ac;
-    assign bus__alub_m1    = seqena ? seq__alub_m1    : pad__alub_m1;
-    assign bus__grpa1q     = seqena ? seq__grpa1q     : pad__grpa1q;
-    assign bus__dfrm       = seqena ? seq__dfrm       : pad__dfrm;
-    assign bus__jump       = seqena ? seq__jump       : pad__jump;
-    assign bus_inc_axb     = seqena ? seq_inc_axb     : pad_inc_axb;
-    assign bus__intak      = seqena ? seq__intak      : pad__intak;
-    assign bus_intak1q     = seqena ? seq_intak1q     : pad_intak1q;
-    assign bus_ioinst      = seqena ? seq_ioinst      : pad_ioinst;
-    assign bus_iot2q       = seqena ? seq_iot2q       : pad_iot2q;
-    assign bus__ln_wrt     = seqena ? seq__ln_wrt     : pad__ln_wrt;
-    assign bus__ma_aluq    = seqena ? seq__ma_aluq    : pad__ma_aluq;
-    assign bus__mread      = seqena ? seq__mread      : pad__mread;
-    assign bus__mwrite     = seqena ? seq__mwrite     : pad__mwrite;
-    assign bus__pc_aluq    = seqena ? seq__pc_aluq    : pad__pc_aluq;
-    assign bus__pc_inc     = seqena ? seq__pc_inc     : pad__pc_inc;
-    assign bus_tad3q       = seqena ? seq_tad3q       : pad_tad3q;
-    assign bus_fetch1q     = seqena ? seq_fetch1q     : pad_fetch1q;
-    assign bus_fetch2q     = seqena ? seq_fetch2q     : pad_fetch2q;
-    assign bus_defer1q     = seqena ? seq_defer1q     : pad_defer1q;
-    assign bus_defer2q     = seqena ? seq_defer2q     : pad_defer2q;
-    assign bus_defer3q     = seqena ? seq_defer3q     : pad_defer3q;
-    assign bus_exec1q      = seqena ? seq_exec1q      : pad_exec1q;
-    assign bus_exec2q      = seqena ? seq_exec2q      : pad_exec2q;
-    assign bus_exec3q      = seqena ? seq_exec3q      : pad_exec3q;
-    assign bus_irq         = seqena ? seq_irq         : pad_irq;
+    assign bus__ac_aluq    = (seqdis | seq__ac_aluq   ) & pad__ac_aluq;
+    assign bus__ac_sc      = (seqdis | seq__ac_sc     ) & pad__ac_sc;
+    assign bus__alu_add    = (seqdis | seq__alu_add   ) & pad__alu_add;
+    assign bus__alu_and    = (seqdis | seq__alu_and   ) & pad__alu_and;
+    assign bus__alua_m1    = (seqdis | seq__alua_m1   ) & pad__alua_m1;
+    assign bus__alua_ma    = (seqdis | seq__alua_ma   ) & pad__alua_ma;
+    assign bus_alua_mq0600 = (seqdis | seq_alua_mq0600) & pad_alua_mq0600;
+    assign bus_alua_mq1107 = (seqdis | seq_alua_mq1107) & pad_alua_mq1107;
+    assign bus_alua_pc0600 = (seqdis | seq_alua_pc0600) & pad_alua_pc0600;
+    assign bus_alua_pc1107 = (seqdis | seq_alua_pc1107) & pad_alua_pc1107;
+    assign bus_alub_1      = (seqdis | seq_alub_1     ) & pad_alub_1;
+    assign bus__alub_ac    = (seqdis | seq__alub_ac   ) & pad__alub_ac;
+    assign bus__alub_m1    = (seqdis | seq__alub_m1   ) & pad__alub_m1;
+    assign bus__grpa1q     = (seqdis | seq__grpa1q    ) & pad__grpa1q;
+    assign bus__dfrm       = (seqdis | seq__dfrm      ) & pad__dfrm;
+    assign bus__jump       = (seqdis | seq__jump      ) & pad__jump;
+    assign bus_inc_axb     = (seqdis | seq_inc_axb    ) & pad_inc_axb;
+    assign bus__intak      = (seqdis | seq__intak     ) & pad__intak;
+    assign bus_intak1q     = (seqdis | seq_intak1q    ) & pad_intak1q;
+    assign bus_ioinst      = (seqdis | seq_ioinst     ) & pad_ioinst;
+    assign bus_iot2q       = (seqdis | seq_iot2q      ) & pad_iot2q;
+    assign bus__ln_wrt     = (seqdis | seq__ln_wrt    ) & pad__ln_wrt;
+    assign bus__ma_aluq    = (seqdis | seq__ma_aluq   ) & pad__ma_aluq;
+    assign bus__mread      = (seqdis | seq__mread     ) & pad__mread;
+    assign bus__mwrite     = (seqdis | seq__mwrite    ) & pad__mwrite;
+    assign bus__pc_aluq    = (seqdis | seq__pc_aluq   ) & pad__pc_aluq;
+    assign bus__pc_inc     = (seqdis | seq__pc_inc    ) & pad__pc_inc;
+    assign bus_tad3q       = (seqdis | seq_tad3q      ) & pad_tad3q;
+    assign bus_fetch1q     = (seqdis | seq_fetch1q    ) & pad_fetch1q;
+    assign bus_fetch2q     = (seqdis | seq_fetch2q    ) & pad_fetch2q;
+    assign bus_defer1q     = (seqdis | seq_defer1q    ) & pad_defer1q;
+    assign bus_defer2q     = (seqdis | seq_defer2q    ) & pad_defer2q;
+    assign bus_defer3q     = (seqdis | seq_defer3q    ) & pad_defer3q;
+    assign bus_exec1q      = (seqdis | seq_exec1q     ) & pad_exec1q;
+    assign bus_exec2q      = (seqdis | seq_exec2q     ) & pad_exec2q;
+    assign bus_exec3q      = (seqdis | seq_exec3q     ) & pad_exec3q;
+    assign bus_irq         = (seqdis | seq_irq        ) & pad_irq;
 
     // instantiate the modules
     // for input pins, use the bus signals
