@@ -1077,19 +1077,6 @@ static void haltwait ()
             // in middle of some cycle with clock still high
             // sample was taken just before clock driven high
 
-            // exercise reset circuitry
-            if (randuint16 (5) == 0) {
-
-                // reset tubes and shadow
-                gpio->writegpio (false, G_RESET);   // mid whatever -> mid FETCH1
-                gpio->halfcycle (false);
-                gpio->halfcycle (false);
-                shadow.reset ();
-                intrq = 0;
-                sample = 0;
-                continue;
-            }
-
             // if reading memory, send out a random number
             if (sample & G_READ) {
                 // send random 12-bit data (maybe opcode) word to tubes
@@ -1112,6 +1099,15 @@ static void haltwait ()
 
             // maybe start requesting interrupt
             if (randuint16 (6) == 0) intrq = G_IRQ;
+
+            // maybe exercise reset circuitry
+            // don't if we are in middle of cycle that writes IR latch cuz we would lose sync
+            if ((shadow.r.state != Shadow::FETCH2) && (shadow.r.state != Shadow::INTAK1) && (randuint16 (5) == 0)) {
+                shadow.reset ();                        // we don't clock at end of current state
+                gpio->writegpio (false, G_RESET);       // send RESET (and drop CLOCK)
+                gpio->halfcycle (shadow.aluadd ());     // let the reset soak into the tubes
+                                                        // now halfway through FETCH1 cycle
+            }
 
             // clock to middle of next cycle with clock still high
             sample = ts_recvdata (intrq);
