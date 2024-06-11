@@ -22,16 +22,17 @@
 #define _ABCD_H
 
 #include <stdio.h>
+#include <string>
 
-#define ESC_NORMV "[m"             /* go back to normal video */
-#define ESC_REVER "[7m"            /* turn reverse video on */
-#define ESC_UNDER "[4m"            /* turn underlining on */
-#define ESC_BLINK "[5m"            /* turn blink on */
-#define ESC_BOLDV "[1m"            /* turn bold on */
-#define ESC_REDBG "[41m"           /* red background */
-#define ESC_YELBG "[44m"           /* yellow background */
-#define ESC_EREOL "[K"             /* erase to end of line */
-#define ESC_EREOP "[J"             /* erase to end of page */
+#define ESC_NORMV "\033[m"             /* go back to normal video */
+#define ESC_REVER "\033[7m"            /* turn reverse video on */
+#define ESC_UNDER "\033[4m"            /* turn underlining on */
+#define ESC_BLINK "\033[5m"            /* turn blink on */
+#define ESC_BOLDV "\033[1m"            /* turn bold on */
+#define ESC_REDBG "\033[41m"           /* red background */
+#define ESC_YELBG "\033[44m"           /* yellow background */
+#define ESC_EREOL "\033[K"             /* erase to end of line */
+#define ESC_EREOP "\033[J"             /* erase to end of page */
 
 #include "miscdefs.h"
 
@@ -123,6 +124,7 @@ struct ABCD {
     ABCD ();
     void decode ();
     void encode ();
+    std::string states ();
     void printfull (int (*xprintf) (void *out, char const *fmt, ...) __attribute__ ((__format__ (__printf__, 2, 3))), void *out, bool hasacl, bool hasalu, bool hasma, bool haspc, bool hasrpi, bool hasseq);
     template <typename T>
     void printfull (int (*xprintf) (T *out, char const *fmt, ...) __attribute__ ((__format__ (__printf__, 2, 3))), T *out, bool hasacl, bool hasalu, bool hasma, bool haspc, bool hasrpi, bool hasseq)

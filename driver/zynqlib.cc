@@ -42,7 +42,6 @@ ZynqLib::ZynqLib (char const *modnames)
     this->memfd  = -1;
     this->memptr = NULL;
 
-    gpiomask = 0;
     gpiopage = NULL;
 
     boardena =
@@ -234,7 +233,6 @@ trylk:;
         ABORT ();
     }
 
-    gpiomask = G_OUTS;                              // just drive output pins, not data pins, to start with
     gpioreadflip = G_REVIS | (G_REVOS & G_OUTS);    // these pins get flipped on read to show active high
 }
 

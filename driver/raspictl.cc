@@ -78,6 +78,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "abcd.h"
 #include "binloader.h"
 #include "controls.h"
 #include "dyndis.h"
@@ -455,6 +456,15 @@ int main (int argc, char **argv)
     if (! gp->haspads () && shadow.paddles) {
         fprintf (stderr, "raspictl: -paddles given but paddles not present\n");
         return 1;
+    }
+
+    // if paddles present, print initial register contents
+    if (shadow.paddles) {
+        ABCD abcd;
+        gp->readpads (abcd.cons);
+        abcd.decode ();
+        fprintf (stderr, "raspictl: L.AC=%o.%04o MA=%04o PC=%04o IR=%o--- ST=%s\n",
+                abcd.lnq, abcd.acq, abcd.maq, abcd.pcq, abcd.irq >> 9, abcd.states ().c_str ());
     }
 
     // allow other things to access paddles now that they are all set up

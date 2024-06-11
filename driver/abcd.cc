@@ -343,6 +343,22 @@ void ABCD::encode ()
     gcon |= (DATA * G_DATA0) & G_DATA;
 }
 
+std::string ABCD::states ()
+{
+    std::string str;
+    if (fetch1q) str.append ("FETCH1 ");
+    if (fetch2q) str.append ("FETCH2 ");
+    if (defer1q) str.append ("DEFER1 ");
+    if (defer2q) str.append ("DEFER2 ");
+    if (defer3q) str.append ("DEFER3 ");
+    if (exec1q)  str.append ("EXEC1 ");
+    if (exec2q)  str.append ("EXEC2 ");
+    if (exec3q)  str.append ("EXEC3 ");
+    if (intak1q) str.append ("INTAK1 ");
+    if (! str.empty ()) str.pop_back ();
+    return str;
+}
+
 #define EOL ESC_EREOL "\n"
 #define EOP ESC_EREOP "\n"
 

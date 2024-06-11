@@ -250,7 +250,6 @@ struct ZynqLib : TimedLib {
 private:
     int memfd;
     uint32_t boardena;
-    uint32_t gpiomask;
     uint32_t gpioreadflip;
     uint32_t volatile *gpiopage;
     uint64_t writecount;

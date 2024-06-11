@@ -245,6 +245,19 @@ int main (int argc, char **argv)
     hardware->open ();
     simulatr->open ();
 
+    // print initial register contents
+    if (aclmod.selected | mamod.selected | pcmod.selected | seqmod.selected) {
+        ABCD abcd;
+        hardware->readpads (abcd.cons);
+        abcd.decode ();
+        printf ("autoboardtest:");
+        if (aclmod.selected) printf (" L.AC=%o.%04o", abcd.lnq, abcd.acq);
+        if (mamod.selected) printf (" MA=%04o", abcd.maq);
+        if (pcmod.selected) printf (" PC=%04o", abcd.pcq);
+        if (seqmod.selected) printf (" IR=%o--- ST=%s", abcd.irq >> 9, abcd.states ().c_str ());
+        putchar ('\n');
+    }
+
     // do testing
     mainloop ();
     return 0;
