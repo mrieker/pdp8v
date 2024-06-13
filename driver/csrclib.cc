@@ -20,6 +20,7 @@
 
 // uses C code generated from netgen -csource
 // ...to provide for simulation
+// fastest simulation that verifies module files
 
 // module-specific code is loaded from .so files generated via make:
 //  make csrcmod_<modname>.$(MACH).so

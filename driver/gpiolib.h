@@ -73,6 +73,7 @@
 struct GpioLib;
 struct Shadow;
 
+#include "abcd.h"
 #include "miscdefs.h"
 #include "myiowkit.h"
 
@@ -143,8 +144,11 @@ struct NohwLib : GpioLib {
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 
 private:
+    ABCD abcdvals;
     Shadow *shadow;
     uint32_t gpiowritten;
+
+    void calcabcd ();
 };
 
 struct PipeLib : GpioLib {

@@ -19,6 +19,7 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // Tests the raspictl.cc program with the .mod modules using the simulation function of NetGen.java
+// Slowest simulation that verifies module files
 
 // Calling PipeLib::writegpio() cause 'force' commands to be written to NetGen
 // These are read by the simulation function of NetGen.java to set the internal state of the pins.

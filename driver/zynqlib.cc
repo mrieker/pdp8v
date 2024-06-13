@@ -19,6 +19,7 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // access zynq implementation
+// tube-speed simulation - verifies modules files programmed into zynq fpga
 
 #include <errno.h>
 #include <fcntl.h>

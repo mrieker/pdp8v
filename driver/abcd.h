@@ -21,6 +21,7 @@
 #ifndef _ABCD_H
 #define _ABCD_H
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string>
 
@@ -33,8 +34,6 @@
 #define ESC_YELBG "\033[44m"           /* yellow background */
 #define ESC_EREOL "\033[K"             /* erase to end of line */
 #define ESC_EREOP "\033[J"             /* erase to end of page */
-
-#include "miscdefs.h"
 
 struct ABCD {
     union {

@@ -84,7 +84,6 @@ struct Shadow {
     uint64_t getcycles ();
     uint64_t getinstrs ();
     State getprevstate ();
-    uint32_t readgpio (bool irq);
 
     SCRet *scriptcmd (int argc, char const *const *argv);
 
