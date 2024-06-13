@@ -30,6 +30,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "controls.h"
 #include "memext.h"
 #include "memory.h"
 #include "miscdefs.h"
@@ -188,9 +189,17 @@ uint16_t ScnCall::docall (uint16_t data)
 
         // exit() system call
         case SCN_EXIT: {
-            uint16_t code = readmemword (data + 1);
-            fprintf (stderr, "raspictl: SCN_EXIT:%u\n", code);
-            exit (code);
+            static char hrbuff[16];
+            data = readmemword (data + 1);
+            snprintf (hrbuff, sizeof hrbuff, "SCN_EXIT:%04o", data);
+            if (! scriptmode) {
+                fprintf (stderr, "raspictl: %s\n", hrbuff);
+                exit (data);
+            }
+            bool sigint = ctl_lock ();
+            haltreason  = hrbuff;
+            haltflags  |= HF_HALTIT;
+            ctl_unlock (sigint);
             break;
         }
 
