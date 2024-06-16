@@ -622,8 +622,11 @@ reseteverything:;
                         syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
 
                         // send data to processor
-                        // re-read memory if halted by gui or script
+                        // fall through to re-read memory if halted by gui or script
                         if (! senddata (lastreaddata, sendretry)) break;
+
+                        // gui/script halted in this cycle once,
+                        // don't check halt in retried senddata() in case of single-cycling
                         sendretry = true;
                     }
                 }

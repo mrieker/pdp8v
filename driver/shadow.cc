@@ -84,7 +84,7 @@ void Shadow::reset ()
 // process script 'cpu' commands
 SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
 {
-    // get [ac/cycle/ir/link/ma/pc/state/disas]
+    // get [ac/cycle/ir/link/ma/pc/state/tsaver/disas]
     if (strcmp (argv[0], "get") == 0) {
         if (argc == 1) {
             char const *dis;
@@ -129,7 +129,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
             }
         }
 
-        return new SCRetErr ("cpu get [ac/cycle/instr/ir/link/ma/pc/state/disas]");
+        return new SCRetErr ("cpu get [ac/cycle/instr/ir/link/ma/pc/state/tsaver/disas]");
     }
 
     if (strcmp (argv[0], "help") == 0) {
@@ -139,18 +139,20 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
         puts ("  get            - return all registers as a string");
         puts ("  get <register> - return specific register as a value");
         puts ("  history        - print out previous cycles");
+        puts ("                   # at beginning of line indicates tubesaver cycle");
         puts ("");
         puts ("registers:");
         puts ("");
-        puts ("  ac    - accumulator");
-        puts ("  cycle - cycle count");
-        puts ("  instr - instruction count");
-        puts ("  ir    - instruction register (full 12 bits)");
-        puts ("  link  - link bit");
-        puts ("  ma    - memory address");
-        puts ("  pc    - program counter");
-        puts ("  state - current state as a string (if halted, processor is at end of this state)");
-        puts ("  disas - disassembly of instruction register");
+        puts ("  ac     - accumulator");
+        puts ("  cycle  - cycle count");
+        puts ("  instr  - instruction count");
+        puts ("  ir     - instruction register (full 12 bits)");
+        puts ("  link   - link bit");
+        puts ("  ma     - memory address");
+        puts ("  pc     - program counter");
+        puts ("  state  - current state as a string (if halted, processor is at end of this state)");
+        puts ("  tsaver - cycle was a result of tubesaver mode");
+        puts ("  disas  - disassembly of instruction register");
         puts ("");
         puts ("this get command shows shadow state, ie, what the tubes *should* be");
         puts ("- use gpio get to see what the tubes actually are");
@@ -177,7 +179,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
 void Shadow::clock (uint32_t sample)
 {
     // decode what we need from the sample
-    uint16_t mq = (sample & G_DATA) / G_DATA0;  // memory data sent to CPU during last cycle
+    uint16_t mq = (sample & G_DATA) / G_DATA0;  // memory data sent to CPU during last cycle (if G_QENA is set)
     bool irq = (sample & G_IRQ) != 0;           // interrupt request line sent to CPU during last cycle
 
     // at end of state ... do ... then go to state ...
@@ -201,7 +203,7 @@ void Shadow::clock (uint32_t sample)
             if ((mq & 06000) == 06000) r.ma |= mq & 07600;    // non-memory instr, get top 5 bits as well
                   else if (mq & 00200) r.ma |= r.pc & 07600;  // memory pc page, get top 5 bits from pc
             maknown = true;
-            if (printinstr) {
+            if (printinstr | printstate) {
                 char buf[4000];
                 char *ptr = buf;
                 uint16_t xpc = memext.iframe | r.pc;
@@ -237,9 +239,6 @@ void Shadow::clock (uint32_t sample)
                 ASSERT (ptr < buf + sizeof buf - 1);
                 strcpy (ptr, "\n");
                 fputs (buf, stdout);
-            }
-            if (printstate) {
-                printf ("%c%8llu                fetched %04o : %s\n", (r.tsaver ? '#' : ' '), (LLU) cycle, r.ir, disassemble (r.ir, r.pc).c_str ());
             }
             r.pc = (r.pc + 1) & 07777;
             if ((r.ir < 06000) && (r.ir & 00400)) {
@@ -315,11 +314,8 @@ void Shadow::clock (uint32_t sample)
         case TAD3: {
             uint16_t newac = r.ac + r.ma;
             checkgpio (sample, G_DENA | (newac & 07777) * G_DATA0);
-            r.ac = newac;
-            if (r.ac > 07777) {
-                r.link = ! r.link;
-                r.ac &= 07777;
-            }
+            r.ac    = newac & 07777;
+            r.link ^= newac > 07777;
             r.state = endOfInst (irq);
             break;
         }
@@ -373,7 +369,7 @@ void Shadow::clock (uint32_t sample)
             break;
         }
 
-        // receiving MA from processor
+        // receiving MA from processor for a write cycle
         case JMS1: {
             checkgpio (sample, G_DENA | G_WRITE | r.ma * G_DATA0 | G_JUMP);
             r.state = JMS2;
@@ -562,11 +558,11 @@ bool Shadow::doesgrpbskip ()
     // group 2 (p 134 / v 3-8)
 
     if (! acknown && (r.ir & 0140)) {
-        fprintf (stderr, "Shadow::doesgrpbskip: sma sza with ac unknown\n");
+        fprintf (stderr, "Shadow::doesgrpbskip: %05o sma sza with ac unknown\n", memext.iframe | r.irpc);
         ABORT ();
     }
     if (! lnknown && (r.ir & 0020)) {
-        fprintf (stderr, "Shadow::doesgrpbskip: snl with link unknown\n");
+        fprintf (stderr, "Shadow::doesgrpbskip: %05o snl with link unknown\n", memext.iframe | r.irpc);
         ABORT ();
     }
 
@@ -589,6 +585,9 @@ bool Shadow::doesgrpbskip ()
 //     don't verify those as they are data coming from the raspberry pi (they contain memory or i/o data coming from raspi)
 void Shadow::checkgpio (uint32_t sample, uint32_t expect)
 {
+    bool gpiobad = false;
+    bool padsbad = false;
+
     // save registers in case of error or for 'cpu history' command
     saveregs[cycle%NSAVEREGS] = r;
 
@@ -613,7 +612,7 @@ void Shadow::checkgpio (uint32_t sample, uint32_t expect)
         fprintf (stderr, "Shadow::checkgpio: end of %s  sample %08X  mask %08X  expect %08X  diff %08X\n", statestr (r.state), sample, mask, expect, diff);
         fprintf (stderr, "Shadow::checkgpio:   sample %s\n", GpioLib::decogpio (sample).c_str ());
         fprintf (stderr, "Shadow::checkgpio:   expect %s\n", GpioLib::decogpio (expect).c_str ());
-        goto printsavedregs;
+        gpiobad = true;
     }
 
     // maybe there are paddles to check
@@ -742,28 +741,40 @@ void Shadow::checkgpio (uint32_t sample, uint32_t expect)
 
         abcdmask.encode ();             abcdvals.encode ();
 
-        uint32_t pinss[NPADS];
+        uint32_t diffs[NPADS], pinss[NPADS];
         gpiolib->readpads (pinss);
-        uint32_t adiff = (pinss[0] ^ abcdvals.acon) & abcdmask.acon;
-        uint32_t bdiff = (pinss[1] ^ abcdvals.bcon) & abcdmask.bcon;
-        uint32_t cdiff = (pinss[2] ^ abcdvals.ccon) & abcdmask.ccon;
-        uint32_t ddiff = (pinss[3] ^ abcdvals.dcon) & abcdmask.dcon;
-        if (adiff | bdiff | cdiff | ddiff) {
-            fprintf (stderr, "Shadow::checkgpio: paddle mismatch\n");
-            fprintf (stderr, "Shadow::checkgpio:   acon  %08X ^ %08X & %08X = %08X  %s\n", pinss[0], abcdvals.acon, abcdmask.acon, adiff, pinstring (adiff, apindefs).c_str ());
-            fprintf (stderr, "Shadow::checkgpio:   bcon  %08X ^ %08X & %08X = %08X  %s\n", pinss[1], abcdvals.bcon, abcdmask.bcon, bdiff, pinstring (bdiff, bpindefs).c_str ());
-            fprintf (stderr, "Shadow::checkgpio:   ccon  %08X ^ %08X & %08X = %08X  %s\n", pinss[2], abcdvals.ccon, abcdmask.ccon, cdiff, pinstring (cdiff, cpindefs).c_str ());
-            fprintf (stderr, "Shadow::checkgpio:   dcon  %08X ^ %08X & %08X = %08X  %s\n", pinss[3], abcdvals.dcon, abcdmask.dcon, ddiff, pinstring (ddiff, dpindefs).c_str ());
-            goto printsavedregs;
+        for (int j = 0; j < NPADS; j ++) {
+            diffs[j] = (pinss[j] ^ abcdvals.cons[j]) & abcdmask.cons[j];
+            padsbad |= diffs[j] != 0;
+        }
+        if (padsbad) {
+            fprintf (stderr, "Shadow::checkgpio: paddle mismatch, cycle %llu\n", (LLU) cycle);
+            for (int j = 0; j < NPADS; j ++) {
+                if (diffs[j] != 0) {
+                    PinDefs const *xpindefs = pindefss[j];
+                    for (int p = 1; p <= 32; p ++) {
+                        uint32_t m = 1U << (p - 1);
+                        if (diffs[j] & m) {
+                            for (int i = 0; xpindefs[i].varname != NULL; i ++) {
+                                if (xpindefs[i].pinmask & m) {
+                                    fprintf (stderr, "Shadow::checkgpio:  PIN %c<%02d>: %12s is %s should be %s\n",
+                                        j + 'A', p, xpindefs[i].varname,
+                                                ((pinss[j] & m) ? "HIGH" : "LOW "),
+                                        ((abcdvals.cons[j] & m) ? "HIGH" : "LOW "));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    return;
-
-printsavedregs:;
-    this->history (stderr, "Shadow::checkgpio: ", 0);
-    StateMismatchException sme;
-    throw sme;
+    if (gpiobad || padsbad) {
+        this->history (stderr, "Shadow::checkgpio: ", 0);
+        StateMismatchException sme;
+        throw sme;
+    }
 }
 
 // print cycle history
