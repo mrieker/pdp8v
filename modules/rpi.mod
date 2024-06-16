@@ -50,7 +50,7 @@ module rpi ()
 #define bmask gioiiiiiioiiiiiioiiiiiioiiiiiioi
 #define cmask giiiioiiiiiioiiiiiioiiiiiiiiiiii
 #define dmask giioiiiiiiiiiiioiioiiiiioiiiioii
-#include "consbody.inc"
+#include "cons.inc"
 
     rpicirc: rpicirc (
         _aluq[11:00], _dfrm, _jump, _intak, ioinst, _lnq, _mread, _mwrite,
@@ -89,6 +89,12 @@ module rpi_testpads
     (in CLOK2, in INTRQ, in IOSKP, in MQ[11:00], in MQL, in RESET, in QENA, in DENA,
     out _DFRM, out _JUMP, out _INTAK, out IOINST, out _MDL, out _MD[11:00], out _MREAD, out _MWRITE)
 {
+//            00000000011111111112222222222333
+//            12345678901234567890123456789012
+#define amask giiiioiiiiiioiiiiiioiiiiiioiiiii
+#define bmask gioiiiiiioiiiiiioiiiiiioiiiiiioi
+#define cmask giiiioiiiiiioiiiiiioiiiiiiiiiiii
+#define dmask giioiiiiiiiiiiioiioiiiiioiiiioii
 #include "cons.inc"
 
     clok2 = CLOK2;
