@@ -417,6 +417,7 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     wire[11:00] mad12  = { 12 { madis  } };
     wire[11:00] pcd12  = { 12 { pcdis  } };
     wire[11:00] rpid12 = { 12 { rpidis } };
+    wire[11:09] seqd03 = {  3 { seqdis } };
 
     // for bus signals output by the acl board, select either the module or the paddles
     assign bus_acq         = (acld12 | acl_acq        ) & pad_acq;
@@ -482,7 +483,7 @@ module backplane (CLOCK, TRIGGR, DEBUGS,
     assign bus_exec1q      = (seqdis | seq_exec1q     ) & pad_exec1q;
     assign bus_exec2q      = (seqdis | seq_exec2q     ) & pad_exec2q;
     assign bus_exec3q      = (seqdis | seq_exec3q     ) & pad_exec3q;
-    assign bus_irq         = (seqdis | seq_irq        ) & pad_irq;
+    assign bus_irq         = (seqd03 | seq_irq        ) & pad_irq;
 
     // instantiate the modules
     // for input pins, use the bus signals
