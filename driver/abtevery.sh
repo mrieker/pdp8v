@@ -11,6 +11,7 @@
 #           -zynqlib : run on zynq
 #          plus other options such as -verbose -page
 #
+set -e
 for ((i = 1 ; i < 64 ; i ++))
 do
     g=$(($i^($i>>1)))
@@ -24,10 +25,7 @@ do
     if ((g &  1)) ; then boards="$boards seq" ; fi
     echo = = = = $i$boards
     sleep 1
-    ./autoboardtest "$@"$boards & < /dev/null
-    abtpid=$!
-    sleep 5
-    kill -INT $abtpid
-    wait
+    ./autoboardtest -exitonerror -runtime 5 "$@"$boards < /dev/null
     echo = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 done
+echo '**SUCCESS**'

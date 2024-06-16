@@ -25,7 +25,7 @@
  *
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
- *  ./autoboardtest [-csrclib] [-mult] [-page] [-pause] [-pipelib] [-verbose] [-zynqlib] <boards>...
+ *  ./autoboardtest [-csrclib] [-exitonerror] [-mult] [-page] [-pause] [-pipelib] [-runtime <nsec>] [-verbose] [-zynqlib] <boards>...
  *
  *      <boards> : all or any combination of acl alu ma pc rpi seq
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
@@ -35,6 +35,7 @@
  *      -pipelib : test autoboardtest itself with ../modules/whole.mod via netgen TCL simulator
  *         -page : paginate -verbose output
  *        -pause : pause at end of each cycle
+ *      -runtime : number of seconds to run
  *      -verbose : print progress messages
  *      -zynqlib : test zynq instead of tubes
  */
@@ -105,13 +106,15 @@ static Module seqmod = {         NULL, "seq", seq_ains, seq_bins, seq_cins, seq_
 #define NMODULES 6
 static Module *const modules[NMODULES] = { &aclmod, &alumod, &mamod, &pcmod, &rpimod, &seqmod };
 
+static bool errexit;
 static bool looping;
 static bool pagemode;
-static bool pauseit;
-static bool verbose;
+static bool volatile pauseit;
+static bool volatile timedout;
+static bool volatile verbose;
 static CSrcLib *simulatr;
 static GpioLib *hardware;
-static int stepcount;
+static int volatile stepcount;
 static OnError onerror;
 static std::string multitle;
 static uint32_t cycleno;
@@ -127,7 +130,7 @@ static void sighandler (int signum);
 static void exithandler ();
 static void gotanerror ();
 static void inccycleno ();
-static void maybepause ();
+static void maybeexitorpause ();
 static char const *onerrorstr ();
 static void printvarvalue (GpioLib *lib, char const *label, char const *vname);
 static void mainloop_mult ();
@@ -138,6 +141,7 @@ int main (int argc, char **argv)
     bool multflag = false;
     bool pipelib = false;
     bool zynqlib = false;
+    unsigned runtime = 0;
 
     setlinebuf (stdout);
 
@@ -148,6 +152,10 @@ int main (int argc, char **argv)
             csrclib = true;
             pipelib = false;
             zynqlib = false;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-exitonerror") == 0) {
+            onerror = OnError::Exit;
             continue;
         }
         if (strcasecmp (argv[i], "-mult") == 0) {
@@ -167,6 +175,14 @@ int main (int argc, char **argv)
             csrclib = false;
             pipelib = true;
             zynqlib = false;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-runtime") == 0) {
+            char *p;
+            if ((++ i >= argc) || ((runtime = strtoul (argv[i], &p, 0)), *p != 0)) {
+                fprintf (stderr, "autoboardtest: bad numsec for -runtime\n");
+                return 1;
+            }
             continue;
         }
         if (strcasecmp (argv[i], "-verbose") == 0) {
@@ -258,6 +274,12 @@ int main (int argc, char **argv)
         putchar ('\n');
     }
 
+    // maybe start runtime timer
+    if (runtime != 0) {
+        signal (SIGALRM, sighandler);
+        alarm (runtime);
+    }
+
     // do testing
     mainloop ();
     return 0;
@@ -290,7 +312,12 @@ static void sighandler (int signum)
         verbose   = true;
         return;
     }
-    fprintf (stderr, "\nautoboardtest: terminated for signal %d\n", signum);
+    if (signum == SIGALRM) {
+        dprintf (STDERR_FILENO, "autoboardtest: -runtime timed out\n");
+        timedout = true;
+        return;
+    }
+    dprintf (STDERR_FILENO, "autoboardtest: terminated for signal %d\n", signum);
     exit (1);
 }
 
@@ -310,7 +337,13 @@ static void gotanerror ()
 {
     switch (onerror) {
         case OnError::Cont: break;
-        case OnError::Exit: exit (1);
+        case OnError::Exit: {
+            verbose   = true;
+            errexit   = true;
+            stepcount = 0;
+            pagemode  = false;
+            break;
+        }
         case OnError::Pause: {
             verbose   = true;
             pauseit   = true;
@@ -338,9 +371,11 @@ static void inccycleno ()
 }
 
 // if pausing enabled, output prompt
-static void maybepause ()
+static void maybeexitorpause ()
 {
     static char laststep[80] = "s";
+
+    if (errexit) exit (1);
 
     if (! pauseit) return;
 
@@ -895,8 +930,11 @@ static void multhalfcycle (bool grpbskipvalid, std::string *str, char const *des
             len -= rc;
         } while (len > 0);
 
-        maybepause ();
+        maybeexitorpause ();
     }
+
+    // if -runtime timed out, exit normally
+    if (timedout) exit (0);
 }
 
 // test ACL board
@@ -964,8 +1002,11 @@ static void mainloop_acl ()
                 }
             }
 
-            maybepause ();
+            maybeexitorpause ();
         }
+
+        // if -runtime timed out, exit normally
+        if (timedout) exit (0);
 
         // if next clock up will load AC, AC bits will be known so check them from then on
 
@@ -1115,8 +1156,11 @@ static void mainloop_alu ()
             if (! abcd._grpa1q)  printf ("  +  %o", abcd.inc_axb);
             putchar ('\n');
 
-            maybepause ();
+            maybeexitorpause ();
         }
+
+        // if -runtime timed out, exit normally
+        if (timedout) exit (0);
 
         // about to start a new cycle
         inccycleno ();
@@ -1172,8 +1216,11 @@ static void mainloop_ma ()
             printf ("%10u: _ma_aluq=%o _aluq=%04o => maq=%04o _maq=%04o\n",
                     cycleno, abcd._ma_aluq, abcd._aluq, abcd.maq, abcd._maq);
 
-            maybepause ();
+            maybeexitorpause ();
         }
+
+        // if -runtime timed out, exit normally
+        if (timedout) exit (0);
 
         // if next clock up will load MA, MA bits will be known so check them from then on
 
@@ -1247,8 +1294,11 @@ static void mainloop_pc ()
             printf ("%10u: pcq=%04o + _pc_aluq=%o _pc_inc=%o _aluq=%04o =>\n",
                     cycleno, abcd.pcq, abcd._pc_aluq, abcd._pc_inc, abcd._aluq);
 
-            maybepause ();
+            maybeexitorpause ();
         }
+
+        // if -runtime timed out, exit normally
+        if (timedout) exit (0);
 
         // about to start a new cycle
         inccycleno ();
@@ -1463,6 +1513,9 @@ static void mainloop_rpi ()
             gotanerror ();
         }
 
-        maybepause ();
+        maybeexitorpause ();
+
+        // if -runtime timed out, exit normally
+        if (timedout) exit (0);
     }
 }
