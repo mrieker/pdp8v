@@ -310,6 +310,7 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
         if (strcasecmp (namestr, "help") == 0) {
             puts ("");
             puts ("  exam <modulename>  - get all pins for the given module");
+            puts ("  exam all           - get all pins for all selected modules");
             puts ("  exam <pinname> ... - get list values of the given pins, alternating name value ...");
             puts ("                       may be bus name such as pcq for all 12 bits as single value");
             puts ("");
@@ -317,16 +318,17 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
             return TCL_OK;
         }
 
+        // set up struct that can hold all possible pins
+        bool allmods = strcasecmp ("all", namestr) == 0;
+        Element elements[32*(NPADS+1)*NMODULES];
+        memset (elements, 0, sizeof elements);
+        int nelements = 0;
+
         for (int i = 0; i < NMODULES; i ++) {
             Module const *mod = &modules[i];
-            if (strcasecmp (mod->name, namestr) == 0) {
+            if ((allmods && mod->selected) || (strcasecmp (mod->name, namestr) == 0)) {
 
-                // module name found, set up struct that can hold all possible pins
-                Element elements[32*(NPADS+1)];
-                memset (elements, 0, sizeof elements);
-                int nelements = 0;
-
-                // loop through all possible pins
+                // loop through all possible pins of the module
                 for (int pad = 0; pad <= NPADS; pad ++) {
                     uint32_t insandouts = mod->outs[pad] | mod->ins[pad];
                     if ((pad == NPADS) && (insandouts != 0)) insandouts |= G_LINK | G_DATA;
@@ -345,37 +347,42 @@ static int cmd_exam (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
                             }
 
                             // make slot in struct for the value
-                            for (i = 0; i < nelements; i ++) {
-                                if ((memcmp (pin->varname, elements[i].name, namelen) == 0) && (elements[i].name[namelen] == 0)) break;
+                            int j;
+                            for (j = 0; j < nelements; j ++) {
+                                if ((memcmp (pin->varname, elements[j].name, namelen) == 0) && (elements[j].name[namelen] == 0)) break;
                             }
-                            if (i == nelements) {
-                                ASSERT (namelen < (int) sizeof elements[i].name);
-                                memcpy (elements[i].name, pin->varname, namelen);
+                            if (j == nelements) {
+                                ASSERT (namelen < (int) sizeof elements[j].name);
+                                memcpy (elements[j].name, pin->varname, namelen);
                                 nelements ++;
                             }
 
                             // fill in pin's value
-                            if (padlvalus[pad] & pin->pinmask) elements[i].value |= 1U << bitno;
+                            if (padlvalus[pad] & pin->pinmask) elements[j].value |= 1U << bitno;
                         }
                     }
                 }
-
-                // sort pin names
-                qsort (elements, nelements, sizeof elements[0], cmpelements);
-
-                // build a proper TCL list alternating names and values
-                Tcl_Obj *tclist[nelements*2];
-                for (int i = 0; i < nelements; i ++) {
-                    tclist[i*2+0] = Tcl_NewStringObj (elements[i].name, strlen (elements[i].name));
-                    tclist[i*2+1] = Tcl_NewIntObj (elements[i].value);
-                }
-
-                // return the list
-                Tcl_SetObjResult (interp, Tcl_NewListObj (nelements * 2, tclist));
-                traceobjarray (nelements * 2, tclist);
-                if (traceflag) fputc ('\n', stdout);
-                return TCL_OK;
             }
+        }
+
+        // make sure we got a board (otherwise the name might be a single pin name)
+        if (nelements > 0) {
+
+            // sort pin names
+            qsort (elements, nelements, sizeof elements[0], cmpelements);
+
+            // build a proper TCL list alternating names and values
+            Tcl_Obj *tclist[nelements*2];
+            for (int i = 0; i < nelements; i ++) {
+                tclist[i*2+0] = Tcl_NewStringObj (elements[i].name, strlen (elements[i].name));
+                tclist[i*2+1] = Tcl_NewIntObj (elements[i].value);
+            }
+
+            // return the list
+            Tcl_SetObjResult (interp, Tcl_NewListObj (nelements * 2, tclist));
+            traceobjarray (nelements * 2, tclist);
+            if (traceflag) fputc ('\n', stdout);
+            return TCL_OK;
         }
     }
 

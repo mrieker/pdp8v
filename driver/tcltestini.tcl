@@ -119,8 +119,8 @@ proc alueqn {} {
 }
 
 # dump board and compare with shadow
+# call at end of cycle with clock still low
 proc dump {board} {
-    halfcycle                   ;# make sure state up-to-date
     array set v [exam $board]   ;# read tube state
     array set s [examsh $board] ;# read shadow state
     foreach key [array names v] {
