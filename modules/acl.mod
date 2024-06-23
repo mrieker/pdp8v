@@ -20,6 +20,23 @@
 
 // AC and LINK registers
 
+//  input:
+//   _ac_aluq = load AC from ALUQ at end of cycle
+//   _ac_sc = load AC with zero at end of cycle (must also have _ac_aluq asserted)
+//   clok2 = clock signal from raspi
+//   _grpa1q = Group 1 instruction in EXEC1 state
+//   iot2q = IOT instruction in EXEC2 state
+//   _ln_wrt = write LINK at end of cycle
+//   maq,_maq = MA register contents
+//   mql = link register value from raspi (IOT2 cycle only)
+//   _newlink = signal to be loaded into link
+//   reset = processor is being reset
+//   tad3q = TAD instruction in EXEC3 state
+//  output:
+//   acq = accumulator register output
+//   acqzero = accumulator contains 0 (wired-and connection)
+//   grpb_skip = assuming MA contains Group 2 instruction, skip is true
+//   lnq,_lnq = link register output
 module aclcirc (
     in _ac_aluq, in _ac_sc, out acq[11:00], out acqzero, in _aluq[11:00], in clok2, in _grpa1q, out grpb_skip,
     in iot2q, in _ln_wrt, out _lnq, out lnq, in _maq[11:00], in maq[11:00], in mql,

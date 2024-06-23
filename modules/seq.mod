@@ -362,6 +362,13 @@ module seqcirc (
     //                 JMP1 - so PC being routed to ALU A input goes unaltered to PC and raspi for fetching
     //                 JMS1 - so MA being routed to ALU A input goes unaltered to raspi
     //                 JMS2 - so PC being routed to ALU A input goes unaltered to raspi
+    //               ARITH1 - so MA being routed to ALU A input goes unaltered to raspi
+    //                 TAD2 - so MQ being routed to ALU A input goes unaltered to MA
+    //                 DCA1 - so MA being routed to ALU A input goes unaltered to raspi
+    //                 ISZ1 - so MA being routed to ALU A input goes unaltered to raspi
+    //                 ISZ2 - so MQ being routed to ALU A input goes unaltered to MA
+    //                 IOT2 - so MQ being routed to ALU A input goes unaltered to AC
+    //        AND2 & IR<09> - so MQ being routed to ALU A input goes unaltered to AC (TAD to 0000 optimized to AND with 7777)
     _alub_m1 = ~ (fetch1q | fetch2q | defer1q | defer2q | jmp1q | jms1q | jms2q |
                   arith1q | tad2q | dca1q | isz1q | isz2q | iot2q | and2q & irq[09]);
 
