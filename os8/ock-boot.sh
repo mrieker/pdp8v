@@ -12,6 +12,13 @@
 #
 cd `dirname $0`
 set -e
+if [ rk8jeboot.oct -ot rk8jeboot.asm ]
+then
+    make -C ../asm assemble.`uname -m`
+    make -C ../asm link.`uname -m`
+    ../asm/assemble rk8jeboot.asm rk8jeboot.obj > rk8jeboot.lis
+    ../asm/link -o rk8jeboot.oct rk8jeboot.obj > /dev/null
+fi
 if [ ! -f ock.rk05 ]
 then
     rm -f ock.rk05.temp
