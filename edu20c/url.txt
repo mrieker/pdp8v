@@ -1,0 +1,9 @@
+https://groups.google.com/g/pidp-8/c/iEW6RZaOWxI?pli=1
+
+Edusystem-20 Reference Manual:
+    https://deramp.com/downloads/mfe_archive/011-Digital%20Equipment%20Corporation/01%20DEC%20PDP-8%20Family%20Software/14%20High%20Level%20Languages/Edusystem/Edusystem%2020/
+    https://deramp.com/downloads/mfe_archive/011-Digital%20Equipment%20Corporation/01%20DEC%20PDP-8%20Family%20Software/14%20High%20Level%20Languages/Edusystem/Edusystem%2020/DEC-08-E20RA-A-D%20EduSystem-20%20Reference%20Manual.pdf
+
+EduSystem Handbook Jan 73:
+    https://so-much-stuff.com/pdp8/Basic/EduSystemHandbookJan73.pdf
+
