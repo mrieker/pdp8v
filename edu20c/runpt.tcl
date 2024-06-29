@@ -10,7 +10,7 @@ iodev tty40 telnet 12340
 iodev tty42 telnet 12342
 iodev tty44 telnet 12344
 iodev tty46 telnet 12346
-iodev ptape load reader edu20c.pt
+iodev ptape load reader -quick edu20c.pt
 reset [loadlink rim-hispeed.oct]
 run
 puts ""
@@ -18,7 +18,7 @@ puts "  telnet into 12303,12340,12342,12344,12346"
 puts ""
 puts "  enter 'exit' command when done"
 puts ""
-puts "  takes about 1min 30sec to get question prompts on telnet 12303 port"
+puts "  takes about 50sec to get question prompts on telnet 12303 port"
 puts "  example answers to questions for 3 terminals (12303,12340,12342):"
 puts ""
 puts "    EDUSYSTEM 20  BASIC"
@@ -33,4 +33,14 @@ puts "    SAME AMOUNT OF STORAGE FOR ALL USERS?Y"
 puts "    IS THE ABOVE CORRECT (Y OR N)?Y"
 puts ""
 puts "  then takes about 30sec to get READY prompts on all 3 terminals"
+puts ""
+puts "  to read file via high-speed reader:"
+puts ""
+puts "    iodev ptape load reader -ascii <filename>"
+puts "    iodev ptape unload reader    ... when done"
+puts ""
+puts "  to write file via high-speed punch:"
+puts ""
+puts "    iodev ptape load punch -ascii <filename>"
+puts "    iodev ptape unload punch    ... when done"
 puts ""

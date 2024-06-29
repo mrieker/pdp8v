@@ -37,11 +37,13 @@ private:
     bool punascii;      // punch file is ascii format
     bool punflag;       // punch ready to accept next byte
     bool punfull;       // punch busy punching a byte
+    bool punquick;      // punch as fast as possible
     bool punrun;        // punch thread running
     bool punwarn;
     bool rdrascii;      // reader file is ascii format
     bool rdrflag;       // reader has byte ready to read
     bool rdrnext;       // reader should read next byte
+    bool rdrquick;      // read as fast as possible
     bool rdrrun;        // reader thread running
     bool rdrwarn;
     bool rsfwait;       // waiting on optimized RSF

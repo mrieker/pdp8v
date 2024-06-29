@@ -99,26 +99,35 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("valid sub-commands:");
         puts ("");
-        puts ("  load punch [-ascii] <filename>  - load file to be written as paper tape");
-        puts ("                                    -ascii means discard nulls; strip top bit off");
-        puts ("  load reader [-ascii] <filename> - load file to be read as paper tape");
-        puts ("                                    -ascii means add top bit back on");
-        puts ("  unload punch                    - unload file being written as paper tape");
-        puts ("  unload reader                   - unload file being read as paper tape");
+        puts ("  load punch [-ascii] [-quick] <filename>");
+        puts ("       - load file to be written as paper tape");
+        puts ("           -ascii : discard nulls; strip top bit off");
+        puts ("           -quick : minimal delay between bytes; else 50 bytes/second");
+        puts ("  load reader [-ascii] [-quick] <filename>");
+        puts ("       - load file to be read as paper tape");
+        puts ("           -ascii : add top bit back on");
+        puts ("           -quick : minimal delay between bytes; else 200 bytes/second");
+        puts ("  unload punch  - unload file being written as paper tape");
+        puts ("  unload reader - unload file being read as paper tape");
         puts ("");
         return NULL;
     }
 
-    // load [-ascii] reader/punch <filename>
+    // load [-ascii] [-quick] reader/punch <filename>
     if (strcmp (argv[0], "load") == 0) {
         if (argc >= 3) {
 
             bool ascii = false;
+            bool quick = false;
             char const *dname = NULL;
             char const *fname = NULL;
             for (int i = 1; i < argc; i ++) {
                 if (strcmp (argv[i], "-ascii") == 0) {
                     ascii = true;
+                    continue;
+                }
+                if (strcmp (argv[i], "-quick") == 0) {
+                    quick = true;
                     continue;
                 }
                 if (argv[i][0] == '-') {
@@ -138,25 +147,27 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
                 return new SCRetErr ("missing filename parameter");
             }
 
-            // load [-ascii] reader <filename>
+            // load reader <filename>
             if (strcmp (dname, "reader") == 0) {
                 int fd = open (fname, O_RDONLY);
                 if (fd < 0) return new SCRetErr (strerror (errno));
                 pthread_mutex_lock (&this->lock);
                 stoprdrthread ();
                 this->rdrascii = ascii;
+                this->rdrquick = quick;
                 startrdrthread (fd);
                 pthread_mutex_unlock (&this->lock);
                 return NULL;
             }
 
-            // load punch [-ascii] <filename>
+            // load punch <filename>
             if (strcmp (dname, "punch") == 0) {
                 int fd = open (fname, O_WRONLY | O_CREAT, 0666);
                 if (fd < 0) return new SCRetErr (strerror (errno));
                 pthread_mutex_lock (&this->lock);
                 stoppunthread ();
                 this->punascii = ascii;
+                this->punquick = quick;
                 startpunthread (fd);
                 pthread_mutex_unlock (&this->lock);
                 return NULL;
@@ -389,16 +400,18 @@ start:;
         }
 
         // make sure it has been 5mS since last read to give processor time to handle previous char
-        struct timeval nowtv;
-        if (gettimeofday (&nowtv, NULL) < 0) ABORT ();
-        uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
-        uint64_t nextreadat = lastreadat + 1000000/200;  // 200 chars/sec
-        if (nextreadat > now) {
-            pthread_mutex_unlock (&this->lock);
-            usleep (nextreadat - now);
-            goto start;
+        if (! this->rdrquick) {
+            struct timeval nowtv;
+            if (gettimeofday (&nowtv, NULL) < 0) ABORT ();
+            uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
+            uint64_t nextreadat = lastreadat + 1000000/200;  // 200 chars/sec
+            if (nextreadat > now) {
+                pthread_mutex_unlock (&this->lock);
+                usleep (nextreadat - now);
+                goto start;
+            }
+            lastreadat = now;
         }
-        lastreadat = now;
 
         // read char, waiting for one if necessary
         // allow IODevPTape::stoprdrthread() to abort the read by using a select()
@@ -519,15 +532,17 @@ start:;
             pthread_mutex_unlock (&this->lock);
 
             // make sure it has been at least 0.1S since last character printed
-            struct timeval nowtv;
-            gettimeofday (&nowtv, NULL);
-            uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
-            uint64_t nextwriteat = lastwriteat + 1000000/50;    // 50 chars/sec
-            if (nextwriteat > now) {
-                usleep (nextwriteat - now);
-                goto start;
+            if (! this->punquick) {
+                struct timeval nowtv;
+                gettimeofday (&nowtv, NULL);
+                uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
+                uint64_t nextwriteat = lastwriteat + 1000000/50;    // 50 chars/sec
+                if (nextwriteat > now) {
+                    usleep (nextwriteat - now);
+                    goto start;
+                }
+                lastwriteat = now;
             }
-            lastwriteat = now;
 
             // start punching character
             if (! this->punascii || ((this->punbuff &= 0177) != 0)) {
