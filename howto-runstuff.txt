@@ -1,0 +1,28 @@
+
+
+Add -csrclib option to any of the below to run on PC gate-level simulator
+Add -zynqlib option to any of the below to run on Zynq gate-level simulator
+By default, it must be run on a RasPI plugged into full tube board set
+
+
+Random instruction test:
+    cd driver
+    ./raspictl -randmem -mintimes
+
+
+Edusystem-20 Basic:
+    cd edu20c
+    ./runpt.sh
+    ...then telnet raspi 12303 to access first tty
+                         12340 to access second tty
+                         12342 to access third tty
+                         12344 to access fourth tty
+                         12346 to access fifth tty
+
+
+OS/8:
+    cd os8
+    ./ock-boot.sh
+    ...then telnet raspi 12303 to access tty
+
+
