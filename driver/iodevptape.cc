@@ -18,6 +18,9 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
+// paper tape device emulator
+// small computer handbook 1972 p 7-41..43 (261..263)
+
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -82,7 +85,7 @@ void IODevPTape::ioreset ()
 {
     pthread_mutex_lock (&this->lock);
     this->rdrflag = false;
-    this->intenab = false;
+    this->intenab = true;
     this->punflag = false;
     this->punfull = false;
     clrintreqmask (IRQ_PTAPE);
@@ -96,42 +99,71 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("valid sub-commands:");
         puts ("");
-        puts ("  load punch <filename>  - load file to be written as paper tape");
-        puts ("  load reader <filename> - load file to be read as paper tape");
-        puts ("  unload punch           - unload file being written as paper tape");
-        puts ("  unload reader          - unload file being read as paper tape");
+        puts ("  load punch [-ascii] <filename>  - load file to be written as paper tape");
+        puts ("                                    -ascii means discard nulls; strip top bit off");
+        puts ("  load reader [-ascii] <filename> - load file to be read as paper tape");
+        puts ("                                    -ascii means add top bit back on");
+        puts ("  unload punch                    - unload file being written as paper tape");
+        puts ("  unload reader                   - unload file being read as paper tape");
         puts ("");
         return NULL;
     }
 
-    // load reader/punch <filename>
+    // load [-ascii] reader/punch <filename>
     if (strcmp (argv[0], "load") == 0) {
-        if (argc == 3) {
+        if (argc >= 3) {
 
-            // load reader <filename>
-            if (strcmp (argv[1], "reader") == 0) {
-                int fd = open (argv[2], O_RDONLY);
+            bool ascii = false;
+            char const *dname = NULL;
+            char const *fname = NULL;
+            for (int i = 1; i < argc; i ++) {
+                if (strcmp (argv[i], "-ascii") == 0) {
+                    ascii = true;
+                    continue;
+                }
+                if (argv[i][0] == '-') {
+                    return new SCRetErr ("bad option %s", argv[i]);
+                }
+                if (dname == NULL) {
+                    dname = argv[i];
+                    continue;
+                }
+                if (fname == NULL) {
+                    fname = argv[i];
+                    continue;
+                }
+                return new SCRetErr ("extra parameter %s", argv[i]);
+            }
+            if (fname == NULL) {
+                return new SCRetErr ("missing filename parameter");
+            }
+
+            // load [-ascii] reader <filename>
+            if (strcmp (dname, "reader") == 0) {
+                int fd = open (fname, O_RDONLY);
                 if (fd < 0) return new SCRetErr (strerror (errno));
                 pthread_mutex_lock (&this->lock);
                 stoprdrthread ();
+                this->rdrascii = ascii;
                 startrdrthread (fd);
                 pthread_mutex_unlock (&this->lock);
                 return NULL;
             }
 
-            // load punch <filename>
-            if (strcmp (argv[1], "punch") == 0) {
-                int fd = open (argv[2], O_WRONLY | O_CREAT, 0666);
+            // load punch [-ascii] <filename>
+            if (strcmp (dname, "punch") == 0) {
+                int fd = open (fname, O_WRONLY | O_CREAT, 0666);
                 if (fd < 0) return new SCRetErr (strerror (errno));
                 pthread_mutex_lock (&this->lock);
                 stoppunthread ();
+                this->punascii = ascii;
                 startpunthread (fd);
                 pthread_mutex_unlock (&this->lock);
                 return NULL;
             }
         }
 
-        return new SCRetErr ("iodev ptape load reader/punch <filename>");
+        return new SCRetErr ("iodev ptape load [-ascii] reader/punch <filename>");
     }
 
     // unload reader/punch
@@ -240,7 +272,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
         // PPC: start punching a byte
         case 06024: {
             this->punstart ();
-            this->punbuff = input & 0177;
+            this->punbuff = input & 0377;
             this->punfull = true;
             pthread_cond_broadcast (&this->puncond);
             break;
@@ -250,7 +282,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
         //      copy accum to punch buffer, initiate output, reset punch flag
         case 06026: {
             this->punstart ();
-            this->punbuff = input & 0177;
+            this->punbuff = input & 0377;
             this->punfull = true;
             this->punflag = false;
             pthread_cond_broadcast (&this->puncond);
@@ -267,7 +299,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
 void IODevPTape::rdrstart ()
 {
     if (! this->rdrrun && ! this->rdrwarn) {
-        fprintf (stderr, "IODevPTape::rdrstart: waiting for ptape load - iodev ptape load reader <filename>\n");
+        fprintf (stderr, "IODevPTape::rdrstart: waiting for ptape load - iodev ptape load reader [-ascii] <filename>\n");
         this->rdrwarn = true;
     }
 }
@@ -396,6 +428,7 @@ start:;
         }
 
         // set flag saying there is a character ready and maybe request interrupt
+        if (this->rdrascii) this->rdrbuff |= 0200;
         this->rdrnext = false;
         this->rdrflag = true;
         updintreq ();
@@ -408,7 +441,7 @@ done:;
 void IODevPTape::punstart ()
 {
     if (! this->punrun && ! this->punwarn) {
-        fprintf (stderr, "IODevPTape::punstart: waiting for ptape load - iodev ptape load punch <filename>\n");
+        fprintf (stderr, "IODevPTape::punstart: waiting for ptape load - iodev ptape load punch [-ascii] <filename>\n");
         this->punwarn = true;
     }
 }
@@ -497,11 +530,13 @@ start:;
             lastwriteat = now;
 
             // start punching character
-            int rc = write (this->punfd, &this->punbuff, 1);
-            if (rc == 0) errno = EPIPE;
-            if (rc <= 0) {
-                fprintf (stderr, "IODevPTape::punthread: write error: %m\n");
-                ABORT ();
+            if (! this->punascii || ((this->punbuff &= 0177) != 0)) {
+                int rc = write (this->punfd, &this->punbuff, 1);
+                if (rc == 0) errno = EPIPE;
+                if (rc <= 0) {
+                    fprintf (stderr, "IODevPTape::punthread: write error: %m\n");
+                    ABORT ();
+                }
             }
 
             // clear flag saying we are punching something
@@ -517,9 +552,9 @@ start:;
 void IODevPTape::updintreq ()
 {
     if (this->intenab & (this->rdrflag | this->punflag)) {
-        setintreqmask (IRQ_TTYKBPR);
+        setintreqmask (IRQ_PTAPE);
     } else {
-        clrintreqmask (IRQ_TTYKBPR,
+        clrintreqmask (IRQ_PTAPE,
             (this->rsfwait & this->rdrflag) |
             (this->psfwait & this->punflag));
     }

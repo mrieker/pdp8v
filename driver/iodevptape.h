@@ -32,18 +32,19 @@ struct IODevPTape : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
 private:
-    bool intenab;
-    bool psfwait;
-    bool punflag;
-    bool punfull;
-    bool punrun;
+    bool intenab;       // interrupts enabled
+    bool psfwait;       // waiting on optimized PSF
+    bool punascii;      // punch file is ascii format
+    bool punflag;       // punch ready to accept next byte
+    bool punfull;       // punch busy punching a byte
+    bool punrun;        // punch thread running
     bool punwarn;
-    bool rdrflag;
-    bool rdrinprog;
-    bool rdrnext;
-    bool rdrrun;
+    bool rdrascii;      // reader file is ascii format
+    bool rdrflag;       // reader has byte ready to read
+    bool rdrnext;       // reader should read next byte
+    bool rdrrun;        // reader thread running
     bool rdrwarn;
-    bool rsfwait;
+    bool rsfwait;       // waiting on optimized RSF
     int punfd;
     int rdrfd;
     uint8_t punbuff;
