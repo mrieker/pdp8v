@@ -947,6 +947,11 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 return TCL_OK;
             }
 
+            if (strcmp (opname, "printfile") == 0) {
+                Tcl_SetObjResult (interp, Tcl_NewStringObj (shadow.printname, -1));
+                return TCL_OK;
+            }
+
             if (strcmp (opname, "stopats") == 0) {
                 Tcl_Obj *stopatobjs[numstopats];
                 for (int i = 0; i < numstopats; i ++) {
@@ -985,6 +990,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("  mintimes   - print cycle count every minute");
         puts ("  os8zap     - zap the os8 delay loop");
         puts ("  paddles    - verify paddles at end of each cycle");
+        puts ("  printfile  - specify file (or - for stdout) for printinstr, printstate");
         puts ("  printinstr - print each instruction executed");
         puts ("  printstate - print each cycle executed");
         puts ("  quiet      - don't print illegal instruction messages");
@@ -1076,6 +1082,25 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 }
                 return rc;
             }
+
+            if (strcmp (opname, "printfile") == 0) {
+                char const *name = Tcl_GetString (objv[3]);
+                FILE *file = stdout;
+                if (strcmp (name, "-") != 0) {
+                    file = fopen (name, "w");
+                    if (file == NULL) {
+                        Tcl_SetResultF (interp, "%m");
+                        return TCL_ERROR;
+                    }
+                }
+                if (shadow.printfile != stdout) {
+                    fclose (shadow.printfile);
+                }
+                shadow.printname = name;
+                shadow.printfile = file;
+                return TCL_OK;
+            }
+
 
             if (strcmp (opname, "watchwrite") == 0) {
                 int val;

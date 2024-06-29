@@ -75,6 +75,8 @@ struct Shadow {
     bool paddles;
     bool printinstr;
     bool printstate;
+    char const *printname;
+    FILE *printfile;
 
     Shadow ();
     void open (GpioLib *gpiolib);

@@ -24,9 +24,9 @@
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
- *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printinstr]
- *          [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt] [-startpc <address>] [-stopat <address>]
- *          [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printfile <filename>
+ *          [-printinstr] [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt] [-startpc <address>]
+ *          [-stopat <address>] [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -46,6 +46,7 @@
  *      -os8zap      : zap out the OS/8 ISZ/JMP delay loop
  *      -paddles     : check ABCD paddles each cycle
  *      -pipelib     : simulate via pipe connected to NetGen
+ *      -printfile   : specify file for -printinstr -printstate output
  *      -printinstr  : print message at beginning of each instruction
  *      -printstate  : print message at beginning of each state
  *      -quiet       : don't print undefined/unsupported opcode/os8zap messages
@@ -180,6 +181,9 @@ int main (int argc, char **argv)
     startpc = 0xFFFFU;
     watchwrite = -1;
 
+    shadow.printname = "-";
+    shadow.printfile = stdout;
+
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-binloader") == 0) {
             binldr = true;
@@ -259,6 +263,28 @@ int main (int argc, char **argv)
             nohwlib = false;
             pipelib = true;
             zynqlib = false;
+            continue;
+        }
+        if (strcasecmp (argv[i], "-printfile") == 0) {
+            if ((++ i > argc) || ((argv[i][0] == '-') && (argv[i][0] != 0))) {
+                fprintf (stderr, "raspictl: missing filename after -printfile\n");
+                return 1;
+            }
+            if (shadow.printfile != stdout) {
+                fclose (shadow.printfile);
+                shadow.printfile = NULL;
+            }
+            shadow.printname = argv[i];
+            if (strcmp (shadow.printname, "-") == 0) {
+                shadow.printfile = stdout;
+            } else {
+                shadow.printfile = fopen (shadow.printname, "w");
+                if (shadow.printfile == NULL) {
+                    fprintf (stderr, "raspictl: error creating %s: %m\n", shadow.printname);
+                    return 1;
+                }
+                setlinebuf (shadow.printfile);
+            }
             continue;
         }
         if (strcasecmp (argv[i], "-printinstr") == 0) {

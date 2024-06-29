@@ -47,6 +47,8 @@ Shadow::Shadow ()
 {
     printinstr = false;
     printstate = false;
+    printfile  = NULL;
+    printname  = NULL;
 }
 
 // gpiolib = instance of PhysLib: verify physical cpu board
@@ -72,7 +74,7 @@ void Shadow::reset ()
     INCCYCLE;
 
     if (printstate) {
-        printf ("%c%8llu STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
+        fprintf (printfile, "%c%8llu STARTING STATE RESET   L=%d AC=%04o PC=%04o IR=%04o MA=%04o\n",
             (r.tsaver ? '#' : ' '), (LLU) cycle, r.link, r.ac, r.pc, r.ir, r.ma);
         pthread_mutex_lock (&gpiolib->trismutex);
         gpiolib->numtrisoff = 0;
@@ -238,7 +240,7 @@ void Shadow::clock (uint32_t sample)
                 }
                 ASSERT (ptr < buf + sizeof buf - 1);
                 strcpy (ptr, "\n");
-                fputs (buf, stdout);
+                fputs (buf, printfile);
             }
             r.pc = (r.pc + 1) & 07777;
             if ((r.ir < 06000) && (r.ir & 00400)) {
@@ -448,7 +450,7 @@ void Shadow::clock (uint32_t sample)
             checkgpio (sample, G_DENA | G_IAK | G_WRITE | 0);
             if (printinstr) {
                 uint16_t xpc = memext.iframe | r.pc;
-                printf ("%c%8llu L=%d AC=%04o PC=%05o           INTERRUPT\n",
+                fprintf (printfile, "%c%8llu L=%d AC=%04o PC=%05o           INTERRUPT\n",
                         (r.tsaver ? '#' : ' '), (LLU) cycle, r.link, r.ac, xpc);
             }
             r.ma = 0;
