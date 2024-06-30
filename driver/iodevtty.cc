@@ -489,7 +489,7 @@ void IODevTTY::tcpthread ()
         ASSERT (this->kbfd < 0);
 
         // stop printer thread and close channel
-        if (this->prfd >= 0) {
+        if (! this->stopping && (this->prfd >= 0)) {
 
             // replace tcp connection with /dev/null so poll() will complete immediately if it hasn't started yet
             int nullfd = open ("/dev/null", O_RDWR);
@@ -499,6 +499,7 @@ void IODevTTY::tcpthread ()
 
             // wake prthread() out of pthread_cond_wait() if it is in one or just about to
             pthread_cond_broadcast (&this->prcond);
+            this->stopping = true;
             pthread_mutex_unlock (&this->lock);
 
             // break it out of poll() if it is in one for the actual tcp connection
@@ -511,6 +512,10 @@ void IODevTTY::tcpthread ()
 
             // it should have closed its fd
             ASSERT (this->prfd < 0);
+            this->stopping = false;
+
+            // tell anyone who cares that threads have exited
+            pthread_cond_broadcast (&this->prcond);
         }
     }
 done:;
