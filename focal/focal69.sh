@@ -1,11 +1,10 @@
-#!/bin/bash -v
+#!/bin/bash
 #
 #  run focal-69 interpreter
 #  initial prompt is a single '*'
-#  put CAPS LOCK on as it won't parse lower-case letters
-#  useful even if given '-cpuhz 5000'
 #
-#  ./focal69.sh -nohw -cpuhz 5000 -mintimes
+#  ./focal69.sh                              - run on tubes
+#  ./focal69.sh [-csrclib/-nohwlib/-zynqlib] - run on various simulators
 #
 #   *1.10 ASK "HOW MUCH BORROW? ",PRIN
 #   *1.20 ASK "HOW MANY YEARS? ",TERM
@@ -31,9 +30,4 @@
 #   RATE=   10.0000  INTEREST=  500.0000
 #   *
 #
-export iodevptaperdr=
-export iodevptaperdr_debug=0
-export iodevtty=/dev/pts/2
-export iodevtty_debug=0
-export switchregister=0
-exec ../driver/raspictl -binloader -haltstop -startpc 200 "$@" $MAINDECOPTS bins/focal69.bin
+exec ../driver/raspictl "$@" -script focal69.tcl

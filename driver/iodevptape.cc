@@ -109,6 +109,7 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         puts ("           -ascii : add top bit back on");
         puts ("           -quick : minimal delay between bytes; else 200 bytes/second");
         puts ("  punch leader  - punch 64 null bytes (even if -ascii)");
+        puts ("  reader status - return reader status");
         puts ("  unload punch  - unload file being written as paper tape");
         puts ("  unload reader - unload file being read as paper tape");
         puts ("");
@@ -200,6 +201,28 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev ptape punch leader");
     }
 
+    // reader status
+    if (strcmp (argv[0], "reader") == 0) {
+        if ((argc == 2) && (strcmp (argv[1], "status") == 0)) {
+            pthread_mutex_lock (&this->lock);
+            int fd = this->rdrfd;
+            LLU pos = (fd < 0) ? 0 : (LLU) lseek (this->rdrfd, 0, SEEK_CUR);
+            char name[4000];
+            name[0] = 0;
+            if (fd >= 0) {
+                char link[30];
+                snprintf (link, sizeof link, "/proc/self/fd/%d", fd);
+                int rc = readlink (link, name, sizeof name - 1);
+                if (rc < 0) rc = 0;
+                if (rc > (int) sizeof name - 1) rc = sizeof name - 1;
+                name[rc] = 0;
+            }
+            pthread_mutex_unlock (&this->lock);
+            return new SCRetStr ("fd=%d;pos=%llu;fn=%s", fd, pos, name);
+        }
+        return new SCRetErr ("iodev ptape reader status");
+    }
+
     // unload reader/punch
     if (strcmp (argv[0], "unload") == 0) {
         if (argc == 2) {
@@ -224,7 +247,7 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev ptape unload reader/punch");
     }
 
-    return new SCRetErr ("unknown ptape command %s - valid: help load unload", argv[0]);
+    return new SCRetErr ("unknown ptape command %s - valid: help load punch reader unload", argv[0]);
 }
 
 // process paper tape I/O instruction

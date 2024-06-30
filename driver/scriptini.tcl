@@ -97,5 +97,12 @@ proc helpini {} {
     puts ""
 }
 
+# set default skipopt,tubesaver modes
+# can be overridden by envars or subsequent option set commands
+set ontubes [expr {[gpio libname] == "physlib"}]    ;# 1=tubes; 0=simulator
+option set skipopt [getenv skipopt 1]               ;# optimize IOSKIP/JMP.-1 to act like halt
+option set tubesaver [getenv tubesaver $ontubes]    ;# for tubes, cycle random opcodes/data for halts
+puts "scriptini.tcl: ontubes=$ontubes skipopt=[option get skipopt] tubesaver=[option get tubesaver]"
+
 # message displayed before first interactive prompt
 return "  also, 'helpini' will print help for scriptini.tcl commands"

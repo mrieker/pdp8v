@@ -20,6 +20,12 @@ Edusystem-20 Basic:
                          12346 to access fifth tty
 
 
+Focal-69:
+    cd focal
+    ./focal69.sh
+    ...then telnet raspi 12303 to access tty
+
+
 OS/8:
     cd os8
     ./ock-boot.sh

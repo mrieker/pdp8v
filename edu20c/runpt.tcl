@@ -1,7 +1,3 @@
-set ontubes [expr {[gpio libname] == "physlib"}]    ;# 1=tubes; 0=simulator
-option set skipopt [getenv skipopt 1]               ;# optimize IOSKIP/JMP.-1 to act like halt
-option set tubesaver [getenv tubesaver $ontubes]    ;# for tubes, cycle random opcodes/data for halts
-puts "ontubes=$ontubes skipopt=[option get skipopt] tubesaver=[option get tubesaver]"
 option set quiet 1                                  ;# suppress 'unsupported i/o opcode 6634,6674' messages
 swreg 0                                             ;# set switchregister to 0
 iodev tty lcucin 1                                  ;# convert lowercase to uppercase on input
@@ -16,7 +12,7 @@ run
 puts ""
 puts "  telnet into 12303,12340,12342,12344,12346"
 puts ""
-puts "  enter 'exit' command when done"
+puts "  enter 'exit' command here when done"
 puts ""
 puts "  takes about 50sec to get question prompts on telnet 12303 port"
 puts "  example answers to questions for 3 terminals (12303,12340,12342):"
