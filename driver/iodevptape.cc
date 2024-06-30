@@ -99,82 +99,105 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("valid sub-commands:");
         puts ("");
-        puts ("  load punch [-ascii] [-quick] <filename>");
+        puts ("  load punch [-append] [-ascii] [-quick] <filename>");
         puts ("       - load file to be written as paper tape");
+        puts ("          -append : append to possibly exsting file");
         puts ("           -ascii : discard nulls; strip top bit off");
         puts ("           -quick : minimal delay between bytes; else 50 bytes/second");
         puts ("  load reader [-ascii] [-quick] <filename>");
         puts ("       - load file to be read as paper tape");
         puts ("           -ascii : add top bit back on");
         puts ("           -quick : minimal delay between bytes; else 200 bytes/second");
+        puts ("  punch leader  - punch 64 null bytes (even if -ascii)");
         puts ("  unload punch  - unload file being written as paper tape");
         puts ("  unload reader - unload file being read as paper tape");
         puts ("");
         return NULL;
     }
 
-    // load [-ascii] [-quick] reader/punch <filename>
+    // load [-append] [-ascii] [-quick] reader/punch <filename>
     if (strcmp (argv[0], "load") == 0) {
-        if (argc >= 3) {
-
-            bool ascii = false;
-            bool quick = false;
-            char const *dname = NULL;
-            char const *fname = NULL;
-            for (int i = 1; i < argc; i ++) {
-                if (strcmp (argv[i], "-ascii") == 0) {
-                    ascii = true;
-                    continue;
-                }
-                if (strcmp (argv[i], "-quick") == 0) {
-                    quick = true;
-                    continue;
-                }
-                if (argv[i][0] == '-') {
-                    return new SCRetErr ("bad option %s", argv[i]);
-                }
-                if (dname == NULL) {
-                    dname = argv[i];
-                    continue;
-                }
-                if (fname == NULL) {
-                    fname = argv[i];
-                    continue;
-                }
-                return new SCRetErr ("extra parameter %s", argv[i]);
+        bool append = false;
+        bool ascii  = false;
+        bool quick  = false;
+        char const *dname = NULL;
+        char const *fname = NULL;
+        for (int i = 1; i < argc; i ++) {
+            if (strcmp (argv[i], "-append") == 0) {
+                append = true;
+                continue;
+            }
+            if (strcmp (argv[i], "-ascii") == 0) {
+                ascii = true;
+                continue;
+            }
+            if (strcmp (argv[i], "-quick") == 0) {
+                quick = true;
+                continue;
+            }
+            if (argv[i][0] == '-') goto loadusage;
+            if (dname == NULL) {
+                dname = argv[i];
+                continue;
             }
             if (fname == NULL) {
-                return new SCRetErr ("missing filename parameter");
+                fname = argv[i];
+                continue;
             }
+            goto loadusage;
+        }
+        if (fname == NULL) goto loadusage;
 
-            // load reader <filename>
-            if (strcmp (dname, "reader") == 0) {
-                int fd = open (fname, O_RDONLY);
-                if (fd < 0) return new SCRetErr (strerror (errno));
-                pthread_mutex_lock (&this->lock);
-                stoprdrthread ();
-                this->rdrascii = ascii;
-                this->rdrquick = quick;
-                startrdrthread (fd);
-                pthread_mutex_unlock (&this->lock);
-                return NULL;
-            }
-
-            // load punch <filename>
-            if (strcmp (dname, "punch") == 0) {
-                int fd = open (fname, O_WRONLY | O_CREAT, 0666);
-                if (fd < 0) return new SCRetErr (strerror (errno));
-                pthread_mutex_lock (&this->lock);
-                stoppunthread ();
-                this->punascii = ascii;
-                this->punquick = quick;
-                startpunthread (fd);
-                pthread_mutex_unlock (&this->lock);
-                return NULL;
-            }
+        // load reader <filename>
+        if (strcmp (dname, "reader") == 0) {
+            int fd = open (fname, O_RDONLY);
+            if (fd < 0) return new SCRetErr (strerror (errno));
+            pthread_mutex_lock (&this->lock);
+            stoprdrthread ();
+            this->rdrascii = ascii;
+            this->rdrquick = quick;
+            startrdrthread (fd);
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
         }
 
-        return new SCRetErr ("iodev ptape load [-ascii] reader/punch <filename>");
+        // load punch <filename>
+        if (strcmp (dname, "punch") == 0) {
+            int flags = O_WRONLY | O_CREAT | O_APPEND;
+            if (! append) flags |= O_TRUNC;
+            int fd = open (fname, flags, 0666);
+            if (fd < 0) return new SCRetErr (strerror (errno));
+            pthread_mutex_lock (&this->lock);
+            stoppunthread ();
+            this->punascii = ascii;
+            this->punquick = quick;
+            startpunthread (fd);
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
+
+    loadusage:;
+        return new SCRetErr ("iodev ptape load reader/punch [-append] [-ascii] [-quick] <filename>");
+    }
+
+    // punch leader
+    if (strcmp (argv[0], "punch") == 0) {
+        if ((argc == 2) && (strcmp (argv[1], "leader") == 0)) {
+            char leader[64];
+            memset (leader, 0, sizeof leader);
+            pthread_mutex_lock (&this->lock);
+            for (int i = 0; i < (int) sizeof leader;) {
+                int rc = write (this->punfd, leader, sizeof leader - i);
+                if (rc <= 0) {
+                    pthread_mutex_unlock (&this->lock);
+                    return new SCRetErr (strerror ((rc == 0) ? EPIPE : errno));
+                }
+                i += rc;
+            }
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
+        return new SCRetErr ("iodev ptape punch leader");
     }
 
     // unload reader/punch
@@ -454,7 +477,7 @@ done:;
 void IODevPTape::punstart ()
 {
     if (! this->punrun && ! this->punwarn) {
-        fprintf (stderr, "IODevPTape::punstart: waiting for ptape load - iodev ptape load punch [-ascii] <filename>\n");
+        fprintf (stderr, "IODevPTape::punstart: waiting for ptape load - iodev ptape load punch [-append] [-ascii] <filename>\n");
         this->punwarn = true;
     }
 }
@@ -516,10 +539,15 @@ void *IODevPTape::punthreadwrap (void *zhis)
 
 void IODevPTape::punthread ()
 {
+    bool printedbusy = false;
     uint64_t lastwriteat = 0;
+
 start:;
     pthread_mutex_lock (&this->lock);
     while (this->punrun) {
+        struct timespec nowts;
+        if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+        uint64_t nowns = (uint64_t) nowts.tv_sec * 1000000000 + nowts.tv_nsec;
 
         // wait for processor to put a character in buffer
         if (! this->punfull) {
@@ -527,21 +555,39 @@ start:;
             // nothing to punch, say we are ready to punch
             this->punflag = true;
             updintreq ();
-            pthread_cond_wait (&this->puncond, &this->lock);
+
+            // wait for something to punch
+            if (printedbusy) {
+                uint64_t endns = lastwriteat + 3000000000U;
+                if (nowns >= endns) {
+                    printedbusy = false;
+                    LLU sofar = (LLU) lseek (this->punfd, 0, SEEK_CUR);
+                    fprintf (stderr, "IODevPTape::punthread: paused (%llu byte%s so far)\n", sofar, ((sofar == 1) ? "" : "s"));
+                } else {
+                    struct timespec endts;
+                    endts.tv_sec  = endns / 1000000000U;
+                    endts.tv_nsec = endns % 1000000000U;
+                    pthread_cond_timedwait (&this->puncond, &this->lock, &endts);
+                }
+            } else {
+                pthread_cond_wait (&this->puncond, &this->lock);
+            }
         } else {
             pthread_mutex_unlock (&this->lock);
 
-            // make sure it has been at least 0.1S since last character printed
+            // make sure it has been at least 20mS since last character printed
             if (! this->punquick) {
-                struct timeval nowtv;
-                gettimeofday (&nowtv, NULL);
-                uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
-                uint64_t nextwriteat = lastwriteat + 1000000/50;    // 50 chars/sec
-                if (nextwriteat > now) {
-                    usleep (nextwriteat - now);
+                uint64_t nextwriteat = lastwriteat + 1000000000/50; // 50 chars/sec
+                if (nextwriteat > nowns) {
+                    usleep ((nextwriteat - nowns + 999) / 1000);
                     goto start;
                 }
-                lastwriteat = now;
+            }
+            lastwriteat = nowns;
+
+            if (! printedbusy) {
+                printedbusy = true;
+                fprintf (stderr, "IODevPTape::punthread: punching...\n");
             }
 
             // start punching character
