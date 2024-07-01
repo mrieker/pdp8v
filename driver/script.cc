@@ -1212,7 +1212,7 @@ static int cmd_stepcyc (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
 
 // tell processor to step one instruction
 // - tells raspictl main to clock the processor a single cycle
-// - halts at the end of the next FETCH2 cycle
+// - halts at the end of the next FETCH2 or INTAK1 cycle
 static int cmd_stepins (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     if (! ctl_stepins ()) {

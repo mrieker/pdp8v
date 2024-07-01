@@ -32,7 +32,7 @@
 
 struct Shadow {
     enum State {
-        FETCH1 = 0x00,
+        FETCH1 = 0x00,  // copied by GUI.java
         FETCH2 = 0x01,
         DEFER1 = 0x02,
         DEFER2 = 0x03,

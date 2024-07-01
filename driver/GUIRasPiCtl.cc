@@ -147,15 +147,18 @@ JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepcyc (JNIEnv *env, jclass klass)
     return ctl_stepcyc ();
 }
 
+// returns:
+//   true = was halted, stepped to FETCH2 or INTAK1, now halted again
+//  false = was running, not stepped, still running
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepins (JNIEnv *env, jclass klass)
+{
+    return ctl_stepins ();
+}
+
 JNIEXPORT jstring JNICALL Java_GUIRasPiCtl_disassemble (JNIEnv *env, jclass klass, jint ir, jint pc)
 {
     char const *io = iodisas (ir);
-    if (io != NULL) {
-        char buf[20];
-        snprintf (buf, sizeof buf, "%04o/%s", ir, io);
-        buf[19] = 0;
-        return env->NewStringUTF (buf);
-    }
+    if (io != NULL) return env->NewStringUTF (io);
     std::string str = disassemble (ir, pc);
     return env->NewStringUTF (str.c_str ());
 }

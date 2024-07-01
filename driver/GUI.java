@@ -1,14 +1,34 @@
+//    Copyright (C) Mike Rieker, Beverly, MA USA
+//    www.outerworldapps.com
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; version 2 of the License.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    EXPECT it to FAIL when someone's HeALTh or PROpeRTy is at RISk.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+//    http://www.gnu.org/licenses/gpl-2.0.html
 
 // GUI panel wrapper for raspictl
 
-// ./GUI.sh -cpuhz 1000 -randmem -printinstr
+// ./guiraspictl -randmem -printinstr
+// ./guiraspictl ../silly/doubleroll.oct
 // runs raspictl by calling its main() in a thread
 
 // can also do client/server:
 //  on raspi:
-//   ./GUI.sh -listen 1234
+//   ./guiraspictl -listen 1234
 //  on homepc:
-//   ./GUI.sh -connect raspi:1234 -cpuhz 1000 -randmem -printinstr
+//   ./guiraspictl -connect raspi:1234 -randmem -printinstr
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -63,6 +83,13 @@ public class GUI extends JPanel {
 
     public final static int G_DATA0 = G_DATA & - G_DATA;    // lowest bit of G_DATA
 
+    public final static int ST_FETCH1 = 0x00;       // from shadow.h
+    public final static int ST_FETCH2 = 0x01;
+    public final static int ST_INTAK1 = 0x08;
+
+    public final static int disasmlen = 21;
+    public final static String nuldisasm = "                     ";
+
     // access the processor one way or another
     public abstract static class IAccess {
         public int     acl;
@@ -77,7 +104,7 @@ public class GUI extends JPanel {
 
         public abstract void run ();
         public abstract void halt ();
-        public abstract void cycle ();
+        public abstract void cycle (boolean ins);
         public abstract void sample ();
         public abstract void setsr (int sr);
         public abstract int rdmem (int addr);
@@ -166,9 +193,8 @@ public class GUI extends JPanel {
         writeswitches (srint);
         access.setsr (srint);
 
-        // update display at UPDMS rate
-        Timer updatetimer = new Timer (UPDMS, updisplay);
-        updatetimer.start ();
+        // set initial display to match processor
+        updisplay.actionPerformed (null);
     }
 
     //////////////
@@ -210,7 +236,8 @@ public class GUI extends JPanel {
                     break;
                 }
                 case CB_CYCLE: {
-                    access.cycle ();
+                    int ins = istream.read ();
+                    access.cycle (ins != 0);
                     break;
                 }
                 case CB_SAMPLE: {
@@ -364,10 +391,11 @@ public class GUI extends JPanel {
         }
 
         @Override
-        public void cycle ()
+        public void cycle (boolean ins)
         {
             try {
                 ostream.write (CB_CYCLE);
+                ostream.write ((byte)(ins ? 1 : 0));
             } catch (Exception e) {
                 e.printStackTrace ();
                 System.exit (1);
@@ -497,9 +525,11 @@ public class GUI extends JPanel {
         }
 
         @Override
-        public void cycle ()
+        public void cycle (boolean ins)
         {
-            while (! GUIRasPiCtl.stepcyc ()) GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.sethalt (true);
+            if (ins) GUIRasPiCtl.stepins ();
+                else GUIRasPiCtl.stepcyc ();
         }
 
         @Override
@@ -577,7 +607,7 @@ public class GUI extends JPanel {
     public static LED gpioiosled;
     public static LED gpioresled;
     public static LED gpioclkled;
-    public static LED[] gpioldleds = new LED[13];
+    public static LED[] mbleds = new LED[13];
 
     public static LED linkled;
     public static LED[] acleds = new LED[12];
@@ -600,7 +630,6 @@ public class GUI extends JPanel {
             @Override
             public void actionPerformed (ActionEvent ae)
             {
-
                 // read values from raspictl (either directly or via tcp)
                 access.sample ();
                 int     acl  = access.acl;
@@ -627,7 +656,7 @@ public class GUI extends JPanel {
                 gpioresled.setOn ((gpio & G_RESET) != 0);
                 gpioclkled.setOn ((gpio & G_CLOCK) != 0);
 
-                writedbleds (gpio / G_DATA0);
+                writembleds (gpio / G_DATA0);
 
                 linkled.setOn ((acl & 010000) != 0);
                 for (int i = 0; i < 12; i ++) {
@@ -655,7 +684,22 @@ public class GUI extends JPanel {
                     cyclecntlabel.setText (String.format ("%,9d   ", cycs));
                 }
 
-                disassemlabel.setText (st == 0 ? nulldisasm : padDisasm ("   " + GUIRasPiCtl.disassemble (ir, pc)));
+                String dis = nuldisasm;
+                if (st != ST_FETCH1) {
+                    dis = GUIRasPiCtl.disassemble (ir, pc);
+                    String oct = Integer.toOctalString (ir);
+                    int octlen = oct.length ();
+                    if (octlen < 4) oct = "0000".substring (octlen) + oct;
+                    int len = dis.length () + 7;
+                    if (len < disasmlen) {
+                        dis = "  " + oct + ':' + dis + nuldisasm.substring (len);
+                    } else if (len == disasmlen) {
+                        dis = "  " + oct + ':' + dis;
+                    } else {
+                        dis = "  " + oct + ':' + dis.substring (0, disasmlen - 7);
+                    }
+                }
+                disassemlabel.setText (dis);
             }
         };
 
@@ -742,12 +786,12 @@ public class GUI extends JPanel {
         // row 2 - gpio link/data bits
         bits1412.add (new JLabel (""));
         bits1412.add (new JLabel (""));
-        bits1412.add (gpioldleds[0] = new LED ());
-        for (int i =  1; i <  4; i ++) bits1109.add (gpioldleds[i] = new LED ());
-        for (int i =  4; i <  7; i ++) bits0806.add (gpioldleds[i] = new LED ());
-        for (int i =  7; i < 10; i ++) bits0503.add (gpioldleds[i] = new LED ());
-        for (int i = 10; i < 13; i ++) bits0200.add (gpioldleds[i] = new LED ());
-        bit_1.add (new JLabel ("DB"));
+        bits1412.add (mbleds[0] = new LED ());
+        for (int i =  1; i <  4; i ++) bits1109.add (mbleds[i] = new LED ());
+        for (int i =  4; i <  7; i ++) bits0806.add (mbleds[i] = new LED ());
+        for (int i =  7; i < 10; i ++) bits0503.add (mbleds[i] = new LED ());
+        for (int i = 10; i < 13; i ++) bits0200.add (mbleds[i] = new LED ());
+        bit_1.add (new JLabel ("MB"));
 
         // row 3 - link and AC
         bits1412.add (new JLabel (""));
@@ -825,8 +869,7 @@ public class GUI extends JPanel {
         buttonbox1.add (stepcyclebutton = new StepCycleButton ());
         buttonbox1.add (stepinstrbutton = new StepInstrButton ());
 
-        nulldisasm = padDisasm ("");
-        disassemlabel = new JLabel (nulldisasm);
+        disassemlabel = new JLabel (nuldisasm);
         disassemlabel.setFont (new Font (Font.MONOSPACED, Font.PLAIN, disassemlabel.getFont ().getSize ()));
         buttonbox1.add (disassemlabel);
 
@@ -849,22 +892,7 @@ public class GUI extends JPanel {
         return jl;
     }
 
-    public static int disasmlen = 20;
-    public static String nulldisasm;
-
-    public static String padDisasm (String disasm)
-    {
-        int len = disasm.length ();
-        if (disasmlen <= len) {
-            disasmlen = len;
-            nulldisasm = padDisasm ("");
-        } else {
-            do disasm += ' ';
-            while (++ len < disasmlen);
-        }
-        return disasm;
-    }
-
+    // read 15-bit value from SR (switch register) leds
     public static int readswitches ()
     {
         int sr = 0;
@@ -875,6 +903,7 @@ public class GUI extends JPanel {
         return sr;
     }
 
+    // write 15-bit value to SR (switch register) leds
     public static void writeswitches (int sr)
     {
         for (int i = 0; i < 15; i ++) {
@@ -883,6 +912,7 @@ public class GUI extends JPanel {
         }
     }
 
+    // write 15-bit value to MA (memory address) leds
     public static void writemaleds (int maval)
     {
         for (int i = 0; i < 15; i ++) {
@@ -890,16 +920,17 @@ public class GUI extends JPanel {
         }
     }
 
-    public static void writedbleds (int dbval)
+    // write 13-bit value to MB (memory buffer/gpio link,data) leds
+    public static void writembleds (int mbval)
     {
         for (int i = 0; i < 13; i ++) {
-            gpioldleds[i].setOn ((dbval & (010000 >> i)) != 0);
+            mbleds[i].setOn ((mbval & (010000 >> i)) != 0);
         }
     }
 
     public static class LED extends JPanel {
-        public final static int P = 5;
-        public final static int D = 20;
+        public final static int P = 5;  // padding
+        public final static int D = 20; // diameter
 
         private boolean ison;
 
@@ -975,36 +1006,59 @@ public class GUI extends JPanel {
     }
 
     private static class HaltRunButton extends JButton implements ActionListener {
-        private boolean halted;         //  true: processor is known to be halted
-                                        //        button says RUN to get it going
-                                        // false: processor is known to be running
-                                        //        button says HALT to halt it
+        private Timer updatetimer;      // null: processor is known to be halted
+                                        //       button says RUN to get it going
+                                        // else: processor is known to be running
+                                        //       button says HALT to halt it
 
         public HaltRunButton ()
         {
-            super ("HALT");
+            super ("RUN");
             addActionListener (this);
         }
 
-        // processor state might have changed, maybe update button
+        // called by updatetimer
         public void setHalt (boolean halt)
         {
-            if (halted != halt) {
-                halted = halt;
-                setText (halted ? "RUN" : "HALT");
-            }
+            // processor may have halted on its own (like from a stopat address), so update button
+            if (halt && (updatetimer != null)) haltClicked ();
         }
 
         @Override  // ActionListener
         public void actionPerformed (ActionEvent ae)
         {
-            // change the processor state
-            // the update timer will update this button by calling setHalt()
-            if (halted) {
-                access.run ();
+            if (updatetimer == null) {
+                runClicked ();
             } else {
-                access.halt ();
+                haltClicked ();
             }
+        }
+
+        private void runClicked ()
+        {
+            setText ("HALT");
+
+            // tell raspictl main() thread to start/resume clocking tubes
+            access.run ();
+
+            // update display at UPDMS rate
+            updatetimer = new Timer (UPDMS, updisplay);
+            updatetimer.start ();
+        }
+
+        private void haltClicked ()
+        {
+            setText ("RUN");
+
+            // tell raspictl main() thread to stop clocking tubes and wait for it to stop
+            access.halt ();
+
+            // shut off timer while halted so it doesn't interfere with LDADDR/DEP/EXAM buttons
+            updatetimer.stop ();
+            updatetimer = null;
+
+            // make sure we get a final display update
+            updisplay.actionPerformed (null);
         }
     }
 
@@ -1018,7 +1072,7 @@ public class GUI extends JPanel {
         @Override  // ActionListener
         public void actionPerformed (ActionEvent ae)
         {
-            access.cycle ();
+            access.cycle (false);
             updisplay.actionPerformed (null);
         }
     }
@@ -1040,11 +1094,8 @@ public class GUI extends JPanel {
         @Override  // Runnable
         public void run ()
         {
-            access.cycle ();
+            access.cycle (true);
             updisplay.actionPerformed (null);
-            if (access.st != 0x01) {  // FETCH2
-                SwingUtilities.invokeLater (this);
-            }
         }
     }
 
@@ -1086,7 +1137,7 @@ public class GUI extends JPanel {
             }
             writemaleds (loadedaddress);
             int data = access.rdmem (loadedaddress);
-            writedbleds (data);
+            writembleds (data);
             autoincloadedaddress = -1;
         }
     }
@@ -1105,9 +1156,9 @@ public class GUI extends JPanel {
                 loadedaddress = (loadedaddress + 1) & 077777;
             }
             writemaleds (loadedaddress);
-            int data = readswitches () & 077777;
+            int data = readswitches () & 07777;
             int rc = access.wrmem (loadedaddress, data);
-            writedbleds (data);
+            writembleds (data);
             autoincloadedaddress = 1;
         }
     }

@@ -21,7 +21,7 @@
 
 	. = 00000
 	.word	.-.
-	jmpi	_intserv
+	jmp	intserv
 
 	. = 00002
 h0003:	hlt
@@ -48,7 +48,15 @@ h0060:	hlt
 	rar		; 0300 -> 0140
 	jmp	h0140
 
-_intserv: .word	intserv
+intserv:			; interrupt service...
+	dca	saveac		; save accumulator
+	clsa			; clear clock interrupt request
+	cla
+	tad	saveac		; restore accumulator
+	ion			; return after the hlt
+	jmpi	0
+
+saveac:	.word	.-.
 
 	. = 00137
 h0140:	hlt
@@ -112,17 +120,7 @@ __boot:
 	tad	_6000		; put 6000 in AC
 	jmp	h0003		; go wait for interrupt
 
-intserv:			; interrupt service...
-	dca	saveac		; save accumulator
-	clsa			; clear clock interrupt request
-	cla
-	tad	saveac		; restore accumulator
-	ion			; return after the hlt
-	jmpi	0
-
 _6000:	.word	06000
-
-saveac:	.word	.-.
 
 intena:	.word	05400		;    <11> = interrupt enable
 				; <10:09> = 01  : repeat

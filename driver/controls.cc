@@ -174,7 +174,7 @@ bool ctl_stepcyc ()
 
 // tell processor to step one instruction
 // - tells raspictl.cc main to clock the processor a single cycle
-// - halts at the end of the next FETCH2 cycle
+// - halts at the end of the next FETCH2 or INTAK1 cycle
 bool ctl_stepins ()
 {
     bool sigint = ctl_lock ();
@@ -208,7 +208,7 @@ bool ctl_stepins ()
         if (haltreason[0] != 0) break;
 
         // repeat until fetching next instruction
-    } while (shadow.r.state != Shadow::State::FETCH2);
+    } while ((shadow.r.state != Shadow::State::FETCH2) && (shadow.r.state != Shadow::State::INTAK1));
 
     // must be at end of cycle (clock is low)
     sample = gpio->readgpio ();

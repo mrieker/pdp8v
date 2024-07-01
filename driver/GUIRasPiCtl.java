@@ -28,6 +28,7 @@ public class GUIRasPiCtl {
     public native static boolean gethalt ();
     public native static boolean sethalt (boolean halt);
     public native static boolean stepcyc ();
+    public native static boolean stepins ();
     public native static String disassemble (int ir, int pc);
     public native static int rdmem (int addr);
     public native static int wrmem (int addr, int data);
