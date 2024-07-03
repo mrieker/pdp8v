@@ -37,6 +37,10 @@ struct Shadow {
         DEFER1 = 0x02,
         DEFER2 = 0x03,
         DEFER3 = 0x04,
+        EXEC1  = 0x05,
+        EXEC2  = 0x06,
+        EXEC3  = 0x07,
+        INTAK1 = 0x08,
         ARITH1 = 0x05,
         AND2   = 0x06,
         TAD2   = 0x16,
@@ -54,7 +58,6 @@ struct Shadow {
         IOT2   = 0x66,
         GRPA1  = 0x75,
         GRPB1  = 0x85,
-        INTAK1 = 0x08,
         DMA    = 0xFF   // dyndis use only
     };
 

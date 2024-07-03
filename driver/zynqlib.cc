@@ -21,13 +21,8 @@
 // access zynq implementation
 // tube-speed simulation - verifies modules files programmed into zynq fpga
 
-#include <errno.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <time.h>
-#include <unistd.h>
 
 #include "gpiolib.h"
 #include "rdcyc.h"
@@ -39,9 +34,6 @@ ZynqLib::ZynqLib ()
 ZynqLib::ZynqLib (char const *modnames)
 {
     libname = "zynqlib";
-
-    this->memfd  = -1;
-    this->memptr = NULL;
 
     gpiopage = NULL;
 
@@ -73,10 +65,7 @@ void ZynqLib::close ()
     pthread_mutex_lock (&trismutex);
     gpiopage = NULL;
     pthread_mutex_unlock (&trismutex);
-    munmap (memptr, 4096);
-    ::close (memfd);
-    memptr = NULL;
-    memfd  = -1;
+    gpiofile.close ();
 }
 
 void ZynqLib::halfcycle (bool aluadd)
@@ -182,41 +171,10 @@ void ZynqLib::writegpio (bool wdata, uint32_t value)
 
 void ZynqLib::opengpio ()
 {
-    struct flock flockit;
-
     // access gpio page in physical memory
     // /proc/zynqgpio is a simple mapping of the single gpio page of zynq.vhd
     // it is created by loading the km-zynqgpio/zynqgpio.ko kernel module
-    gpiopage = NULL;
-    memfd = ::open ("/proc/zynqgpio", O_RDWR);
-    if (memfd < 0) {
-        fprintf (stderr, "ZynqLib::open: error opening /proc/zynqgpio: %m\n");
-        ABORT ();
-    }
-
-trylk:;
-    memset (&flockit, 0, sizeof flockit);
-    flockit.l_type   = F_WRLCK;
-    flockit.l_whence = SEEK_SET;
-    flockit.l_len    = 4096;
-    if (fcntl (memfd, F_SETLK, &flockit) < 0) {
-        if (((errno == EACCES) || (errno == EAGAIN)) && (fcntl (memfd, F_GETLK, &flockit) >= 0)) {
-            if (flockit.l_type == F_UNLCK) goto trylk;
-            fprintf (stderr, "ZynqLib::open: error locking /proc/zynqgpio: locked by pid %d\n", (int) flockit.l_pid);
-            ABORT ();
-        }
-        fprintf (stderr, "ZynqLib::open: error locking /proc/zynqgpio: %m\n");
-        ABORT ();
-    }
-
-    memptr = mmap (NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
-    if (memptr == MAP_FAILED) {
-        fprintf (stderr, "ZynqLib::open: error mmapping /proc/zynqgpio: %m\n");
-        ABORT ();
-    }
-
-    // save pointer to gpio register page
-    gpiopage = (uint32_t volatile *) memptr;
+    gpiopage = (uint32_t volatile *) gpiofile.open ("/proc/zynqgpio");
     fprintf (stderr, "ZynqLib::open: zynq fpga version %08X\n", gpiopage[3]);
 
     gpiopage[4] = boardena;

@@ -51,6 +51,7 @@ lib.$(MACH).a: \
 		nohwlib.$(MACH).o \
 		physlib.$(MACH).o \
 		pindefs.$(MACH).o \
+		pidplib.$(MACH).o \
 		pipelib.$(MACH).o \
 		rdcyc.$(MACH).o \
 		readprompt.$(MACH).o \

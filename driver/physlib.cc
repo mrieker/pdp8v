@@ -30,7 +30,6 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -59,8 +58,6 @@ PhysLib::PhysLib ()
     this->paddlesopen = false;
     this->gpioudpfd = -1;
     this->gpioudptm = 0;
-    this->memfd  = -1;
-    this->memptr = NULL;
     this->gpiopage = NULL;
 }
 
@@ -93,10 +90,7 @@ void PhysLib::close ()
         gpiopage = NULL;
     }
 
-    munmap (memptr, 4096);
-    ::close (memfd);
-    memptr = NULL;
-    memfd  = -1;
+    gpiofile.close ();
 
     if (paddlesopen) {
         paddlesopen = false;
@@ -256,39 +250,8 @@ void PhysLib::opengpio ()
         return;
     }
 
-    struct flock flockit;
-
     // access gpio page in physical memory
-    gpiopage = NULL;
-    memfd = ::open ("/dev/gpiomem", O_RDWR | O_SYNC);
-    if (memfd < 0) {
-        fprintf (stderr, "PhysLib::open: error opening /dev/gpiomem: %m\n");
-        ABORT ();
-    }
-
-trylk:;
-    memset (&flockit, 0, sizeof flockit);
-    flockit.l_type   = F_WRLCK;
-    flockit.l_whence = SEEK_SET;
-    flockit.l_len    = 4096;
-    if (fcntl (memfd, F_SETLK, &flockit) < 0) {
-        if (((errno == EACCES) || (errno == EAGAIN)) && (fcntl (memfd, F_GETLK, &flockit) >= 0)) {
-            if (flockit.l_type == F_UNLCK) goto trylk;
-            fprintf (stderr, "PhysLib::open: error locking /dev/gpiomem: locked by pid %d\n", (int) flockit.l_pid);
-            ABORT ();
-        }
-        fprintf (stderr, "PhysLib::open: error locking /dev/gpiomem: %m\n");
-        ABORT ();
-    }
-
-    memptr = mmap (NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
-    if (memptr == MAP_FAILED) {
-        fprintf (stderr, "PhysLib::open: error mmapping /dev/gpiomem: %m\n");
-        ABORT ();
-    }
-
-    // save pointer to gpio register page
-    gpiopage = (uint32_t volatile *) memptr;
+    gpiopage = (uint32_t volatile *) gpiofile.open ("/dev/gpiomem");
 
     // https://www.raspberrypi.org/documentation/hardware/raspberrypi/gpio/gpio_pads_control.md
     // 111... means 2mA; 777... would be 14mA

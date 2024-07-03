@@ -20,8 +20,10 @@
 
 // common struct between PhysLib and PipeLib
 
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include "gpiolib.h"
@@ -87,6 +89,12 @@ bool *GpioLib::getvarbool (char const *varname, int rbit)
     return NULL;
 }
 
+// read hardware switch register, by default we have none
+uint16_t GpioLib::readhwsr ()
+{
+    return UNSUPIO;
+}
+
 // reset processor
 void GpioLib::doareset ()
 {
@@ -127,7 +135,7 @@ void GpioLib::doareset ()
             return;
         }
     }
-    fprintf (stderr, "GpioLib::doareset: did not reset, readback %08X\n", readback);
+    fprintf (stderr, "GpioLib::doareset: did not reset, readback %08X %s\n", readback, decogpio (readback).c_str ());
     ABORT ();
 }
 
@@ -168,4 +176,64 @@ std::string GpioLib::decogpio (uint32_t bits)
     if (bits & G_IAK)   str.append (" IAK");
 
     return str;
+}
+
+//////////////////////////////////////////
+//  access gpio file as page of memory  //
+//////////////////////////////////////////
+
+GpioFile::GpioFile ()
+{
+    memfd  = -1;
+    memptr = NULL;
+}
+
+GpioFile::~GpioFile ()
+{
+    this->close ();
+}
+
+void *GpioFile::open (char const *devname)
+{
+    struct flock flockit;
+
+    // access gpio page in physical memory
+    memfd = ::open (devname, O_RDWR | O_SYNC);
+    if (memfd < 0) {
+        fprintf (stderr, "GpioFile::open: error opening %s: %m\n", devname);
+        ABORT ();
+    }
+
+    // make sure another copy isn't running
+trylk:;
+    memset (&flockit, 0, sizeof flockit);
+    flockit.l_type   = F_WRLCK;
+    flockit.l_whence = SEEK_SET;
+    flockit.l_len    = 4096;
+    if (fcntl (memfd, F_SETLK, &flockit) < 0) {
+        if (((errno == EACCES) || (errno == EAGAIN)) && (fcntl (memfd, F_GETLK, &flockit) >= 0)) {
+            if (flockit.l_type == F_UNLCK) goto trylk;
+            fprintf (stderr, "GpioFile::open: error locking %s: locked by pid %d\n", devname, (int) flockit.l_pid);
+            ABORT ();
+        }
+        fprintf (stderr, "GpioFile::open: error locking %s: %m\n", devname);
+        ABORT ();
+    }
+
+    // access the page
+    memptr = mmap (NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
+    if (memptr == MAP_FAILED) {
+        fprintf (stderr, "GpioFile::open: error mmapping %s: %m\n", devname);
+        ABORT ();
+    }
+
+    return memptr;
+}
+
+void GpioFile::close ()
+{
+    munmap (memptr, 4096);
+    ::close (memfd);
+    memptr = NULL;
+    memfd  = -1;
 }

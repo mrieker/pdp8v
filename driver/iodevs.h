@@ -26,7 +26,6 @@
 #define IO_SKIP 0020000  // returned by ioinstr() to skip next instruction
 #define IO_LINK 0010000  // link bit state passed into and returned by ioinstr()
 #define IO_DATA 0007777  // accumulator passed into and returned by ioinstr()
-#define UNSUPIO 0177777  // returned by ioinstr() for unsupported i/o instruction
 
 #include "miscdefs.h"
 

@@ -24,9 +24,9 @@
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
- *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pipelib] [-printfile <filename>
- *          [-printinstr] [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt] [-startpc <address>]
- *          [-stopat <address>] [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pidplib] [-pipelib]
+ *          [-printfile <filename>] [-printinstr] [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt]
+ *          [-startpc <address>] [-stopat <address>] [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -45,6 +45,7 @@
  *      -nohwlib     : don't use hardware, simulate processor internally
  *      -os8zap      : zap out the OS/8 ISZ/JMP delay loop
  *      -paddles     : check ABCD paddles each cycle
+ *      -pidplib     : simulate and operate pidp-8 panel via gpio
  *      -pipelib     : simulate via pipe connected to NetGen
  *      -printfile   : specify file for -printinstr -printstate output
  *      -printinstr  : print message at beginning of each instruction
@@ -166,6 +167,7 @@ int main (int argc, char **argv)
     bool csrclib = false;
     bool mintimes = false;
     bool nohwlib = false;
+    bool pidplib = false;
     bool pipelib = false;
     bool resetonerr = false;
     bool rimldr = false;
@@ -203,6 +205,7 @@ int main (int argc, char **argv)
         if (strcasecmp (argv[i], "-csrclib") == 0) {
             csrclib = true;
             nohwlib = false;
+            pidplib = false;
             pipelib = false;
             zynqlib = false;
             continue;
@@ -246,6 +249,7 @@ int main (int argc, char **argv)
         if (strcasecmp (argv[i], "-nohwlib") == 0) {
             csrclib = false;
             nohwlib = true;
+            pidplib = false;
             pipelib = false;
             zynqlib = false;
             continue;
@@ -258,9 +262,18 @@ int main (int argc, char **argv)
             shadow.paddles = true;
             continue;
         }
+        if (strcasecmp (argv[i], "-pidplib") == 0) {
+            csrclib = false;
+            nohwlib = false;
+            pidplib = true;
+            pipelib = false;
+            zynqlib = false;
+            continue;
+        }
         if (strcasecmp (argv[i], "-pipelib") == 0) {
             csrclib = false;
             nohwlib = false;
+            pidplib = false;
             pipelib = true;
             zynqlib = false;
             continue;
@@ -369,6 +382,7 @@ int main (int argc, char **argv)
         if (strcasecmp (argv[i], "-zynqlib") == 0) {
             csrclib = false;
             nohwlib = false;
+            pidplib = false;
             pipelib = false;
             zynqlib = true;
             continue;
@@ -473,8 +487,9 @@ int main (int argc, char **argv)
     // ...or nothing but shadow
     GpioLib *gp = pipelib ? (GpioLib *) new PipeLib ("proc") :
                   csrclib ? (GpioLib *) new CSrcLib ("proc") :
+                        pidplib ? (GpioLib *) new PiDPLib () :
                         zynqlib ? (GpioLib *) new ZynqLib () :
-                 nohwlib ? (GpioLib *) new NohwLib (&shadow) :
+                        nohwlib ? (GpioLib *) new NohwLib () :
                                   (GpioLib *) new PhysLib ();
     gp->open ();
 
@@ -505,17 +520,6 @@ int main (int argc, char **argv)
 
     shadow.open (gpio);
 
-reseteverything:;
-
-    // reset cpu circuit
-    gpio->doareset ();
-
-    // tell shadowing that cpu has been reset
-    shadow.reset ();
-
-    // reset things we keep state of
-    ioreset ();
-
     // if running from GUI or script, halt processor in next haltcheck() call
     bool sigint = ctl_lock ();
     if (guimode | scriptmode) {
@@ -526,6 +530,17 @@ reseteverything:;
         haltflags  = 0;
     }
     ctl_unlock (sigint);
+
+reseteverything:;
+
+    // tell shadowing that cpu is being reset
+    shadow.reset ();
+
+    // reset cpu circuit
+    gpio->doareset ();
+
+    // reset things we keep state of
+    ioreset ();
 
     // do any initialization cycles
     // ignore haltflags, GUI.java or script.cc is waiting for us to initialize
@@ -967,7 +982,12 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
 uint16_t readswitches (char const *swvar)
 {
     if (randmem) return randuint16 (15);
-    if ((strcmp (swvar, "switchregister") == 0) && (scriptmode | guimode)) return switchregister;
+
+    if (strcmp (swvar, "switchregister") == 0) {
+        uint16_t hwsr = gpio->readhwsr ();
+        if (hwsr != UNSUPIO) return hwsr;
+        if (scriptmode | guimode) return switchregister;
+    }
 
     char const *swenv = getenv (swvar);
     if (swenv == NULL) {
@@ -1087,11 +1107,10 @@ static void haltwait ()
     ASSERT (thisismainthread && (shadow.r.state == Shadow::IOT2));
 
     // if tubesaver not enabled, block until some device thread or script or gui wakes us
+    waitingforinterrupt = true;
     if (! tubesaver) {
-        waitingforinterrupt = true;
         int rc = pthread_cond_wait (&haltcond, &haltmutex);
         if (rc != 0) ABORT ();
-        waitingforinterrupt = false;
     } else if (! wakefromhalt) {
         pthread_mutex_unlock (&haltmutex);
 
@@ -1195,6 +1214,7 @@ static void haltwait ()
 
         pthread_mutex_lock (&haltmutex);
     }
+    waitingforinterrupt = false;
     wakefromhalt = false;
 }
 

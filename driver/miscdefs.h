@@ -40,6 +40,8 @@
 
 #define MAXSTOPATS 16
 
+#define UNSUPIO 0177777  // returned by ioinstr() for unsupported i/o instruction
+
 typedef unsigned long long LLU; // for printf %llu format
 
 #include "gpiolib.h"

@@ -34,6 +34,7 @@ struct ExtArith : IODev {
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
     uint16_t multquot;
+    uint16_t stepcount;
 
 private:
     uint16_t eae_modea (uint16_t opcode, uint16_t input);
@@ -48,7 +49,6 @@ private:
     bool gtflag;
     bool modeb;
     uint16_t nextreadaddr;
-    uint16_t stepcount;
 };
 
 extern ExtArith extarith;

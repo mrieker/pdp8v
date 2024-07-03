@@ -77,6 +77,17 @@ struct Shadow;
 #include "miscdefs.h"
 #include "myiowkit.h"
 
+struct GpioFile {
+    GpioFile ();
+    virtual ~GpioFile ();
+    void *open (char const *devname);
+    void close ();
+
+private:
+    int memfd;
+    void *memptr;
+};
+
 // base class for GPIO access
 
 #define NPADS 4  // number of paddles
@@ -99,6 +110,7 @@ struct GpioLib {
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss) = 0;
     virtual int examine (char const *varname, uint32_t *value);
     virtual bool *getvarbool (char const *varname, int rbit);
+    virtual uint16_t readhwsr ();
     void doareset ();
 
     static std::string decogpio (uint32_t bits);
@@ -133,7 +145,7 @@ private:
 };
 
 struct NohwLib : GpioLib {
-    NohwLib (Shadow *shadow);
+    NohwLib ();
     virtual void open ();
     virtual void close ();
     virtual void halfcycle ();
@@ -144,11 +156,42 @@ struct NohwLib : GpioLib {
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 
 private:
-    ABCD abcdvals;
-    Shadow *shadow;
     uint32_t gpiowritten;
 
-    void calcabcd ();
+    ABCD calcabcd ();
+};
+
+struct PiDPLib : NohwLib {
+    PiDPLib ();
+    virtual ~PiDPLib ();
+    virtual void open ();
+    virtual void close ();
+    virtual uint16_t readhwsr ();
+
+private:
+    bool running;
+    GpioFile gpiofile;
+    int retries;
+    pthread_t threadid;
+    uint16_t dfifswitches;
+    uint16_t membuffer;
+    uint16_t switchreg;
+    uint32_t volatile *gpiopage;
+
+    static void *threadwrap (void *zhis);
+    void thread ();
+
+    void writegpio (uint32_t mask, uint32_t data);
+
+    void startbutton (uint32_t buttons);
+    void ldaddrbutton ();
+    void deposbutton ();
+    void exambutton ();
+    void contbutton (uint32_t buttons);
+    void stopbutton ();
+    void sstepbutton ();
+    void sinstbutton ();
+    bool atendofmajorstate ();
 };
 
 struct PipeLib : GpioLib {
@@ -208,9 +251,9 @@ struct PhysLib : TimedLib {
 
 private:
     bool paddlesopen;
+    GpioFile gpiofile;
     int gpioudpfd;
     int gpioudptm;
-    int memfd;
     IOWKIT_HANDLE iowhandles[NPADS];
     sigset_t allowedsigs;
     sigset_t sigintmask;
@@ -222,7 +265,6 @@ private:
     uint64_t writecount;
     uint64_t lastudpseq;
     uint64_t writecycles;
-    void *memptr;
 
     void opengpio ();
     void opengpioudp (char const *server);
@@ -252,12 +294,11 @@ struct ZynqLib : TimedLib {
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
 
 private:
-    int memfd;
+    GpioFile gpiofile;
     uint32_t boardena;
     uint32_t gpioreadflip;
     uint32_t volatile *gpiopage;
     uint64_t writecount;
-    void *memptr;
 
     void opengpio ();
 };

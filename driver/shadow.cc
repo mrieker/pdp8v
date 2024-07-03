@@ -903,6 +903,6 @@ char const *Shadow::statestr (State s)
         case GRPB1:  return "GRPB1";
         case INTAK1: return "INTAK1";
         case DMA:    return "DMA";
+        default: ABORT ();
     }
-    return "bad state enum";
 }
