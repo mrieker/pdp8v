@@ -1,2 +1,2 @@
 #!/bin/bash
-exec ../driver/raspictl -nohwlib -script test.tcl '(load "test.scm")'
+exec ../driver/raspictl "$@" -script test.tcl '(load "test.scm")'
