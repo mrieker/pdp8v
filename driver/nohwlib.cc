@@ -39,6 +39,9 @@ void NohwLib::close ()
 void NohwLib::halfcycle ()
 { }
 
+// read what gpio connector should be at end of cycle
+//  cycle as given by shadow
+//  assumes writegpio() has been called mid-cycle
 uint32_t NohwLib::readgpio ()
 {
     ABCD abcdvals = calcabcd ();
@@ -59,9 +62,10 @@ uint32_t NohwLib::readgpio ()
     return value;
 }
 
+// save what is being written to gpio connector
 void NohwLib::writegpio (bool wdata, uint32_t value)
 {
-    gpiowritten = value | (wdata ? G_QENA : G_DENA);
+    gpiowritten = (value & ~ G_QENA & ~ G_DENA) | (wdata ? G_QENA : G_DENA);
 }
 
 bool NohwLib::haspads ()
@@ -69,6 +73,9 @@ bool NohwLib::haspads ()
     return true;
 }
 
+// read what paddles should be at end of cycle
+//  cycle as given by shadow
+//  assumes writegpio() has been called mid-cycle
 void NohwLib::readpads (uint32_t *pinss)
 {
     ABCD abcdvals = calcabcd ();
@@ -85,7 +92,8 @@ void NohwLib::writepads (uint32_t const *masks, uint32_t const *pinss)
     ABORT ();
 }
 
-// calculate backplane signals from shadow state and what was written to gpio connector
+// calculate what backplane signals should be at end of cycle
+// from shadow state and what was written to gpio connector mid-cycle
 ABCD NohwLib::calcabcd ()
 {
     ABCD abcdvals;
@@ -105,9 +113,9 @@ ABCD NohwLib::calcabcd ()
     abcdvals.defer1q = (shadow.r.state == Shadow::DEFER1);
     abcdvals.defer2q = (shadow.r.state == Shadow::DEFER2);
     abcdvals.defer3q = (shadow.r.state == Shadow::DEFER3);
-    abcdvals.exec1q  = ((shadow.r.state & 15) == (Shadow::ISZ1 & 15));
-    abcdvals.exec2q  = ((shadow.r.state & 15) == (Shadow::ISZ2 & 15));
-    abcdvals.exec3q  = ((shadow.r.state & 15) == (Shadow::ISZ3 & 15));
+    abcdvals.exec1q  = ((shadow.r.state & 15) == Shadow::EXEC1);
+    abcdvals.exec2q  = ((shadow.r.state & 15) == Shadow::EXEC2);
+    abcdvals.exec3q  = ((shadow.r.state & 15) == Shadow::EXEC3);
     abcdvals.intak1q = (shadow.r.state == Shadow::INTAK1);
 
     abcdvals.iot2q   = (shadow.r.state == Shadow::IOT2);

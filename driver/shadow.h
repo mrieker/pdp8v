@@ -100,7 +100,6 @@ private:
     bool lnknown;
     bool maknown;
     GpioLib *gpiolib;
-    uint16_t alu;
     uint64_t cycle;
     uint64_t instr;
 
