@@ -51,6 +51,7 @@ void runscript (char const *argv0, char const *filename)
     int rc = pthread_create (&tclpid, NULL, tclthread, (void *) filename);
     if (rc != 0) ABORT ();
     pthread_detach (tclpid);
+    pthread_setname_np (tclpid, "script");
     haltflags = HF_HALTIT;
 }
 
@@ -58,6 +59,7 @@ static Tcl_ObjCmdProc cmd_alliodevs;
 static Tcl_ObjCmdProc cmd_cpu;
 static Tcl_ObjCmdProc cmd_disasop;
 static Tcl_ObjCmdProc cmd_dyndis;
+static Tcl_ObjCmdProc cmd_end;
 static Tcl_ObjCmdProc cmd_gpio;
 static Tcl_ObjCmdProc cmd_halfcycle;
 static Tcl_ObjCmdProc cmd_halt;
@@ -88,6 +90,7 @@ static FunDef fundefs[] = {
     { cmd_cpu,        "cpu",        "access shadow state" },
     { cmd_disasop,    "disasop",    "disassemble opcode" },
     { cmd_dyndis,     "dyndis",     "dynamic disassembly" },
+    { cmd_end,        "end",        "exit script thread" },
     { cmd_gpio,       "gpio",       "access gpio state" },
     { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
     { cmd_halt,       "halt",       "halt processor" },
@@ -333,6 +336,14 @@ static int cmd_dyndis (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
 
     Tcl_SetResult (interp, (char *) "unknown sub-command, try 'dyndis help'", TCL_STATIC);
     return TCL_ERROR;
+}
+
+// exit script thread
+static int cmd_end (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    scriptmode = false;
+    pthread_exit (NULL);
+    return TCL_OK;
 }
 
 // get gpio state (actual tube state)

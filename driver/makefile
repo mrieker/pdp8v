@@ -21,7 +21,7 @@ LIBS = lib.$(MACH).a
 
 .PRECIOUS: csrcmod_%.cc csrcmod_%.$(MACH).so
 
-default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) \
+default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) pidpudpserver.$(MACH) \
 	raspictl.$(MACH) tclboardtest.$(MACH) testrpiseqboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
@@ -51,7 +51,8 @@ lib.$(MACH).a: \
 		nohwlib.$(MACH).o \
 		physlib.$(MACH).o \
 		pindefs.$(MACH).o \
-		pidplib.$(MACH).o \
+		pidp.$(MACH).o \
+		pidp_proc.$(MACH).o \
 		pipelib.$(MACH).o \
 		rdcyc.$(MACH).o \
 		readprompt.$(MACH).o \
@@ -130,6 +131,9 @@ dtapestatus.$(MACH): dtapestatus.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 gpioudpserver.$(MACH): gpioudpserver.$(MACH).o $(LIBS)
+	$(GPP) -o $@ $^ $(LNKFLG)
+
+pidpudpserver.$(MACH): pidpudpserver.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 raspictl.$(MACH): raspictl.$(MACH).o $(LIBS)

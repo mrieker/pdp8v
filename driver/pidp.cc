@@ -21,8 +21,11 @@
 // operate pidp panel via gpio connector
 // assumes raspberry pi gpio connector is plugged into pidp panel
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
+#include <poll.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +37,7 @@
 #include "gpiolib.h"
 #include "memext.h"
 #include "memory.h"
+#include "pidp.h"
 #include "rdcyc.h"
 #include "shadow.h"
 
@@ -55,144 +59,61 @@
 
 #define COLMASK 0xFFF0
 
-#define SWROW1  16
-#define SWROW2  17
-#define SWROW3  18
+static bool running;
+static pthread_t threadid;
+static uint16_t dfifswitches;
+static uint16_t membuffer;
 
-#define LEDROW1 20
-#define LEDROW2 21
-#define LEDROW3 22
-#define LEDROW4 23
-#define LEDROW5 24
-#define LEDROW6 25
-#define LEDROW7 26
-#define LEDROW8 27
-
-// directions
-
-// - https://www.raspberrypi.org/documentation/hardware/raspberrypi/gpio/gpio_pads_control.md
-//   111... means 2mA; 777... would be 14mA
-
-#define IGO 1
-
-// - when writing LEDs
-//   all switch rows set to inputs (hi-Z)
-//   led row select outputs are active high (just one at a time)
-//   column outputs are active low
-
-#define LEDSEL0 (IGO*01111110000)   // GPIO[09:00]
-#define LEDSEL1 (IGO*00000111111)   // GPIO[19:10]
-#define LEDSEL2 (IGO*00011111111)   // GPIO[29:20]
-
-// - when reading switches
-//   switch row select outputs are active low (just one at a time)
-//   column inputs are active low
-
-#define SWSEL0  (IGO*00000000000)   // GPIO[09:00]
-#define SWSEL1  (IGO*00111000000)   // GPIO[19:10]
-#define SWSEL2  (IGO*00011111111)   // GPIO[29:20]
-
-#define GPIO_FSEL0 (0)          // set output current / disable (readwrite)
-#define GPIO_SET0 (0x1C/4)      // set gpio output bits (writeonly)
-#define GPIO_CLR0 (0x28/4)      // clear gpio output bits (writeonly)
-#define GPIO_LEV0 (0x34/4)      // read gpio bit levels (readonly)
-#define GPIO_PUDMOD (0x94/4)    // pullup/pulldown enable (0=disable; 1=enable pulldown; 2=enable pullup)
-#define GPIO_PUDCLK (0x98/4)    // which pins to change pullup/pulldown mode
+static void *scanthread (void *dummy);
+static void startbutton (uint32_t buttons);
+static void ldaddrbutton ();
+static void deposbutton ();
+static void exambutton ();
+static void contbutton (uint32_t buttons);
+static void stopbutton ();
+static bool atendofmajorstate ();
 
 static uint32_t ledscram (uint32_t data);
 static uint32_t swunscram (uint32_t gpio);
 
-PiDPLib::PiDPLib ()
+void pidp_start ()
 {
-    this->libname  = "pidplib";
-    this->gpiopage = NULL;
-    this->running  = false;
-    this->threadid = 0;
-}
-
-PiDPLib::~PiDPLib ()
-{
-    this->close ();
-}
-
-void PiDPLib::open ()
-{
-    NohwLib::open ();
-
-    gpiopage = (uint32_t volatile *) gpiofile.open ("/dev/gpiomem");
-
-    this->running = true;
-    int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
+    ASSERT (threadid == 0);
+    running = true;
+    int rc = pthread_create (&threadid, NULL, scanthread, NULL);
     if (rc != 0) ABORT ();
 }
 
-void PiDPLib::close ()
+void pidp_stop ()
 {
-    this->running = false;
-    if (this->threadid != 0) {
-        pthread_join (this->threadid, NULL);
-        this->threadid = 0;
+    running = false;
+    if (threadid != 0) {
+        pthread_join (threadid, NULL);
+        threadid = 0;
     }
-    if (gpiopage != NULL) {
-        gpiopage[GPIO_FSEL0+0] = 0;
-        gpiopage[GPIO_FSEL0+1] = 0;
-        gpiopage[GPIO_FSEL0+2] = 0;
-        gpiopage = NULL;
-    }
-    gpiofile.close ();
-    NohwLib::close ();
 }
 
-uint16_t PiDPLib::readhwsr ()
-{
-    return this->switchreg;
-}
-
-void *PiDPLib::threadwrap (void *zhis)
-{
-    ((PiDPLib *)zhis)->thread ();
-    return NULL;
-}
-
-void PiDPLib::thread ()
+static void *scanthread (void *dummy)
 {
     uint32_t buttonring[8];
     uint32_t lastbuttons = 0;
     int buttonindex = 0;
     memset (buttonring, 0, sizeof buttonring);
-    this->retries = 0;
 
-    while (this->running) {
+    // set up sequence number gt anything previously used
+    PiDPMsg pidpmsg;
+    memset (&pidpmsg, 0, sizeof pidpmsg);
+    struct timespec nowts;
+    if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+    pidpmsg.seq = nowts.tv_sec * 1000000000ULL + nowts.tv_nsec;
 
-        // set pins for outputting to LEDs
-        gpiopage[GPIO_FSEL0+0] = LEDSEL0;
-        gpiopage[GPIO_FSEL0+1] = LEDSEL1;
-        gpiopage[GPIO_FSEL0+2] = LEDSEL2;
+    while (running) {
+        pidpmsg.seq ++;
 
-        // output LED rows
-        uint32_t pc = ledscram (shadow.r.pc);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW1) | (pc ^ COLMASK));
-        usleep (1000);
-
-        uint32_t ma = ledscram (shadow.r.ma);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW2) | (ma ^ COLMASK));
-        usleep (1000);
-
-        if (! ctl_ishalted ()) this->membuffer = (this->readgpio () & G_DATA) / G_DATA0;
-        uint32_t mb = ledscram (this->membuffer);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW3) | (mb ^ COLMASK));
-        usleep (1000);
-
-        uint32_t ac = ledscram (shadow.r.ac);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW4) | (ac ^ COLMASK));
-        usleep (1000);
-
-        uint32_t mq = ledscram (extarith.multquot);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW5) | (mq ^ COLMASK));
-        usleep (1000);
+        if (! ctl_ishalted ()) membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
 
         Shadow::State st = (Shadow::State) (shadow.r.state & 15);
-        uint32_t ir  = (st == Shadow::State::FETCH2) ? (this->readgpio () & G_DATA) / G_DATA0 : shadow.r.ir;
+        uint32_t ir  = (st == Shadow::State::FETCH2) ? (gpio->readgpio () & G_DATA) / G_DATA0 : shadow.r.ir;
         uint32_t lr6 = ((st == Shadow::State::FETCH1) || (st == Shadow::State::INTAK1)) ? 0 : ledscram (04000 >> ((ir >> 9) & 7));
         if (st == Shadow::State::FETCH1) lr6 |= 1 << COL9;
         if (st == Shadow::State::FETCH2) lr6 |= 1 << COL9;
@@ -202,8 +123,6 @@ void PiDPLib::thread ()
         if (st == Shadow::State::EXEC1)  lr6 |= 1 << COL10;
         if (st == Shadow::State::EXEC2)  lr6 |= 1 << COL10;
         if (st == Shadow::State::EXEC3)  lr6 |= 1 << COL10;
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW6) | (lr6 ^ COLMASK));
-        usleep (1000);
 
         uint32_t lr7 =
             ((st == Shadow::State::INTAK1) ? (1 << COL2) : 0) |     // BREAK (we use it for INTAK1 cycle)
@@ -211,34 +130,31 @@ void PiDPLib::thread ()
             (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
             (ctl_ishalted ()     ? 0 : (1 << COL5)) |               // RUN
             (extarith.stepcount << COL6);                           // SC
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW7) | (lr7 ^ COLMASK));
-        usleep (1000);
 
         uint32_t lr8 =
             ledscram ((memext.dframe >> 3) | (memext.iframe >> 6)) |
             (shadow.r.link ? (1 << COL7) : 0);
-        writegpio ((0xFF << LEDROW1) | COLMASK, (1 << LEDROW8) | (lr8 ^ COLMASK));
-        usleep (1000);
 
-        // set pins for reading switches
-        gpiopage[GPIO_FSEL0+0] = SWSEL0;
-        gpiopage[GPIO_FSEL0+1] = SWSEL1;
-        gpiopage[GPIO_FSEL0+2] = SWSEL2;
+        // output LED rows
+        pidpmsg.ledrows[0] = ledscram (shadow.r.pc);
+        pidpmsg.ledrows[1] = ledscram (shadow.r.ma);
+        pidpmsg.ledrows[2] = ledscram (membuffer);
+        pidpmsg.ledrows[3] = ledscram (shadow.r.ac);
+        pidpmsg.ledrows[4] = ledscram (extarith.multquot);
+        pidpmsg.ledrows[5] = lr6;
+        pidpmsg.ledrows[6] = lr7;
+        pidpmsg.ledrows[7] = lr8;
+
+        if (! pidp_proc (&pidpmsg)) continue;
 
         // row 1 - switch register switches
-        writegpio ((0xFF << LEDROW1) | (7 << SWROW1), 6 << SWROW1);
-        usleep (100);
-        switchreg = swunscram (~ gpiopage[GPIO_LEV0]);
+        switchregister = swunscram (~ pidpmsg.swrows[0]);
 
         // row 2 - data field, instr field switches
-        writegpio ((0xFF << LEDROW1) | (7 << SWROW1), 5 << SWROW1);
-        usleep (100);
-        this->dfifswitches = swunscram (~ gpiopage[GPIO_LEV0]);
+        dfifswitches = swunscram (~ pidpmsg.swrows[1]);
 
         // row 3 - control buttons
-        writegpio ((0xFF << LEDROW1) | (7 << SWROW1), 3 << SWROW1);
-        usleep (100);
-        uint32_t buttons = ~ gpiopage[GPIO_LEV0] & COLMASK;
+        uint32_t buttons = ~ pidpmsg.swrows[2] & COLMASK;
         buttonring[buttonindex] = buttons;
         buttonindex = (buttonindex + 1) % 8;
 
@@ -259,18 +175,13 @@ void PiDPLib::thread ()
         lastbuttons = buttons;
     badbuttons:;
     }
-}
 
-// write value to GPIO pins
-void PiDPLib::writegpio (uint32_t mask, uint32_t data)
-{
-    gpiopage[GPIO_SET0] = data;
-    gpiopage[GPIO_CLR0] = data ^ mask;
+    return NULL;
 }
 
 // small computer handbook 1970 v12/p27
 
-void PiDPLib::startbutton (uint32_t buttons)
+static void startbutton (uint32_t buttons)
 {
     if (ctl_ishalted ()) {
         ctl_reset (memext.iframe | shadow.r.pc);
@@ -278,26 +189,26 @@ void PiDPLib::startbutton (uint32_t buttons)
     }
 }
 
-void PiDPLib::ldaddrbutton ()
+static void ldaddrbutton ()
 {
     if (ctl_ishalted ()) {
-        shadow.r.ma = shadow.r.pc = switchreg;
+        shadow.r.ma = shadow.r.pc = switchregister;
         memext.dframe = (dfifswitches & 07000) << 3;
         memext.iframe = (dfifswitches & 00700) << 6;
         membuffer = memarray[memext.iframe|shadow.r.ma];
     }
 }
 
-void PiDPLib::deposbutton ()
+static void deposbutton ()
 {
     if (ctl_ishalted ()) {
         shadow.r.ma = shadow.r.pc;
-        memarray[memext.iframe|shadow.r.ma] = membuffer = switchreg;
+        memarray[memext.iframe|shadow.r.ma] = membuffer = switchregister;
         shadow.r.pc = (shadow.r.pc + 1) & 07777;
     }
 }
 
-void PiDPLib::exambutton ()
+static void exambutton ()
 {
     if (ctl_ishalted ()) {
         shadow.r.ma = shadow.r.pc;
@@ -306,36 +217,36 @@ void PiDPLib::exambutton ()
     }
 }
 
-void PiDPLib::contbutton (uint32_t buttons)
+static void contbutton (uint32_t buttons)
 {
     if (ctl_ishalted ()) {
         if (buttons & (1 << COL7)) {
             do ctl_stepcyc ();  // single step - step one major state
             while (! atendofmajorstate ());
-            this->membuffer = (this->readgpio () & G_DATA) / G_DATA0;
+            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else if (buttons & (1 << COL8)) {
             ctl_stepins ();     // single instr - step one instruction
                                 // stops at end of FETCH2 or end of INTAK1
-            this->membuffer = (this->readgpio () & G_DATA) / G_DATA0;
+            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else {
             ctl_run ();         // neither - continuous run
         }
     }
 }
 
-void PiDPLib::stopbutton ()
+static void stopbutton ()
 {
     if (! ctl_ishalted ()) {
         ctl_halt ();            // stops at end of any cycle
         while (! atendofmajorstate ()) {
             ctl_stepcyc ();     // cycle to end of major state
         }
-        this->membuffer = (this->readgpio () & G_DATA) / G_DATA0;
+        membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
     }
 }
 
 // halted at end of some cycle - see if it is the last cycle of a major state
-bool PiDPLib::atendofmajorstate ()
+static bool atendofmajorstate ()
 {
     Shadow::State st = shadow.r.state;
     switch (st) {

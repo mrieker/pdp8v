@@ -198,7 +198,7 @@ void *GpioFile::open (char const *devname)
     struct flock flockit;
 
     // access gpio page in physical memory
-    memfd = ::open (devname, O_RDWR | O_SYNC);
+    memfd = ::open (devname, O_RDWR);
     if (memfd < 0) {
         fprintf (stderr, "GpioFile::open: error opening %s: %m\n", devname);
         ABORT ();

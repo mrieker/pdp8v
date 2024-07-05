@@ -161,39 +161,6 @@ private:
     ABCD calcabcd ();
 };
 
-struct PiDPLib : NohwLib {
-    PiDPLib ();
-    virtual ~PiDPLib ();
-    virtual void open ();
-    virtual void close ();
-    virtual uint16_t readhwsr ();
-
-private:
-    bool running;
-    GpioFile gpiofile;
-    int retries;
-    pthread_t threadid;
-    uint16_t dfifswitches;
-    uint16_t membuffer;
-    uint16_t switchreg;
-    uint32_t volatile *gpiopage;
-
-    static void *threadwrap (void *zhis);
-    void thread ();
-
-    void writegpio (uint32_t mask, uint32_t data);
-
-    void startbutton (uint32_t buttons);
-    void ldaddrbutton ();
-    void deposbutton ();
-    void exambutton ();
-    void contbutton (uint32_t buttons);
-    void stopbutton ();
-    void sstepbutton ();
-    void sinstbutton ();
-    bool atendofmajorstate ();
-};
-
 struct PipeLib : GpioLib {
     PipeLib (char const *modname);
     virtual void open ();
