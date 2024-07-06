@@ -99,8 +99,8 @@ ABCD NohwLib::calcabcd ()
     ABCD abcdvals;
 
     // signals from raspi gpio
-    abcdvals.mq  = (gpiowritten & G_QENA) ? (gpiowritten & G_DATA) / G_DATA0 : 07777;
-    abcdvals.mql = (gpiowritten & G_QENA) ? (gpiowritten & G_LINK) != 0      : true;
+    abcdvals.mq  = (gpiowritten & G_QENA) ? (gpiowritten & G_DATA) / G_DATA0 : 0;
+    abcdvals.mql = (gpiowritten & G_QENA) ? (gpiowritten & G_LINK) != 0 : false;
 
     abcdvals.ioskp = (gpiowritten & G_IOS)   != 0;
     abcdvals.clok2 = (gpiowritten & G_CLOCK) != 0;

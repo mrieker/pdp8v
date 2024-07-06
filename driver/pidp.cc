@@ -64,7 +64,7 @@ static pthread_t threadid;
 static uint16_t dfifswitches;
 static uint16_t membuffer;
 
-static void *scanthread (void *dummy);
+static void *pidpthread (void *dummy);
 static void startbutton (uint32_t buttons);
 static void ldaddrbutton ();
 static void deposbutton ();
@@ -80,7 +80,7 @@ void pidp_start ()
 {
     ASSERT (threadid == 0);
     running = true;
-    int rc = pthread_create (&threadid, NULL, scanthread, NULL);
+    int rc = pthread_create (&threadid, NULL, pidpthread, NULL);
     if (rc != 0) ABORT ();
 }
 
@@ -93,7 +93,7 @@ void pidp_stop ()
     }
 }
 
-static void *scanthread (void *dummy)
+static void *pidpthread (void *dummy)
 {
     uint32_t buttonring[8];
     uint32_t lastbuttons = 0;
@@ -129,7 +129,7 @@ static void *scanthread (void *dummy)
             (memext.intenabd ()  ? (1 << COL3) : 0) |               // ION
             (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
             (ctl_ishalted ()     ? 0 : (1 << COL5)) |               // RUN
-            (extarith.stepcount << COL6);                           // SC
+            ledscram (extarith.stepcount << 2);                     // SC
 
         uint32_t lr8 =
             ledscram ((memext.dframe >> 3) | (memext.iframe >> 6)) |

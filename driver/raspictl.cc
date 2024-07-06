@@ -1484,10 +1484,9 @@ static void exithandler ()
     uint64_t cycles = shadow.getcycles ();
     fprintf (stderr, "raspictl: exiting, %llu cycle%s\n", (LLU) cycles, ((cycles == 1) ? "" : "s"));
 
+    pidp_stop ();
     ioreset ();
     scncall.exithandler ();
-
-    // close gpio access
     gpio->close ();
 }
 
