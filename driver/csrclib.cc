@@ -113,13 +113,13 @@ CSrcLib::CSrcLib (char const *modname)
 
 CSrcLib::~CSrcLib ()
 {
-    if (modhand != NULL) {
-        dlclose (modhand);
-        modhand = NULL;
-    }
     if (module != NULL) {
         delete module;
         module = NULL;
+    }
+    if (modhand != NULL) {
+        dlclose (modhand);
+        modhand = NULL;
     }
 }
 

@@ -1,0 +1,9 @@
+#!/bin/bash
+dz=$0
+if [ "$1" == "-gdb" ]
+then
+    shift
+    exec gdb --args $dz.`uname -m` "$@"
+else
+    exec $dz.`uname -m` "$@"
+fi

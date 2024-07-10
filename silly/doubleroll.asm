@@ -164,6 +164,8 @@ step:	.word	.-.
 	dca	count		; reset count
 stepinc:
 	isz	count		; count < SR, increment
+	tad	count		; display count in pidp's MQ leds
+	mql			; AC -> MQ; 0 -> AC
 	tad	direc		; get direction
 	sma cla
 	jmp	stepup		; pos - pc goes up

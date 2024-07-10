@@ -18,11 +18,15 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-// used by physlib when envar physlib_gpioudp is set
-// runs on raspberry pi plugged into gpio connector on processor to serve up gpio pins
-// set physlib_gpioudp = this ip address then run program on other system
+// runs on raspberry pi plugged into pidp8 panel to serve up leds and switches
+// used by raspictl -pidp whenever envar pidpudpaddr is set
 
-//  ./gpioudpserver.armv6l [-verbose]
+// on raspi plugged into pidp8 panel:
+//  ./pidpudpserver [-verbose]
+
+// on some other computer:
+//  export pidpudpaddr=<ip address of the pidpudpserver raspi>
+//  ./raspictl ... -pidp ...
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
