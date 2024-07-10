@@ -166,6 +166,14 @@ stepinc:
 	isz	count		; count < SR, increment
 	tad	count		; display count in pidp's MQ leds
 	mql			; AC -> MQ; 0 -> AC
+	tad	direc
+	and	_0021
+	iac
+	and	_0021
+	cma
+	dca	.+2
+	scl
+	.word	.-.
 	tad	direc		; get direction
 	sma cla
 	jmp	stepup		; pos - pc goes up
@@ -187,4 +195,6 @@ count:	.word	.-.
 direc:	.word	.-.
 
 steppc:	.word	.-.
+
+_0021:	.word	00021
 
