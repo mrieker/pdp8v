@@ -153,6 +153,8 @@ uint16_t IODevRTC::ioinstr (uint16_t opcode, uint16_t input)
         case 06137: {
             input &= ~ IO_DATA;
             input |= this->buffer = this->getcounter ();
+            // probably changed buffer, so recalc basens preserving how far we are in current tick
+            this->setcounter (this->buffer);
             break;
         }
 
@@ -178,9 +180,11 @@ void IODevRTC::update ()
     }
     newnspertick *= this->factor;
     if (this->nspertick != newnspertick) {
+        // assume divider chain is being reset as of nowns
         uint16_t oldcounter = this->getcounter ();
         this->nspertick = newnspertick;
-        this->setcounter (oldcounter);
+        this->basens = this->nowns - this->nspertick * oldcounter;
+        this->zcount = oldcounter;
     }
 
     // compute next overflow
@@ -322,11 +326,20 @@ uint16_t IODevRTC::getcounter ()
 }
 
 // set a new counter value
+// preserve how far we are in current tick
 void IODevRTC::setcounter (uint16_t counter)
 {
     this->zcount = counter;
-    uint64_t deltans = counter * this->nspertick;
-    this->basens = this->nowns - deltans;
+
+    // basens = time that counter overflowed from 7777 to 0000
+    // it may be the time of an overflow from a long time ago
+
+    if (this->nspertick != 0) {
+        uint64_t nsintocurrenttick = (this->nowns - this->basens) % this->nspertick;
+        uint64_t nsatbegofcurrenttick = this->nowns - nsintocurrenttick;
+        uint64_t deltans = counter * this->nspertick;
+        this->basens = nsatbegofcurrenttick - deltans;
+    }
 }
 
 // get time that pthread_cond_timedwait() is based on

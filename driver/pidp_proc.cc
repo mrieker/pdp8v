@@ -135,8 +135,6 @@ bool pidp_proc (PiDPMsg *pidpmsg)
 
             // get timeout
             char const *env = getenv ("pidpudpmsec");
-            struct timeval rcvtotv;
-            memset (&rcvtotv, 0, sizeof rcvtotv);
             gpioudptm = (env == NULL) ? 50 : atoi (env);
 
             fprintf (stderr, "pidp_proc: using %s:%d timeout %ums\n",
@@ -158,7 +156,7 @@ bool pidp_proc (PiDPMsg *pidpmsg)
         // output LED rows
         for (int i = 0; i < 8; i ++) {
             writegpio ((0xFF << LEDROW1) | COLMASK, (1 << (LEDROW1 + i)) | (pidpmsg->ledrows[i] ^ COLMASK));
-            usleep (1000);
+            usleep (200);
         }
 
         // set pins for reading switches
@@ -169,7 +167,7 @@ bool pidp_proc (PiDPMsg *pidpmsg)
         // read switch rows
         for (int i = 0; i < 3; i ++) {
             writegpio ((0xFF << LEDROW1) | (7 << SWROW1), (7 << SWROW1) & ~ (1 << (SWROW1 + i)));
-            usleep (100);
+            usleep (10);
             pidpmsg->swrows[i] = gpiopage[GPIO_LEV0];
         }
     } else {
