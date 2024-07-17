@@ -626,6 +626,10 @@ public class GUI extends JPanel {
     public static StepCycleButton stepcyclebutton;
     public static StepInstrButton stepinstrbutton;
     public static JLabel disassemlabel;
+    public static LdAddrButton ldaddrbutton;
+    public static ExamButton exambutton;
+    public static DepButton depbutton;
+    public static LdIFPCButton ldifpcbutton;
 
     // update display with processor state
     public final static ActionListener updisplay =
@@ -881,10 +885,10 @@ public class GUI extends JPanel {
         buttonbox2.setLayout (new BoxLayout (buttonbox2, BoxLayout.X_AXIS));
         add (buttonbox2);
 
-        buttonbox2.add (new LdAddrButton ());
-        buttonbox2.add (new ExamButton ());
-        buttonbox2.add (new DepButton ());
-        buttonbox2.add (new LdIFPCButton ());
+        buttonbox2.add (ldaddrbutton = new LdAddrButton ());
+        buttonbox2.add (exambutton   = new ExamButton ());
+        buttonbox2.add (depbutton    = new DepButton ());
+        buttonbox2.add (ldifpcbutton = new LdIFPCButton ());
     }
 
     public static JLabel centeredLabel (String label)
@@ -1040,6 +1044,9 @@ public class GUI extends JPanel {
         {
             setText ("HALT");
 
+            // gray out lots of buttons while running
+            enableButtons (false);
+
             // tell raspictl main() thread to start/resume clocking tubes
             access.run ();
 
@@ -1061,6 +1068,17 @@ public class GUI extends JPanel {
 
             // make sure we get a final display update
             updisplay.actionPerformed (null);
+
+            // enable lots of buttons now that we're halted
+            enableButtons (true);
+        }
+
+        private void enableButtons (boolean en)
+        {
+            ldaddrbutton.setEnabled (en);
+            exambutton.setEnabled (en);
+            depbutton.setEnabled (en);
+            ldifpcbutton.setEnabled (en);
         }
     }
 
