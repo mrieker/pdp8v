@@ -463,6 +463,11 @@ int main (int argc, char **argv)
         }
     }
 
+    if (! guimode && ! randmem && ! scriptmode && (startpc == 0xFFFFU)) {
+        fprintf (stderr, "raspictl: no -startpc given\n");
+        return 1;
+    }
+
     // set up null signal handler to break out of reads
     signal (SIGCHLD, nullsighand);
 
@@ -688,7 +693,7 @@ reseteverything:;
                 }
             }
 
-            // - io instruction (incl group 3 eae)
+            // - io instruction (incl OSR, HLT and group 3 eae)
             //   last cycle was IOT1 and now in middle of IOT2
             //   lastreaddata contains i/o opcode
             //   sample contains AC,link

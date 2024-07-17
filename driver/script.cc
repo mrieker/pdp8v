@@ -175,7 +175,7 @@ static void *tclthread (void *fnv)
                                   else fprintf (stderr, "script: error %d evaluating command: %s\n", rc, res);
             Tcl_EvalEx (interp, "puts $::errorInfo", -1, TCL_EVAL_GLOBAL);
         }
-        else if ((res != NULL) && (res[0] != 0)) fprintf (stderr, "%s\n", res);
+        else if ((res != NULL) && (res[0] != 0)) printf ("%s\n", res);
     }
 
     Tcl_Finalize ();
@@ -1167,7 +1167,7 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     int addr;
     switch (objc) {
         case 1: {
-            addr = -1;
+            addr = 0;
             break;
         }
         case 2: {

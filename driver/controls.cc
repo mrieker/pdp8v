@@ -32,13 +32,18 @@
 
 // halt processor if not already
 // - tells raspictl.cc main to suspend clocking the processor
-// - halts at the end of a cycle
+// - halts at the end of a cycle, shadow.clock() not called yet
 // returns true: was already halted
 //        false: was running, now halted
 bool ctl_halt ()
 {
     bool sigint = ctl_lock ();
     if (haltflags & HF_HALTED) {
+
+        // must be at end of cycle (clock is low)
+        uint32_t sample = gpio->readgpio ();
+        ASSERT (! (sample & G_CLOCK));
+
         ctl_unlock (sigint);
         return true;
     }
@@ -48,6 +53,8 @@ bool ctl_halt ()
         haltreason = "HALTBUTTON";
         haltflags |= HF_HALTIT;
     }
+
+    // if raspictl.cc main sleeping in an HLT instruction, wake it up
     haltwake ();
 
     // wait for raspictl.cc main to stop cycling processor
@@ -70,8 +77,8 @@ bool ctl_ishalted ()
 
 // reset processor
 // returns with processor halted at end of fetch1 with clock still low, shadow.clock() not called yet
-// ...and with DF,IF,PC set to the given address
-bool ctl_reset (int addr)
+// ...and with DF,IF,PC set to the given 15-bit address
+bool ctl_reset (uint16_t addr)
 {
     bool sigint = ctl_lock ();
 
@@ -81,23 +88,28 @@ bool ctl_reset (int addr)
         return false;
     }
 
-    // 0xFFFFU means just leave PC reset to 0000
-    startpc = addr;
+    // tell it what 15-bit address to reset to
+    startpc = addr & 077777;
 
     // tell main to reset but then halt immediately thereafter
     haltreason = "RESETBUTTON";
     haltflags  = HF_HALTIT | HF_RESETIT;
     haltwake ();
 
-    // wait for raspictl.cc main to stop cycling processor
+    // wait for raspictl.cc main to finish resetting
     while (! (haltflags & HF_HALTED)) {
         pthread_cond_wait (&haltcond2, &haltmutex);
     }
 
-    ctl_unlock (sigint);
-
     // raspictl.cc main has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
     // when resumed, raspictl.cc main will sample the GPIO lines, call shadow.clock() and resume processing from there
+    ASSERT (shadow.r.state == Shadow::State::FETCH1);
+    ASSERT (memext.iframe == (addr & 070000));
+    ASSERT (memext.dframe == (addr & 070000));
+    uint32_t sample = gpio->readgpio ();
+    ASSERT ((sample & (G_READ | G_WRITE | G_DATA | G_CLOCK)) == (G_READ | (addr & 07777U) * G_DATA0));
+
+    ctl_unlock (sigint);
 
     return true;
 }
@@ -115,13 +127,11 @@ bool ctl_run ()
     }
 
     // clock must be low (assumed by raspictl.cc main)
+    // ...and we haven't called shadow.clock() yet
     uint32_t sample = gpio->readgpio ();
-    if (sample & G_CLOCK) {
-        ctl_unlock (sigint);
-        return false;
-    }
+    ASSERT (! (sample & G_CLOCK));
 
-    // tell raspictl.cc main to cycle the processor
+    // tell raspictl.cc main to resume cycling the processor
     haltreason = "";
     haltflags  = 0;
     haltwake ();
@@ -144,10 +154,7 @@ bool ctl_stepcyc ()
 
     // clock must be low (assumed by raspictl.cc main)
     uint32_t sample = gpio->readgpio ();
-    if (sample & G_CLOCK) {
-        ctl_unlock (sigint);
-        return false;
-    }
+    ASSERT (! (sample & G_CLOCK));
 
     // tell it to start, run one cycle, then halt
     haltreason = "";
@@ -187,10 +194,7 @@ bool ctl_stepins ()
 
     // must be at end of cycle (clock is low)
     uint32_t sample = gpio->readgpio ();
-    if (sample & G_CLOCK) {
-        ctl_unlock (sigint);
-        return false;
-    }
+    ASSERT (! (sample & G_CLOCK));
 
     do {
 

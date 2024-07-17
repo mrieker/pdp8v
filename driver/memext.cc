@@ -88,9 +88,10 @@ MemExt::MemExt ()
     this->dframe = 0;                           // start in dframe 0
 }
 
+// used by GUI console to set frame
 void MemExt::setdfif (uint32_t frame)
 {
-    this->iframe = frame << 12;                 // use by GUI console to set frame
+    this->iframe = frame << 12;
     this->iframeafterjump = frame << 12;
     this->dframe = frame << 12;
 }

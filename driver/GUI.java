@@ -567,7 +567,10 @@ public class GUI extends JPanel {
         @Override
         public void reset (int addr)
         {
-            while (! GUIRasPiCtl.reset (addr)) GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.sethalt (true);
+            if (! GUIRasPiCtl.reset (addr)) {
+                System.err.println ("GUI.DirectAccess.reset: processor failed to reset");
+            }
         }
     }
 
@@ -881,7 +884,6 @@ public class GUI extends JPanel {
         buttonbox2.add (new LdAddrButton ());
         buttonbox2.add (new ExamButton ());
         buttonbox2.add (new DepButton ());
-        buttonbox2.add (new ResetButton ());
         buttonbox2.add (new LdIFPCButton ());
     }
 
@@ -1163,26 +1165,11 @@ public class GUI extends JPanel {
         }
     }
 
-    // - reset I/O devices and processor, set IF/PC to -startpc, or as given by .BIN/.RIM file, or 0
-    private static class ResetButton extends MemButton {
-        private ResetButton ()
-        {
-            super ("RESET");
-        }
-
-        @Override  // MemButton
-        public void actionPerformed (ActionEvent ae)
-        {
-            access.reset (-1);
-            updisplay.actionPerformed (null);
-        }
-    }
-
     // - reset I/O devices and processor, set IF/PC to 15-bit value in switchregister
     private static class LdIFPCButton extends MemButton {
         private LdIFPCButton ()
         {
-            super ("LD IF/PC");
+            super ("LDIF/PC/Reset");
         }
 
         @Override  // MemButton

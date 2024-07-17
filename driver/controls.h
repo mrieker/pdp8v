@@ -21,10 +21,12 @@
 #ifndef _CONTROLS_H
 #define _CONTROLS_H
 
+#include <stdint.h>
+
 bool ctl_halt ();
 bool ctl_ishalted ();
 bool ctl_lock ();
-bool ctl_reset (int addr);
+bool ctl_reset (uint16_t addr);
 bool ctl_run ();
 bool ctl_stepcyc ();
 bool ctl_stepins ();
