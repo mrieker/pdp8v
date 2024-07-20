@@ -39,6 +39,7 @@ struct IODevDTape : IODev {
 private:
     IODevDTapeShm *shm;
     int shmfd;
+    bool dskpwait;
 
     static void *threadwrap (void *zhis);
     void thread ();

@@ -81,6 +81,7 @@ char const *readprompt (char const *prompt)
                 fprintf (stderr, "readprompt: error opening %s: %m\n", stdinfn);
             } else {
                 initted = -1;
+                setlinebuf (rl_outstream);
             }
         }
     }

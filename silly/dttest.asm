@@ -75,7 +75,7 @@ _obvcomp:      .word obvcomp		; compute obverse complement of a number
 _printoct:     .word printoct		; print number in octal
 _printcrlf:    .word printcrlf		; print cr/lf
 _printstrz:    .word printstrz		; print null-terminated string
-_readfwdrand:  .word readfwdrand	; read block reverse and verify random numbers
+_readfwdrand:  .word readfwdrand	; read block forward and verify random numbers
 _readrevrand:  .word readrevrand	; read block reverse and verify random numbers
 _rewind:       .word rewind		; rewind the tape
 _scanbegblk:   .word scanbegblk		; scan to beginning of block in forward direction
@@ -102,6 +102,10 @@ __boot:
 
 	dca	blockno		; write initial random data to whole tape
 initloop:
+	tad	_initloopm1
+	jmsi	_printstrz
+	tad	blockno
+	jmsi	_printoct
 	jmsi	_writefwdrand	; write block with random data
 	isz	blockno
 	tad	blockno
@@ -142,8 +146,8 @@ readrev:
 	jmsi	_readrevrand	; read block & verify random numbers
 	jmp	readloop	; try another
 
+_initloopm1: .word initloopm1
 _readloopm1: .word readloopm1
-
 _readloopm2: .word readloopm2
 
 
@@ -790,6 +794,7 @@ _fatalm2: .word	fatalm2
 
 ; ------------------------------------------------------------------------------
 
+initloopm1: .asciz "\r\ninit fwd blockno="
 readloopm1: .asciz "\r\n\nverify fwd blockno="
 readloopm2: .asciz "\r\n\nverify rev blockno="
 rewmsg1:    .asciz "\r\nrewind: rewinding"
