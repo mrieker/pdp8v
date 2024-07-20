@@ -30,4 +30,15 @@ if [ ! -f rkab0.rk05 ]
 then
     cat ock.rk05 > rkab0.rk05
 fi
+if [ ! -f v3d-src.rk05 ]
+then
+    rm -f v3d-src.rk05.temp
+    wget -O v3d-src.rk05.temp https://tangentsoft.com/pidp8i/uv/v3d-src.rk05
+    chmod a-w v3d-src.rk05.temp
+    mv v3d-src.rk05.temp v3d-src.rk05
+fi
+if [ ! -f rkab2.rk05 ]
+then
+    cat v3d-src.rk05 > rkab2.rk05
+fi
 exec ../driver/raspictl "$@" -script ock-boot.tcl
