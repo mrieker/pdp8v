@@ -51,6 +51,8 @@ private:
     int rdrfd;
     uint8_t punbuff;
     uint8_t rdrbuff;
+    uint8_t rdrinsert;  // insert this char into reader stream
+    uint8_t rdrlastch;  // last character passed to processor
 
     pthread_t puntid;
     pthread_t rdrtid;

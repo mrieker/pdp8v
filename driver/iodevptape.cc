@@ -155,8 +155,11 @@ SCRet *IODevPTape::scriptcmd (int argc, char const *const *argv)
             if (fd < 0) return new SCRetErr (strerror (errno));
             pthread_mutex_lock (&this->lock);
             stoprdrthread ();
-            this->rdrascii = ascii;
-            this->rdrquick = quick;
+            this->rdrascii  = ascii;
+            this->rdrquick  = quick;
+            this->rdrinsert = ascii ? 0 : 0377U;    // insert null at beginning of ascii files
+                                                    // OS-8 seems to discard first byte and it should be seen as leader in any case
+            this->rdrlastch = 0;
             startrdrthread (fd);
             pthread_mutex_unlock (&this->lock);
             return NULL;
@@ -356,7 +359,7 @@ uint16_t IODevPTape::ioinstr (uint16_t opcode, uint16_t input)
 void IODevPTape::rdrstart ()
 {
     if (! this->rdrrun && ! this->rdrwarn) {
-        fprintf (stderr, "IODevPTape::rdrstart: waiting for ptape load - iodev ptape load reader [-ascii] <filename>\n");
+        fprintf (stderr, "IODevPTape::rdrstart: waiting for ptape load - iodev ptape load reader [-ascii] [-quick] <filename>\n");
         this->rdrwarn = true;
     }
 }
@@ -432,62 +435,107 @@ void *IODevPTape::rdrthreadwrap (void *zhis)
 
 void IODevPTape::rdrthread ()
 {
+    bool printedbusy = false;
     fd_set readfds;
     uint64_t lastreadat = 0;
     FD_ZERO (&readfds);
 start:;
     pthread_mutex_lock (&this->lock);
     while (this->rdrrun) {
+        struct timespec nowts;
+        if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+        uint64_t nowns = (uint64_t) nowts.tv_sec * 1000000000 + nowts.tv_nsec;
 
         // wait until told to read next char
         if (! this->rdrnext) {
-            pthread_cond_wait (&this->rdrcond, &this->lock);
+            if (printedbusy) {
+                uint64_t endns = lastreadat + 3000000000U;
+                if (nowns >= endns) {
+                    printedbusy = false;
+                    LLU sofar = (LLU) lseek (this->rdrfd, 0, SEEK_CUR);
+                    fprintf (stderr, "IODevPTape::rdrthread: paused (%llu byte%s so far)\n", sofar, ((sofar == 1) ? "" : "s"));
+                } else {
+                    struct timespec endts;
+                    endts.tv_sec  = endns / 1000000000U;
+                    endts.tv_nsec = endns % 1000000000U;
+                    pthread_cond_timedwait (&this->rdrcond, &this->lock, &endts);
+                }
+            } else {
+                pthread_cond_wait (&this->rdrcond, &this->lock);
+            }
             continue;
         }
 
         // make sure it has been 5mS since last read to give processor time to handle previous char
         if (! this->rdrquick) {
-            struct timeval nowtv;
-            if (gettimeofday (&nowtv, NULL) < 0) ABORT ();
-            uint64_t now = nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
             uint64_t nextreadat = lastreadat + 1000000/200;  // 200 chars/sec
-            if (nextreadat > now) {
+            if (nextreadat > nowns) {
                 pthread_mutex_unlock (&this->lock);
-                usleep (nextreadat - now);
+                usleep ((nextreadat - nowns + 999) / 1000);
                 goto start;
             }
-            lastreadat = now;
+            lastreadat = nowns;
+        }
+
+        if (! printedbusy) {
+            printedbusy = true;
+            fprintf (stderr, "IODevPTape::rdrthread: reading...\n");
         }
 
         // read char, waiting for one if necessary
         // allow IODevPTape::stoprdrthread() to abort the read by using a select()
-        FD_SET (this->rdrfd, &readfds);
-        int en, rc;
-        do {
-            pthread_mutex_unlock (&this->lock);
-            rc = select (this->rdrfd + 1, &readfds, NULL, NULL, NULL);
-            en = errno;
-            pthread_mutex_lock (&this->lock);
-            if (! this->rdrrun) goto done;
-        } while ((rc < 0) && (en == EINTR));
-        errno = en;
-        if (rc > 0) rc = read (this->rdrfd, &this->rdrbuff, 1);
-        if (rc < 0) {
-            fprintf (stderr, "IODevPTape::rdrthread: read error: %m\n");
-            ABORT ();
-        }
-        if (rc == 0) {
-            fprintf (stderr, "IODevPTape::rdrthread: end of ptape file reached, unloading\n");
-            close (this->rdrfd);
-            pthread_detach (this->rdrtid);
-            this->rdrfd  = -1;
-            this->rdrtid = 0;
-            this->rdrrun = false;
-            break;
+        if (this->rdrinsert != 0377U) {
+            // insert the rdrinsert byte to the read stream
+            this->rdrbuff   = this->rdrinsert;
+            this->rdrinsert = 0377U;
+        } else {
+            // read next byte from file (or pipe or whatever)
+            // use select so it can be aborted by ioreset
+            FD_SET (this->rdrfd, &readfds);
+            int en, rc;
+            do {
+                pthread_mutex_unlock (&this->lock);
+                rc = select (this->rdrfd + 1, &readfds, NULL, NULL, NULL);
+                en = errno;
+                pthread_mutex_lock (&this->lock);
+                if (! this->rdrrun) goto done;
+            } while ((rc < 0) && (en == EINTR));
+            errno = en;
+            if (rc > 0) rc = read (this->rdrfd, &this->rdrbuff, 1);
+            if (rc < 0) {
+                fprintf (stderr, "IODevPTape::rdrthread: read error: %m\n");
+                ABORT ();
+            }
+            if (rc == 0) {
+                // insert control-Z at end-of-file for ascii files
+                if (! this->rdrascii || ((this->rdrlastch & 0177) == 26)) {
+                    // end of file, unload the tape by closing the file
+                    // the processor will just see that the reader is taking a long time
+                    fprintf (stderr, "IODevPTape::rdrthread: end of ptape file reached, unloading\n");
+                    close (this->rdrfd);
+                    pthread_detach (this->rdrtid);
+                    this->rdrfd  = -1;
+                    this->rdrtid = 0;
+                    this->rdrrun = false;
+                    break;
+                }
+                this->rdrbuff = 26;
+            }
+            if (this->rdrascii) {
+                // reading ascii file, insert <CR> before an <LF> if not already preceded by a <CR>
+                if (((this->rdrbuff & 0177) == '\n') && ((this->rdrlastch & 0177) != '\r')) {
+                    this->rdrbuff   = '\r';
+                    this->rdrinsert = 0200 | '\n';
+                }
+                // reading ascii file, make sure bit <7> is set as expected by PDP-8 software
+                this->rdrbuff |= 0200;
+            }
         }
 
+        // save latest char passed to processor
+        this->rdrlastch = this->rdrbuff;
+
         // set flag saying there is a character ready and maybe request interrupt
-        if (this->rdrascii) this->rdrbuff |= 0200;
         this->rdrnext = false;
         this->rdrflag = true;
         updintreq ();
@@ -614,7 +662,7 @@ start:;
             }
 
             // start punching character
-            if (! this->punascii || ((this->punbuff &= 0177) != 0)) {
+            if (! this->punascii || (((this->punbuff &= 0177) != 0) && (this->punbuff != '\r') && (this->punbuff != 26))) {
                 int rc = write (this->punfd, &this->punbuff, 1);
                 if (rc == 0) errno = EPIPE;
                 if (rc <= 0) {
