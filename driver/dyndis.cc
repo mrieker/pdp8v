@@ -105,6 +105,7 @@ void dyndisdump (FILE *dumpfile)
 {
     pthread_mutex_lock (&accesslock);
 
+    uint16_t lastaddr = 0xFFFFU;
     for (uint16_t addr = 0; addr < MEMSIZE; addr ++) {
         bool accessed = false;
         bool fetched = false;
@@ -113,6 +114,10 @@ void dyndisdump (FILE *dumpfile)
             if (access->state == Shadow::FETCH2) fetched = true;
         }
         if (accessed) {
+            if ((lastaddr != 0xFFFFU) && (lastaddr + 1 != addr)) {
+                fprintf (dumpfile, " ...\n");
+            }
+            lastaddr = addr;
             uint16_t data = memarray[addr];
             char const *d = "";
             std::string dstr;
