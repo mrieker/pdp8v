@@ -87,6 +87,7 @@ char const *readprompt (char const *prompt)
     }
 
 readit:
+    if (initted < 0) usleep (333333);  // hopefully enough time for tee to catch up displaying everything sent to it
     line = readline (prompt);
     FILE *echoto = (rl_outstream == NULL) ? stdout : rl_outstream;
     if (line == NULL) {
