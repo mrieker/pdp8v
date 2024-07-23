@@ -21,8 +21,8 @@ LIBS = lib.$(MACH).a
 
 .PRECIOUS: csrcmod_%.cc csrcmod_%.$(MACH).so
 
-default: autoboardtest.$(MACH) dtapestatus.$(MACH) gpioudpserver.$(MACH) pidpudpserver.$(MACH) \
-	raspictl.$(MACH) tclboardtest.$(MACH) testrpiseqboard.$(MACH) zynqtest.$(MACH) \
+default: autoboardtest.$(MACH) gpioudpserver.$(MACH) pidpudpserver.$(MACH) \
+	raspictl.$(MACH) tc08status.$(MACH) tclboardtest.$(MACH) testrpiseqboard.$(MACH) zynqtest.$(MACH) \
 	GUI.jar libGUIRasPiCtl.$(MACH).so
 
 lib.$(MACH).a: \
@@ -36,11 +36,11 @@ lib.$(MACH).a: \
 		getexedir.$(MACH).o \
 		gpiolib.$(MACH).o \
 		iodevs.$(MACH).o \
-		iodevtc08.$(MACH).o \
 		iodevptape.$(MACH).o \
 		iodevrk8.$(MACH).o \
 		iodevrk8je.$(MACH).o \
 		iodevrtc.$(MACH).o \
+		iodevtc08.$(MACH).o \
 		iodevtty.$(MACH).o \
 		linc.$(MACH).o \
 		linkloader.$(MACH).o \
@@ -127,9 +127,6 @@ GUIRasPiCtl.h: GUIRasPiCtl.java
 autoboardtest.$(MACH): autoboardtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-dtapestatus.$(MACH): dtapestatus.$(MACH).o $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
-
 gpioudpserver.$(MACH): gpioudpserver.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
@@ -137,6 +134,9 @@ pidpudpserver.$(MACH): pidpudpserver.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 raspictl.$(MACH): raspictl.$(MACH).o $(LIBS)
+	$(GPP) -o $@ $^ $(LNKFLG)
+
+tc08status.$(MACH): tc08status.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 tclboardtest.$(MACH): tclboardtest.$(MACH).o $(LIBS)

@@ -509,7 +509,7 @@ void IODevTC08::thread ()
                 case 0: {
                     while (true) {
                         if (this->delayblk ()) goto finished;
-                        if (this->stepskip (drive)) goto entc08;
+                        if (this->stepskip (drive)) goto endtape;
                     }
                 }
 
@@ -518,7 +518,7 @@ void IODevTC08::thread ()
                     uint16_t idwc, idca;
                     do {
                         if (this->delayblk ()) goto finished;
-                        if (this->stepskip (drive)) goto entc08;
+                        if (this->stepskip (drive)) goto endtape;
 
                         idwc = memarray[IDWC];
                         idca = memarray[IDCA];
@@ -542,7 +542,7 @@ void IODevTC08::thread ()
                     uint16_t idca, idwc;
                     do {
                         if (this->delayblk ()) goto finished;
-                        if (this->stepxfer (drive)) goto entc08;
+                        if (this->stepxfer (drive)) goto endtape;
 
                         uint16_t buff[WORDSPERBLOCK];
                         int rc = pread (drive->dtfd, buff, BYTESPERBLOCK, drive->tapepos / 4 * BYTESPERBLOCK);
@@ -620,7 +620,7 @@ void IODevTC08::thread ()
                     uint16_t idca, idwc;
                     do {
                         if (this->delayblk ()) goto finished;
-                        if (this->stepxfer (drive)) goto entc08;
+                        if (this->stepxfer (drive)) goto endtape;
 
                         uint16_t buff[WORDSPERBLOCK];
                         idca = memarray[IDCA];
@@ -676,7 +676,7 @@ void IODevTC08::thread ()
                 }
             }
             ABORT ();
-        entc08:;
+        endtape:;
             DBGPR ("IODevTC08::thread: - end of tape\n");
             shm->status_b |=  ENDTAP;   // set up end-of-tape status
         finerror:;
