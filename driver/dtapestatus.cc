@@ -18,7 +18,7 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-// display dectape (iodevdtape.cc) status
+// display dectape (iodevtc08.cc) status
 // uses shared memory to read status from raspictl
 
 #include <fcntl.h>
@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -49,7 +50,7 @@
 #define ESC_EREOL "\033[K"          // erase to end of line
 #define ESC_EREOP "\033[J"          // erase to end of page
 
-#include "iodevdtape.h"
+#include "iodevtc08.h"
 
 static char const *const funcmnes[8] = { "MOVE", "SRCH", "RDAT", "RALL", "WDAT", "WALL", "WTIM", "ERR7" };
 
@@ -61,11 +62,11 @@ int main ()
 
     while (true) {
 
-        // open shared memory created by raspictl IODevDTape::IODevDTape
-        int shmfd = shm_open (IODevDTape::shmname, O_RDWR, 0);
+        // open shared memory created by raspictl IODevTC08::IODevTC08
+        int shmfd = shm_open (IODevTC08::shmname, O_RDWR, 0);
         if (shmfd < 0) {
             if (errno != ENOENT) {
-                fprintf (stderr, "error opening shared memory %s: %m\n", IODevDTape::shmname);
+                fprintf (stderr, "error opening shared memory %s: %m\n", IODevTC08::shmname);
                 return 1;
             }
             if (! warned) {
@@ -79,19 +80,23 @@ int main ()
         warned = false;
 
         // map it to va space
-        void *shmptr = mmap (NULL, sizeof (IODevDTapeShm), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
+        void *shmptr = mmap (NULL, sizeof (IODevTC08Shm), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
         if (shmptr == MAP_FAILED) {
-            fprintf (stderr, "error accessing shared memory %s: %m\n", IODevDTape::shmname);
+            fprintf (stderr, "error accessing shared memory %s: %m\n", IODevTC08::shmname);
             return 1;
         }
 
-        IODevDTapeShm *shm = (IODevDTapeShm *) shmptr;
+        IODevTC08Shm *shm = (IODevTC08Shm *) shmptr;
 
         sigset_t sigintmask;
         sigemptyset (&sigintmask);
         sigaddset (&sigintmask, SIGINT);
 
+        char bargraphs[MAXDRIVES*66];
+        uint32_t filesizes[MAXDRIVES];
         uint16_t blocknosamples[MAXDRIVES][SAMPLESPERSEC];
+        memset (bargraphs, 0, sizeof bargraphs);
+        memset (filesizes, -1, sizeof filesizes);
         memset (blocknosamples, 0, sizeof blocknosamples);
         int sampleindex = 0;
 
@@ -106,7 +111,7 @@ int main ()
             // block control-C so we don't leave mutex locked
             if (pthread_sigmask (SIG_BLOCK, &sigintmask, NULL) != 0) ABORT ();
             if (pthread_mutex_lock (&shm->lock) != 0) ABORT ();
-            IODevDTapeShm tmp = *shm;
+            IODevTC08Shm tmp = *shm;
             if (pthread_mutex_unlock (&shm->lock) != 0) ABORT ();
             if (pthread_sigmask (SIG_UNBLOCK, &sigintmask, NULL) != 0) ABORT ();
 
@@ -122,24 +127,37 @@ int main ()
 
             // display line for each drive with a tape file loaded
             char rw = "  rRwWW "[func];
-            for (int i = 0; i < 8; i ++) {
-                IODevDTapeDrive *drive = &tmp.drives[i];
+            for (int i = 0; i < MAXDRIVES; i ++) {
+                IODevTC08Drive *drive = &tmp.drives[i];
                 if (drive->dtfd >= 0) {
-                    uint16_t blocknumber = drive->tapepos / 4;
-                    uint16_t oldblocknum = blocknosamples[i][sampleindex];
+                    char *bargraph = &bargraphs[i*66];
+                    if (filesizes[i] == 0xFFFFFFFFU) {
+                        char namebuf[60];
+                        sprintf (namebuf, "/proc/%d/fd/%d", tmp.dtpid, drive->dtfd);
+                        struct stat statbuf;
+                        filesizes[i] = stat (namebuf, &statbuf) < 0 ? 0 : statbuf.st_size;
+                        memset (&bargraphs[i*66], '-', 64);
+                        int j = filesizes[i] * 64 / BLOCKSPERTAPE / WORDSPERBLOCK / 2;
+                        bargraph[j]  = '|';
+                        bargraph[64] = ']';
+                    }
+                    uint16_t blocknumber  = drive->tapepos / 4;
+                    uint16_t oldblocknum  = blocknosamples[i][sampleindex];
                     uint16_t blockspersec = (blocknumber > oldblocknum) ? blocknumber - oldblocknum : oldblocknum - blocknumber;
                     blocknosamples[i][sampleindex] = blocknumber;
 
                     bool gofwd = go && ! rev && (i == driveno);
                     bool gorev = go &&   rev && (i == driveno);
                     printf (ESC_EREOL "\n  %o: %c%s" ESC_EREOL "\n", i, (drive->rdonly ? '-' : '+'), drive->fname);
-                    printf (" [----------------------------------------------------------------]" ESC_EREOL "\n");
+                    printf (" [%s" ESC_EREOL "\n", bargraph);
                     printf ("%*s%c%c^%04o%c%c%c%6u wps" ESC_EREOL "\n",
                         drive->tapepos * 16 / BLOCKSPERTAPE, "",
                         (gorev ? rw : ' '), (gorev ? '<' : ' '),
                         blocknumber, 'a' + drive->tapepos % 4,
                         (gofwd ? '>' : ' '), (gofwd ? rw : ' '),
                         blockspersec * WORDSPERBLOCK);
+                } else {
+                    filesizes[i] = 0xFFFFFFFFU;
                 }
             }
 
@@ -155,7 +173,7 @@ int main ()
         }
 
         printf ("raspictl exited\n");
-        munmap (shmptr, sizeof (IODevDTapeShm));
+        munmap (shmptr, sizeof (IODevTC08Shm));
         close (shmfd);
     }
 

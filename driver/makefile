@@ -36,7 +36,7 @@ lib.$(MACH).a: \
 		getexedir.$(MACH).o \
 		gpiolib.$(MACH).o \
 		iodevs.$(MACH).o \
-		iodevdtape.$(MACH).o \
+		iodevtc08.$(MACH).o \
 		iodevptape.$(MACH).o \
 		iodevrk8.$(MACH).o \
 		iodevrk8je.$(MACH).o \

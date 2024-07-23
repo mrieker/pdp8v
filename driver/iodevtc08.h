@@ -18,54 +18,56 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-#ifndef _IODEVDTAPE_H
-#define _IODEVDTAPE_H
+#ifndef _IODEVTC08_H
+#define _IODEVTC08_H
 
 #include "iodevs.h"
 #include "miscdefs.h"
 
-struct IODevDTapeDrive;
-struct IODevDTapeShm;
+struct IODevTC08Drive;
+struct IODevTC08Shm;
 
-struct IODevDTape : IODev {
-    IODevDTape ();
-    virtual ~IODevDTape ();
+struct IODevTC08 : IODev {
+    IODevTC08 ();
+    virtual ~IODevTC08 ();
     virtual void ioreset ();
     virtual SCRet *scriptcmd (int argc, char const *const *argv);
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
 
-    static constexpr char const *shmname = "/raspictl-dtape";
+    static constexpr char const *shmname = "/raspictl-tc08";
 
 private:
-    IODevDTapeShm *shm;
+    IODevTC08Shm *shm;
     int shmfd;
+    bool allowskipopt;
     bool dskpwait;
 
     static void *threadwrap (void *zhis);
     void thread ();
-    bool stepskip (IODevDTapeDrive *drive);
-    bool stepxfer (IODevDTapeDrive *drive);
-    void dumpbuf (IODevDTapeDrive *drive, char const *label, uint16_t const *buff);
+    bool stepskip (IODevTC08Drive *drive);
+    bool stepxfer (IODevTC08Drive *drive);
+    void dumpbuf (IODevTC08Drive *drive, char const *label, uint16_t const *buff);
     bool delayblk ();
+    bool delayloop (int usec);
     void updateirq ();
 };
 
-struct IODevDTapeDrive {
+struct IODevTC08Drive {
     int dtfd;
     uint16_t tapepos;
     bool rdonly;
     char fname[256];
 };
 
-struct IODevDTapeShm {
-    IODevDTapeDrive drives[8];
+struct IODevTC08Shm {
+    IODevTC08Drive drives[8];
     bool iopend;
     bool resetting;
     bool startdelay;
     bool volatile exiting;
     bool volatile initted;
     int debug;
-    int gofast;
+    int dtpid;
     pthread_cond_t cond;
     pthread_mutex_t lock;
     pthread_t threadid;
@@ -75,6 +77,6 @@ struct IODevDTapeShm {
     uint64_t cycles;
 };
 
-extern IODevDTape iodevdtape;
+extern IODevTC08 iodevtc08;
 
 #endif

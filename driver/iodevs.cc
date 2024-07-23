@@ -49,7 +49,7 @@
 
 #include "extarith.h"
 #include "iodevs.h"
-#include "iodevdtape.h"
+#include "iodevtc08.h"
 #include "iodevptape.h"
 #include "iodevrk8.h"
 #include "iodevrk8je.h"
@@ -161,8 +161,8 @@ static void initiodevs ()
             //iodevs[073] = &iodevrk8;
             //iodevs[074] = &iodevrk8;
             //iodevs[075] = &iodevrk8;
-            iodevs[076] = &iodevdtape;
-            iodevs[077] = &iodevdtape;
+            iodevs[076] = &iodevtc08;
+            iodevs[077] = &iodevtc08;
         }
         initted = true;
     }

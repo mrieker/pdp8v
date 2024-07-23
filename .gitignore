@@ -25,6 +25,7 @@
 *.so
 *.stl
 *.tgz
+*.tu56
 *.x86_64
 .nfs*
 fp-info-cache
