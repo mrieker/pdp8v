@@ -55,6 +55,7 @@
 #include "iodevrk8je.h"
 #include "iodevrtc.h"
 #include "iodevtty.h"
+#include "iodevvc8.h"
 #include "linc.h"
 #include "memext.h"
 #include "memory.h"
@@ -145,6 +146,9 @@ static void initiodevs ()
             iodevs[002] = &iodevptape;
             iodevs[003] = &iodevtty;
             iodevs[004] = &iodevtty;
+            iodevs[005] = &iodevvc8;
+            iodevs[006] = &iodevvc8;
+            iodevs[007] = &iodevvc8;
             iodevs[013] = &iodevrtc;
             if (lincenab) iodevs[014] = &linc;
             iodevs[030] = &scncall;

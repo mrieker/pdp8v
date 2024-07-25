@@ -4,7 +4,7 @@ TCLINC := -I/usr/include/tcl8.6
 GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
-LNKFLG := -ldl -lm -lpthread -lreadline -lrt -ltcl
+LNKFLG := -ldl -lm -lpthread -lreadline -lrt -ltcl -lX11
 RDCYC  := rdcyc-$(MACH).cc
 
 ifeq ($(MACH),armv6l)
@@ -42,6 +42,7 @@ lib.$(MACH).a: \
 		iodevrtc.$(MACH).o \
 		iodevtc08.$(MACH).o \
 		iodevtty.$(MACH).o \
+		iodevvc8.$(MACH).o \
 		linc.$(MACH).o \
 		linkloader.$(MACH).o \
 		makepipelibmod.$(MACH).o \
