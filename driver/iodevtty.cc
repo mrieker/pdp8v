@@ -117,6 +117,8 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->lastpc   = 0xFFFFU;
     this->lastin   = 0xFFFFU;
     this->lastout  = 0xFFFFU;
+    this->logfile  = NULL;
+    this->logname[0] = 0;
     this->kbfd     = -1;
     this->kbsetup  = false;
     this->kbstdin  = false;
@@ -135,6 +137,10 @@ IODevTTY::~IODevTTY ()
 {
     pthread_mutex_lock (&this->lock);
     stopthreads ();
+    if (this->logfile != NULL) {
+        fclose (this->logfile);
+        this->logfile = NULL;
+    }
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -177,6 +183,9 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("  debug 0/1/2         - set debug printing");
         puts ("  eight [0/1]         - allow all 8 bits to pass through");
         puts ("  lcucin [0/1]        - lowercase->uppercase on input");
+        puts ("  logfile             - get name of current logfile or null");
+        puts ("  logfile -           - turn logging off");
+        puts ("  logfile <filename>  - log output to the file");
         puts ("  pipes <kb> [<pr>]   - use named pipes or /dev/pty/... for i/o");
         puts ("                        <pr> defaults to same as <kb>");
         puts ("                        dash (-) or dash dash (- -) means stdin and stdout");
@@ -201,6 +210,38 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         }
 
         return new SCRetErr ("iodev %s lcucin [0/1]", iodevname);
+    }
+
+    // logfile [-/filename]
+    if (strcmp (argv[0], "logfile") == 0) {
+        if (argc == 1) return new SCRetStr (this->logname);
+        if (argc == 2) {
+            if (strcmp (argv[1], "-") == 0) {
+                pthread_mutex_lock (&this->lock);
+                if (this->logfile != NULL) {
+                    fclose (this->logfile);
+                    this->logfile = NULL;
+                }
+                this->logname[0] = 0;
+            } else {
+                FILE *lf = fopen (argv[1], "w");
+                if (lf == NULL) {
+                    return new SCRetErr (strerror (errno));
+                }
+                setlinebuf (lf);
+                pthread_mutex_lock (&this->lock);
+                if (this->logfile != NULL) {
+                    fclose (this->logfile);
+                    this->logfile = NULL;
+                }
+                strncpy (this->logname, argv[1], sizeof this->logname);
+                this->logname[(sizeof this->logname)-1] = 0;
+                this->logfile = lf;
+            }
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
+        return new SCRetErr ("iodev %s logfile [-/<filename>]", iodevname);
     }
 
     // pipes <kb> <pr>
@@ -668,6 +709,7 @@ void IODevTTY::prthread ()
         if (! this->eight) this->prbuff &= 0177;
 
         // we know there is room, write it
+        if (this->logfile != NULL) fputc (this->prbuff, this->logfile);
         int rc = write (this->prfd, &this->prbuff, 1);
         if (rc <= 0) {
             if (rc == 0) fprintf (stderr, "IODevTTY::prthread: %02o eof writing to link\n", iobasem3 + 3);

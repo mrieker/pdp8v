@@ -52,6 +52,7 @@ private:
     bool telnetd;       // being serviced in telnet daemon mode
     bool tsfwait;       // doing wait for prflag optimization
     char ttydevname[8];
+    FILE *logfile;
     int debug;
     int kbfd;           // -1: kb shut down or being shut down; else: fd for keyboard i/o
     int prfd;           // -1: pr shut down or being shut down; else: fd for printer i/o
@@ -71,6 +72,8 @@ private:
 
     pthread_cond_t prcond;
     pthread_mutex_t lock;
+
+    char logname[256];
 
     SCRetErr *openpipes (char const *kbname, char const *prname);
     void stopthreads ();
