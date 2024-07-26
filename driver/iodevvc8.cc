@@ -28,12 +28,12 @@
 
 #include "iodevvc8.h"
 
-#define NSPERFADE (64*1024*1024)            // nanoseconds per fading level
-#define NSPERPOINT (128*1024)               // fastest the processor can generate a point
-#define FADELEVELS 32                       // total graylevels for fading
-                                            // note: persistence = NSPERFADE * FADELEVELS
-#define MAXBUFFPTS (NSPERFADE/NSPERPOINT*2) // max number of points processor can generate in NSPERFADE
-#define MAXALLPTS (MAXBUFFPTS*FADELEVELS*2) // room for all points till they fade to black
+#define MAXBUFFPTS 65536
+
+#define BUTTONDIAM 32
+#define BORDERWIDTH 2
+#define WINDOWWIDTH 1024
+#define WINDOWHEIGHT 1024
 
 IODevVC8 iodevvc8;
 
@@ -118,23 +118,23 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
     switch (opcode) {
         case 06051 ... 06057: {
             if (opcode & 1) this->xcobuf  = 0;
-            if (opcode & 2) this->xcobuf |= input & 03777;
+            if (opcode & 2) this->xcobuf |= input % WINDOWWIDTH;
             if (opcode & 4) this->insertpoint ();
             break;
         }
 
         case 06061 ... 06067: {
             if (opcode & 1) this->ycobuf  = 0;
-            if (opcode & 2) this->ycobuf |= input & 03777;
+            if (opcode & 2) this->ycobuf |= input % WINDOWHEIGHT;
             if (opcode & 4) this->insertpoint ();
             break;
         }
 
-        case 06074:     // black
-        case 06075:     // dk gray
+        case 06074:     // dk gray
+        case 06075:     // gray
         case 06076:     // lt gray
         case 06077: {   // white
-            this->intens = (3 - (opcode & 3)) * FADELEVELS / 3;
+            this->intens = opcode & 3;
             break;
         }
 
@@ -153,12 +153,14 @@ void IODevVC8::insertpoint ()
     pthread_mutex_lock (&this->lock);
 
     // start thread if this is first point ever
+    // otherwise, just wake the thread to process point
     if (this->threadid == 0) {
         int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
         if (rc != 0) ABORT ();
-        this->fadetick = 0;
         this->buffer = (VC8Pt *) malloc (MAXBUFFPTS * sizeof *this->buffer);
         if (this->buffer == NULL) ABORT ();
+    } else if ((this->insert + MAXBUFFPTS - this->remove) % MAXBUFFPTS >= MAXBUFFPTS / 2) {
+        pthread_cond_broadcast (&this->cond);
     }
 
     // queue the point
@@ -166,9 +168,10 @@ void IODevVC8::insertpoint ()
     int ins = this->insert;
     this->buffer[ins].x = this->xcobuf;
     this->buffer[ins].y = this->ycobuf;
-    this->buffer[ins].t = this->fadetick - this->intens;
+    this->buffer[ins].t = this->intens;
     this->insert = ins = (ins + 1) % MAXBUFFPTS;
     if (ins == this->remove) this->remove = (this->remove + 1) % MAXBUFFPTS;
+
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -192,7 +195,7 @@ void IODevVC8::thread ()
     unsigned long blackpixel = XBlackPixel (xdis, 0);
     unsigned long whitepixel = XWhitePixel (xdis, 0);
     Window xrootwin = XDefaultRootWindow (xdis);
-    Window xwin = XCreateSimpleWindow (xdis, xrootwin, 100, 100, 1024, 1024, 2, whitepixel, blackpixel);
+    Window xwin = XCreateSimpleWindow (xdis, xrootwin, 100, 100, WINDOWWIDTH + BORDERWIDTH * 2, WINDOWHEIGHT + BORDERWIDTH * 2, 0, whitepixel, blackpixel);
     XMapRaised (xdis, xwin);
     XStoreName (xdis, xwin, "VC8");
 
@@ -204,125 +207,128 @@ void IODevVC8::thread ()
     gcvalues.background = blackpixel;
     GC xgc = XCreateGC (xdis, drawable, GCForeground | GCBackground, &gcvalues);
 
-    // set up gray levels for fading things out
-    //          0 = white
-    // FADELEVELS = black
+    // set up gray levels for the intensities
     Colormap cmap = XDefaultColormap (xdis, 0);
-    unsigned long graylevels[FADELEVELS+1];
-    for (int i = 0; i <= FADELEVELS; i ++) {
+    unsigned long graylevels[4];
+    for (int i = 0; i < 4; i ++) {
         XColor xcolor;
         memset (&xcolor, 0, sizeof xcolor);
-        xcolor.red   = (FADELEVELS - i) * 65535 / FADELEVELS;
-        xcolor.green = (FADELEVELS - i) * 65535 / FADELEVELS;
-        xcolor.blue  = (FADELEVELS - i) * 65535 / FADELEVELS;
+        xcolor.red   = (i + 1) * 65535 / 4;
+        xcolor.green = (i + 1) * 65535 / 4;
+        xcolor.blue  = (i + 1) * 65535 / 4;
         xcolor.flags = DoRed | DoGreen | DoBlue;
         XAllocColor (xdis, cmap, &xcolor);
         graylevels[i] = xcolor.pixel;
     }
 
+    // set up red color for clear button
+    unsigned long redpixel;
+    {
+        XColor xcolor;
+        memset (&xcolor, 0, sizeof xcolor);
+        xcolor.red   = 65535;
+        xcolor.flags = DoRed | DoGreen | DoBlue;
+        XAllocColor (xdis, cmap, &xcolor);
+        redpixel = xcolor.pixel;
+    }
+
     // allocate buffer to hold all points
-    VC8Pt *allpoints = (VC8Pt *) malloc (MAXALLPTS * sizeof *allpoints);
+    VC8Pt *allpoints = (VC8Pt *) malloc (MAXBUFFPTS * sizeof *allpoints);
     if (allpoints == NULL) ABORT ();
-    int allins = 0;
-    int allrem = 0;
-
-    // index in allpoints where a given xy is
-    int *indices = (int *) malloc (1024*1024 * sizeof *indices);
-    if (indices == NULL) ABORT ();
-    memset (indices, -1, 1024*1024 * sizeof *indices);
-
-    // get time for first fading update
-    struct timespec nowts;
-    if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
-    uint64_t nextfadens = ((nowts.tv_sec * 1000000000ULL + nowts.tv_nsec) / NSPERFADE + 1) * NSPERFADE;
 
     // repeat until ioreset() is called
+    bool lastbuttonpressed = false;
     unsigned long foreground = whitepixel;
     pthread_mutex_lock (&this->lock);
     while (! this->resetting) {
 
-        // wait for beginning of next fade tick or to be woken up for reset
-        nowts.tv_sec  = nextfadens / 1000000000;
-        nowts.tv_nsec = nextfadens % 1000000000;
-        int rc = pthread_cond_timedwait (&this->cond, &this->lock, &nowts);
+        // wait for points queued or reset
+        struct timespec ts;
+        if (clock_gettime (CLOCK_REALTIME, &ts) < 0) ABORT ();
+        ts.tv_nsec += 50000000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_nsec -= 1000000000;
+            ts.tv_sec ++;
+        }
+        int rc = pthread_cond_timedwait (&this->cond, &this->lock, &ts);
         if ((rc != 0) && (rc != ETIMEDOUT)) ABORT ();
 
         // copy points from processor while still locked
+        int allins = 0;
+        int allrem = 0;
         int rem = this->remove;
         while (rem != this->insert) {
             allpoints[allins] = this->buffer[rem];
             rem = (rem + 1) % MAXBUFFPTS;
-            int xy = allpoints[allins].y * 1024 + allpoints[allins].x;
-            indices[xy] = allins;
-            allins = (allins + 1) % MAXALLPTS;
+            allins = (allins + 1) % MAXBUFFPTS;
             if (allrem == allins) {
-                xy = allpoints[allrem].y * 1024 + allpoints[allrem].x;
-                if (indices[xy] == allrem) indices[xy] = -1;
-                allrem = (allrem + 1) % MAXALLPTS;
+                allrem = (allrem + 1) % MAXBUFFPTS;
             }
         }
         this->remove = rem;
 
-        // see how many fade tick intervals have passed
-        if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
-        uint64_t incfadetick = 0;
-        uint64_t nowns = nowts.tv_sec * 1000000000ULL + nowts.tv_nsec;
-        if (nowns > nextfadens) incfadetick = (nowns - nextfadens) / NSPERFADE;
-        if (incfadetick > 0) {
+        pthread_mutex_unlock (&this->lock);
 
-            // account for a number of fade tick intervals
-            this->fadetick += incfadetick;
-            pthread_mutex_unlock (&this->lock);
-            nextfadens += incfadetick * NSPERFADE;
+        // draw points passed to us from processor
+        for (int i = 0; i < MAXBUFFPTS; i ++) {
 
-            // fade existing points
-            // if point has faded to black, remove from ring buffer
+            // get next point, break out if no more left
+            int j = (allrem + i) % MAXBUFFPTS;
+            if (j == allins) break;
+            VC8Pt *p = &allpoints[j];
 
-            for (int i = 0; i < MAXALLPTS;) {
-
-                // get next point, break out if no more left
-                int j = (allrem + i) % MAXALLPTS;
-                if (j == allins) break;
-                VC8Pt *p = &allpoints[j];
-
-                // remove or skip if it has been superceded
-                int xy = p->y * 1024 + p->x;
-                if (indices[xy] != j) {
-                    if (i == 0) allrem = (allrem + 1) % MAXALLPTS;
-                    else i ++;
-                    continue;
-                }
-
-                // it's current fade level is based on how old it is
-                uint16_t fadelevl = this->fadetick - p->t;
-
-                // if faded to black, draw it to remove from screen and remove from allpoints[]
-                if (fadelevl >= FADELEVELS) {
-                    fadelevl = FADELEVELS;
-                    if (i == 0) allrem = (allrem + 1) % MAXALLPTS;
-                    else i ++;
-                }
-
-                // otherwise, just draw it with whatever gray level it is at
-                else i ++;
-
-                // draw point
-                if (foreground != graylevels[fadelevl]) {
-                    foreground = graylevels[fadelevl];
-                    XSetForeground (xdis, xgc, foreground);
-                }
-                XDrawPoint (xdis, drawable, xgc, p->x, p->y);
+            // draw point
+            if (foreground != graylevels[p->t]) {
+                foreground = graylevels[p->t];
+                XSetForeground (xdis, xgc, foreground);
             }
-
-            XFlush (xdis);
-
-            pthread_mutex_lock (&this->lock);
+            XDrawPoint (xdis, drawable, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
         }
+
+        // draw border box
+        if (foreground != whitepixel) {
+            foreground = whitepixel;
+            XSetForeground (xdis, xgc, foreground);
+        }
+        for (int i = 0; i < BORDERWIDTH; i ++) {
+            XDrawRectangle (xdis, drawable, xgc, i, i, WINDOWWIDTH + BORDERWIDTH * 2 - 1 - i * 2, WINDOWHEIGHT + BORDERWIDTH * 2 - 1 - i * 2);
+        }
+
+        // draw red CLEAR button
+        if (foreground != redpixel) {
+            foreground = redpixel;
+            XSetForeground (xdis, xgc, foreground);
+        }
+        XDrawArc (xdis, drawable, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
+        XDrawString (xdis, drawable, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
+
+        XFlush (xdis);
+
+        // check for clear button clicked
+        Window root, child;
+        int root_x, root_y, win_x, win_y;
+        unsigned int mask;
+        Bool ok = XQueryPointer (xdis, xwin, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
+        if (ok && (win_x > WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM) && (win_x < WINDOWWIDTH + BORDERWIDTH) &&
+                (win_y > WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM) && (win_y < WINDOWHEIGHT + BORDERWIDTH)) {
+            // mouse inside button area, if pressed, remember that
+            if (mask & Button1Mask) {
+                lastbuttonpressed = true;
+            } else if (lastbuttonpressed) {
+                // mouse button released in button area after being pressed in button area, clear screen
+                XClearWindow (xdis, xwin);
+                lastbuttonpressed = false;
+            }
+        } else {
+            // mouse outside button area, pretend button was released
+            lastbuttonpressed = false;
+        }
+
+        pthread_mutex_lock (&this->lock);
     }
 
     // ioreset(), unlock, close display and exit thread
     pthread_mutex_unlock (&this->lock);
     free (allpoints);
-    free (indices);
     XCloseDisplay (xdis);
 }

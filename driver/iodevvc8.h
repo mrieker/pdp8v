@@ -44,7 +44,6 @@ private:
     uint16_t xcobuf;
     uint16_t ycobuf;
     uint16_t intens;
-    uint16_t fadetick;
 
     pthread_t threadid;
     pthread_cond_t cond;
