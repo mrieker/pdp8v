@@ -104,6 +104,7 @@ struct SCRetStr : SCRet {
 };
 
 extern IODev *alliodevs;
+extern IODev *iodevs[64];
 
 uint16_t ioinstr (uint16_t opcode, uint16_t input);
 char const *iodisas (uint16_t opcode);

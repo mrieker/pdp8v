@@ -65,7 +65,7 @@
 IODev *alliodevs;
 
 static bool initted;
-static IODev *iodevs[64];
+IODev *iodevs[64];
 
 static void initiodevs ();
 
@@ -147,8 +147,6 @@ static void initiodevs ()
             iodevs[003] = &iodevtty;
             iodevs[004] = &iodevtty;
             iodevs[005] = &iodevvc8;
-            iodevs[006] = &iodevvc8;
-            iodevs[007] = &iodevvc8;
             iodevs[013] = &iodevrtc;
             if (lincenab) iodevs[014] = &linc;
             iodevs[030] = &scncall;

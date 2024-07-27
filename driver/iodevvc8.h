@@ -23,6 +23,12 @@
 
 #include "iodevs.h"
 
+enum VC8Type {
+    VC8TypeN = 0,
+    VC8TypeE = 1,
+    VC8TypeI = 2
+};
+
 struct VC8Pt {
     uint16_t x;
     uint16_t y;
@@ -39,20 +45,25 @@ struct IODevVC8 : IODev {
 
 private:
     bool resetting;
+    bool waiting;
     int insert;
     int remove;
+    uint16_t eflags;
     uint16_t xcobuf;
     uint16_t ycobuf;
     uint16_t intens;
+    uint16_t pms;
+    VC8Pt *buffer;
+    VC8Type type;
 
     pthread_t threadid;
     pthread_cond_t cond;
     pthread_mutex_t lock;
 
-    VC8Pt *buffer;
-
     void insertpoint ();
+    void wakethread ();
     void thread ();
+    void updintreq ();
 
     static void *threadwrap (void *zhis);
 };

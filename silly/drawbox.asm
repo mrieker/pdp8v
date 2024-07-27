@@ -1,9 +1,9 @@
 
-; draw a graphics box on VC8
+; draw graphics boxes on VC8/I
 
 ; ../asm/assemble drawbox.asm drawbox.obj > drawbox.lis
 ; ../asm/link -o drawbox.oct drawbox.obj > drawbox.map
-; ../driver/raspictl drawbox.oct
+; vc8type=i ../driver/raspictl drawbox.oct
 
 	clze = 06130
 	clde = 06132

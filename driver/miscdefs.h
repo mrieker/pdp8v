@@ -37,6 +37,7 @@
 #define IRQ_RTC       00100
 #define IRQ_RK8       00200
 #define IRQ_DTAPE     00400
+#define IRQ_VC8       01000
 
 #define MAXSTOPATS 16
 

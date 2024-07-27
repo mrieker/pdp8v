@@ -1,0 +1,92 @@
+
+/ ../asm/assemble -pal kaleid.pal kaleid.obj > kaleid.lis
+/ ../asm/link -o kaleid.oct kaleid.obj > kaleid.map
+
+/       tubes: vc8pms=2000 vc8type=e switchregister=3 ../driver/raspictl kaleid.oct
+/        zynq: vc8pms=2000 vc8type=e switchregister=3 ../driver/raspictl -zynqlib kaleid.oct
+/  pidp panel: vc8pms=500 vc8type=e ../driver/raspictl -pidp -nohwlib kaleid.oct
+/              ...switches set to 4003 for example
+
+/ https://homepage.cs.uiowa.edu/~jones/pdp8/man/vc8e.html
+
+/ Kaleidoscope program for the VC8E/VR14 scope.
+/ Based on suggestions from page 6-19 of the Small Computer
+/ Handbook, 1973.
+
+/ The advice given is to experiment with settings of
+/ the switch register bit positions 9, 10 and 11, leaving
+/ all higher bits zero.  The advice is good; this is a
+/ nice "screen saver" for non-storage scopes.
+
+DISD=   6052
+DILX=   6053
+DILY=   6054
+DIXY=   6055
+
+*	0020
+
+X,      3777            / any initial value works, but
+Y,      6               / 0,0 is least interesting.
+INCS,	0
+
+TEM,    .-.
+C,      .-.
+SEVEN,	7
+
+*       0200
+	.global	__boot
+__boot,
+START,  TAD     Y
+	JMS     SCALE
+	CMA
+	TAD     X
+	DCA     X       / X = X - SCALE(Y)
+	TAD     X
+	JMS     SCALE
+	TAD     Y
+	DCA     Y       / Y = Y - SCALE(X)
+	JMS	PLOTXY
+	OSR
+	SMA CLA
+	JMP	START
+	IAC
+	JMS	PLOTXY
+	CLL IAC RAL
+	JMS	PLOTXY
+	CLL CML IAC RAL
+	JMS	PLOTXY
+	JMP	START
+
+PLOTXY,	.-.
+	DCA	INCS
+	TAD	INCS
+	CLL RAR
+	TAD	X
+	DILX
+	CLA IAC
+	AND	INCS
+	TAD	Y
+	DILY
+	CLL CLA
+	DISD
+	JMP     .-1
+	DIXY
+	JMP I	PLOTXY
+
+/ Divide AC by 2**SR
+SCALE,  .-.
+	DCA     TEM
+	OSR
+	AND	SEVEN
+	CIA
+	DCA     C
+	TAD     TEM
+SCLOOP,
+	CLL
+	SPA
+	CML
+	RAR             / Arithmetic right shift
+	ISZ     C
+	JMP     SCLOOP
+	JMP I   SCALE
+
