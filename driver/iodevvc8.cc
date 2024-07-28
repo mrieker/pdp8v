@@ -32,9 +32,10 @@
 #include "iodevvc8.h"
 
 #define MAXBUFFPTS 65536
-#define PERSISTMS 100       // how long non-storage points last
+#define DEFPERSISTMS 500    // how long non-storage points last
+#define MINPERSISTMS 10     // ...smaller and the up/down buttons won't work
+#define MAXPERSISTMS 60000  // ...larger and it will overflow 16-bit counter
 
-#define BUTTONDIAM 32
 #define BORDERWIDTH 2
 #define WINDOWWIDTH 1024
 #define WINDOWHEIGHT 1024
@@ -48,6 +49,53 @@
 #define EF_IE 00001     // interrupt enable
 
 #define EF_MASK 077
+
+struct Button {
+    Button (Display *xdis, Window xwin, GC xgc);
+    virtual ~Button ();
+
+    virtual void draw (unsigned long color) = 0;
+    bool clicked ();
+
+protected:
+    Display *xdis;
+    Window xwin;
+    GC xgc;
+
+    bool lastpressed;
+    int xleft, xrite, ytop, ybot;
+};
+
+struct ClearButton : Button {
+    ClearButton (Display *xdis, Window xwin, GC xgc);
+    virtual void draw (unsigned long color);
+};
+
+struct TriButton : Button {
+    TriButton (Display *xdis, Window xwin, GC xgc, bool upbut);
+    virtual void draw (unsigned long color);
+
+private:
+    bool upbut;
+    XSegment segs[3];
+};
+
+struct PersisButton {
+    TriButton upbutton;
+    TriButton dnbutton;
+
+    PersisButton (Display *xdis, Window xwin, GC xgc);
+    void setpms (uint16_t pms);
+    void draw (unsigned long color);
+
+private:
+    Display *xdis;
+    Window xwin;
+    GC xgc;
+
+    char pmsbuf[12];
+    int pmslen;
+};
 
 IODevVC8 iodevvc8;
 
@@ -88,12 +136,12 @@ IODevVC8::IODevVC8 ()
     if (envtype == NULL) return;
 
     // maybe override default ephemeral persistence
-    this->pms = PERSISTMS;
+    this->pms = DEFPERSISTMS;
     char const *envpms = getenv ("vc8pms");
     if (envpms != NULL) {
         int intpms = atoi (envpms);
-        if (intpms < PERSISTMS) intpms = PERSISTMS;
-        if (intpms > 60000) intpms = 60000;
+        if (intpms < MINPERSISTMS) intpms = MINPERSISTMS;
+        if (intpms > MAXPERSISTMS) intpms = MAXPERSISTMS;
         this->pms = intpms;
     }
 
@@ -149,6 +197,8 @@ IODevVC8::~IODevVC8 ()
 // - close window, kill thread
 void IODevVC8::ioreset ()
 {
+    if (this->type == VC8TypeN) return;
+
     pthread_mutex_lock (&this->lock);
 
     if (this->resetting) {
@@ -404,6 +454,7 @@ void IODevVC8::thread ()
         XAllocColor (xdis, cmap, &xcolor);
         graylevels[i] = xcolor.pixel;
     }
+    unsigned long graypixel = graylevels[2];
 
     // set up red and green colors
     unsigned long greenpix, magenpix, redpixel;
@@ -437,8 +488,12 @@ void IODevVC8::thread ()
     if (indices == NULL) ABORT ();
     memset (indices, -1, WINDOWWIDTH * WINDOWHEIGHT * sizeof *indices);
 
+    // buttons
+    ClearButton clearbutton (xdis, xwin, xgc);
+    PersisButton persisbutton (xdis, xwin, xgc);
+    persisbutton.setpms (this->pms);
+
     // repeat until ioreset() is called
-    bool lastclearpressed = false;
     int allins = 0;
     int allrem = 0;
     uint16_t oldeflags = 0;
@@ -496,8 +551,6 @@ void IODevVC8::thread ()
             this->insert = this->remove = 0;
         }
 
-        oldeflags = neweflags;
-
         // ephemeral mode: erase old points what have timed out
         if (! (neweflags & EF_ST)) {
             while (allrem != allnew) {
@@ -505,11 +558,11 @@ void IODevVC8::thread ()
                 // get next point, break out if no more left
                 VC8Pt *p = &allpoints[allrem];
 
-                // see if it has timed out
+                // see if it has timed out or has been superceded
                 // draw in black and remove if so
                 int xy = p->y * WINDOWWIDTH + p->x;
                 uint16_t dtms = timems - timemss[xy];
-                if (dtms < this->pms) break;
+                if ((indices[xy] == allrem) && (dtms < this->pms)) break;
 
                 // if it has been superceded by a point later on in ring, don't erase it
                 if (indices[xy] == allrem) {
@@ -549,8 +602,8 @@ void IODevVC8::thread ()
         }
 
         // draw border box
-        if (foreground != whitepixel) {
-            foreground = whitepixel;
+        if (foreground != graypixel) {
+            foreground = graypixel;
             XSetForeground (xdis, xgc, foreground);
         }
         for (int i = 0; i < BORDERWIDTH; i ++) {
@@ -558,38 +611,43 @@ void IODevVC8::thread ()
         }
 
         // storage mode: draw CLEAR button
+        // ephemeral mode: draw persistance UP/DOWN buttons
         if (neweflags & EF_ST) {
-            if (foreground != magenpix) {
-                foreground = magenpix;
-                XSetForeground (xdis, xgc, foreground);
+            if (! (oldeflags & EF_ST)) {
+                persisbutton.draw (blackpixel);
             }
-            XDrawArc (xdis, xdraw, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
-            XDrawString (xdis, xdraw, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
+            clearbutton.draw (magenpix);
+        } else {
+            if (oldeflags & EF_ST) {
+                clearbutton.draw (blackpixel);
+            }
+            persisbutton.draw (magenpix);
         }
+        foreground = magenpix;
 
         XFlush (xdis);
 
         // storage mode: check for clear button clicked
         if (neweflags & EF_ST) {
-            Window root, child;
-            int root_x, root_y, win_x, win_y;
-            unsigned int mask;
-            Bool ok = XQueryPointer (xdis, xwin, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
-            if (ok && (win_x > WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM) && (win_x < WINDOWWIDTH + BORDERWIDTH) &&
-                    (win_y > WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM) && (win_y < WINDOWHEIGHT + BORDERWIDTH)) {
-                // mouse inside button area, if pressed, remember that
-                if (mask & Button1Mask) {
-                    lastclearpressed = true;
-                } else if (lastclearpressed) {
-                    // mouse button released in button area after being pressed in button area, clear screen
-                    XClearWindow (xdis, xwin);
-                    lastclearpressed = false;
-                }
-            } else {
-                // mouse outside button area, pretend button was released
-                lastclearpressed = false;
+            if (clearbutton.clicked ()) XClearWindow (xdis, xwin);
+        } else {
+            int16_t delta = 0;
+            if (persisbutton.upbutton.clicked ()) {
+                delta += this->pms / 4;
+            }
+            if (persisbutton.dnbutton.clicked ()) {
+                delta -= this->pms / 4;
+            }
+            if (delta != 0) {
+                persisbutton.draw (blackpixel);
+                this->pms += delta;
+                if (this->pms < MINPERSISTMS) this->pms = MINPERSISTMS;
+                if (this->pms > MAXPERSISTMS) this->pms = MAXPERSISTMS;
+                persisbutton.setpms (this->pms);
             }
         }
+
+        oldeflags = neweflags;
 
         pthread_mutex_lock (&this->lock);
     }
@@ -618,3 +676,144 @@ static int xioerror (Display *xdis)
     fprintf (stderr, "IODevVC8::xioerror: X server IO error\n");
     exit (1);
 }
+
+/////////////////////////////
+//  Common to all Buttons  //
+/////////////////////////////
+
+Button::Button (Display *xdis, Window xwin, GC xgc)
+{
+    this->xdis  = xdis;
+    this->xwin  = xwin;
+    this->xgc   = xgc;
+    lastpressed = false;
+}
+
+Button::~Button ()
+{ }
+
+bool Button::clicked ()
+{
+    Window root, child;
+    int root_x, root_y, win_x, win_y;
+    unsigned int mask;
+    Bool ok = XQueryPointer (xdis, xwin, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
+    if (ok && (win_x > xleft) && (win_x < xrite) && (win_y > ytop) && (win_y < ybot)) {
+        // mouse inside button area, if pressed, remember that
+        if (mask & Button1Mask) {
+            lastpressed = true;
+        } else if (lastpressed) {
+            // mouse button released in button area after being pressed in button area
+            lastpressed = false;
+            return true;
+        }
+    } else {
+        // mouse outside button area, pretend button was released
+        lastpressed = false;
+    }
+    return false;
+}
+
+/////////////////////////////////////////
+//  Circle Button for Clearing Screen  //
+/////////////////////////////////////////
+
+#define BUTTONDIAM 32
+
+ClearButton::ClearButton (Display *xdis, Window xwin, GC xgc)
+    : Button (xdis, xwin, xgc)
+{
+    xleft = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+    xrite = WINDOWWIDTH  + BORDERWIDTH;
+    ytop  = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM;
+    ybot  = WINDOWHEIGHT + BORDERWIDTH;
+}
+
+void ClearButton::draw (unsigned long color)
+{
+    XSetForeground (xdis, xgc, color);
+    XDrawArc (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
+    XDrawString (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
+}
+
+#undef BUTTONDIAM
+
+////////////////////////////////////////////////
+//  Triangle Button for Altering Persistence  //
+////////////////////////////////////////////////
+
+#define BUTTONDIAM 48
+
+TriButton::TriButton (Display *xdis, Window xwin, GC xgc, bool upbut)
+    : Button (xdis, xwin, xgc)
+{
+    xleft = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+    xrite = WINDOWWIDTH  + BORDERWIDTH;
+    this->upbut = upbut;
+    if (upbut) {
+        ytop = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        ybot = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[0].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+        segs[0].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[0].x2 = WINDOWWIDTH  + BORDERWIDTH - 1;
+        segs[0].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[1].x1 = WINDOWWIDTH  + BORDERWIDTH - 1;
+        segs[1].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[1].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        segs[2].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[2].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        segs[2].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+        segs[2].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+    } else {
+        ytop = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+        ybot = WINDOWHEIGHT + BORDERWIDTH;
+        segs[0].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+        segs[0].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[0].x2 = WINDOWWIDTH  + BORDERWIDTH - 1;
+        segs[0].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].x1 = WINDOWWIDTH  + BORDERWIDTH - 1;
+        segs[1].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].y2 = WINDOWHEIGHT + BORDERWIDTH - 1;
+        segs[2].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[2].y1 = WINDOWHEIGHT + BORDERWIDTH - 1;
+        segs[2].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
+        segs[2].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+    }
+}
+
+void TriButton::draw (unsigned long color)
+{
+    XSetForeground (xdis, xgc, color);
+    XDrawSegments (xdis, xwin, xgc, segs, 3);
+}
+
+//////////////////////////
+//  Persistance Button  //
+//////////////////////////
+
+PersisButton::PersisButton (Display *xdis, Window xwin, GC xgc)
+    : upbutton (xdis, xwin, xgc, true),
+      dnbutton (xdis, xwin, xgc, false)
+{
+    this->xdis = xdis;
+    this->xwin = xwin;
+    this->xgc  = xgc;
+
+    pmslen = 0;
+}
+
+void PersisButton::setpms (uint16_t pms)
+{
+    pmslen = snprintf (pmsbuf, sizeof pmsbuf, "%u ms", pms);
+}
+
+void PersisButton::draw (unsigned long color)
+{
+    upbutton.draw (color);
+    dnbutton.draw (color);
+    XDrawString (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM * 3 / 4, pmsbuf, pmslen);
+}
+
+#undef BUTTONDIAM
