@@ -28,15 +28,41 @@ DIXY=   6055
 X,      3777            / any initial value works, but
 Y,      6               / 0,0 is least interesting.
 INCS,	0
+EXTRA,	0
+BIAS,	0
 
 TEM,    .-.
 C,      .-.
-SEVEN,	7
+THREE,	3
+TWO,	2
+O77,	077
 
 *       0200
 	.global	__boot
 __boot,
-START,  TAD     Y
+START,
+	ISZ	EXTRA	/ COUNT 4096 CYCLES
+	JMP	SAMEXTRA
+	TAD	BIAS	/ STEP BIAS
+	TAD	THREE
+	DCA	BIAS
+	TAD	BIAS	/ SHORTEN THE 4096 CYCLES FOR NEXT TIME
+	BSW
+	DCA	EXTRA
+	TAD	BIAS	/ DISPLAY SHIFT COUNT IN 'SC' LEDS ON PIDP PANEL
+	RTR
+	AND	THREE
+	TAD	TWO
+	CMA
+	DCA	.+2
+	SCL
+SCOUNT,	7775		/ (one's comp shift count)
+	CLA
+SAMEXTRA,
+	TAD	EXTRA	/ DISPLAY 4K COUNTER IN 'MQ' LEDS ON PIDP PANEL
+	MQL
+
+	TAD     Y
 	JMS     SCALE
 	CMA
 	TAD     X
@@ -61,32 +87,35 @@ PLOTXY,	.-.
 	DCA	INCS
 	TAD	INCS
 	CLL RAR
-	TAD	X
+	DIXY		/ previous ppint should be ready to plot by now
+	TAD	X	/ send new point X to display
 	DILX
 	CLA IAC
 	AND	INCS
-	TAD	Y
+	TAD	Y	/ send new point Y to display
 	DILY
 	CLL CLA
-	DISD
-	JMP     .-1
-	DIXY
 	JMP I	PLOTXY
 
-/ Divide AC by 2**SR
+/ Divide AC (signed) by 2**(BIAS/4&3+2)
 SCALE,  .-.
 	DCA     TEM
-	OSR
-	AND	SEVEN
-	CIA
+	TAD	SCOUNT	/ one's comp shift count
+	IAC		/ two's comp shift count
 	DCA     C
-	TAD     TEM
-SCLOOP,
-	CLL
+	TAD     TEM	/ get signed AC value
 	SPA
-	CML
+	JMP	SCNEG
+SCPOS,
+	CLL
 	RAR             / Arithmetic right shift
 	ISZ     C
-	JMP     SCLOOP
+	JMP     SCPOS
+	JMP I   SCALE
+SCNEG,
+	CLL CML
+	RAR             / Arithmetic right shift
+	ISZ     C
+	JMP     SCNEG
 	JMP I   SCALE
 
