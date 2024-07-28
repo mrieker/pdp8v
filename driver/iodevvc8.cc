@@ -91,8 +91,10 @@ IODevVC8::IODevVC8 ()
     this->pms = PERSISTMS;
     char const *envpms = getenv ("vc8pms");
     if (envpms != NULL) {
-        this->pms = atoi (envpms);
-        if (this->pms > 2000) this->pms = 2000;
+        int intpms = atoi (envpms);
+        if (intpms < PERSISTMS) intpms = PERSISTMS;
+        if (intpms > 60000) intpms = 60000;
+        this->pms = intpms;
     }
 
     // decode display type
@@ -172,6 +174,7 @@ void IODevVC8::ioreset ()
             }
             case VC8TypeI: {
                 this->eflags = EF_ST;
+                this->intens = 3;
                 break;
             }
             default: ABORT ();
@@ -236,7 +239,7 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
 
                 // DIXY (VC8/E) Intensify at (X,Y)
                 case 06055: {
-                    this->insertpoint ();
+                    this->insertpoint (this->eflags & EF_CO ? 5 : 4);
                     break;
                 }
 
@@ -269,14 +272,14 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
                 case 06051 ... 06057: {
                     if (opcode & 1) this->xcobuf  = 0;
                     if (opcode & 2) this->xcobuf |= input % WINDOWWIDTH;
-                    if (opcode & 4) this->insertpoint ();
+                    if (opcode & 4) this->insertpoint (this->intens);
                     break;
                 }
 
                 case 06061 ... 06067: {
                     if (opcode & 1) this->ycobuf  = 0;
                     if (opcode & 2) this->ycobuf |= input % WINDOWHEIGHT;
-                    if (opcode & 4) this->insertpoint ();
+                    if (opcode & 4) this->insertpoint (this->intens);
                     break;
                 }
 
@@ -308,7 +311,7 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
 
 // queue point to thread to display it
 // start thread if not already running to open window
-void IODevVC8::insertpoint ()
+void IODevVC8::insertpoint (uint16_t t)
 {
     // start thread if this is first point ever
     // otherwise, just wake the thread to process point
@@ -323,7 +326,7 @@ void IODevVC8::insertpoint ()
     int ins = this->insert;
     this->buffer[ins].x = this->xcobuf;
     this->buffer[ins].y = this->ycobuf;
-    this->buffer[ins].t = this->intens;
+    this->buffer[ins].t = t;
     this->insert = ins = (ins + 1) % MAXBUFFPTS;
     if (ins == this->remove) this->remove = (this->remove + 1) % MAXBUFFPTS;
 }
@@ -381,16 +384,16 @@ void IODevVC8::thread ()
     XStoreName (xdis, xwin, windowname);
 
     // set up to draw on the window
-    Drawable drawable = xwin;
+    Drawable xdraw = xwin;
     XGCValues gcvalues;
     memset (&gcvalues, 0, sizeof gcvalues);
     gcvalues.foreground = whitepixel;
     gcvalues.background = blackpixel;
-    GC xgc = XCreateGC (xdis, drawable, GCForeground | GCBackground, &gcvalues);
+    GC xgc = XCreateGC (xdis, xdraw, GCForeground | GCBackground, &gcvalues);
 
     // set up gray levels for the intensities
     Colormap cmap = XDefaultColormap (xdis, 0);
-    unsigned long graylevels[4];
+    unsigned long graylevels[6];
     for (int i = 0; i < 4; i ++) {
         XColor xcolor;
         memset (&xcolor, 0, sizeof xcolor);
@@ -402,15 +405,25 @@ void IODevVC8::thread ()
         graylevels[i] = xcolor.pixel;
     }
 
-    // set up red color for clear button
-    unsigned long redpixel;
+    // set up red and green colors
+    unsigned long greenpix, magenpix, redpixel;
     {
         XColor xcolor;
         memset (&xcolor, 0, sizeof xcolor);
         xcolor.red   = 65535;
         xcolor.flags = DoRed | DoGreen | DoBlue;
         XAllocColor (xdis, cmap, &xcolor);
-        redpixel = xcolor.pixel;
+        graylevels[5] = redpixel = xcolor.pixel;
+
+        xcolor.blue  = 65535;
+        XAllocColor (xdis, cmap, &xcolor);
+        magenpix = xcolor.pixel;
+
+        xcolor.red   = 0;
+        xcolor.blue  = 0;
+        xcolor.green = 65535;
+        XAllocColor (xdis, cmap, &xcolor);
+        graylevels[4] = greenpix = xcolor.pixel;
     }
 
     // allocate buffer to hold all points
@@ -437,7 +450,7 @@ void IODevVC8::thread ()
         // max of time for next persistance expiration
         struct timespec ts;
         if (clock_gettime (CLOCK_REALTIME, &ts) < 0) ABORT ();
-        ts.tv_nsec += 1000000 * (this->pms > 50 ? 50 : this->pms) / 4;
+        ts.tv_nsec += 50000000;
         if (ts.tv_nsec >= 1000000000) {
             ts.tv_nsec -= 1000000000;
             ts.tv_sec ++;
@@ -505,7 +518,7 @@ void IODevVC8::thread ()
                         foreground = blackpixel;
                         XSetForeground (xdis, xgc, foreground);
                     }
-                    XDrawPoint (xdis, drawable, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
+                    XDrawPoint (xdis, xdraw, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
                 }
 
                 // in either case, remove timed-out entry from ring
@@ -528,7 +541,7 @@ void IODevVC8::thread ()
                     foreground = graylevels[p->t];
                     XSetForeground (xdis, xgc, foreground);
                 }
-                XDrawPoint (xdis, drawable, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
+                XDrawPoint (xdis, xdraw, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
             }
 
             // on to next point
@@ -541,17 +554,17 @@ void IODevVC8::thread ()
             XSetForeground (xdis, xgc, foreground);
         }
         for (int i = 0; i < BORDERWIDTH; i ++) {
-            XDrawRectangle (xdis, drawable, xgc, i, i, WINDOWWIDTH + BORDERWIDTH * 2 - 1 - i * 2, WINDOWHEIGHT + BORDERWIDTH * 2 - 1 - i * 2);
+            XDrawRectangle (xdis, xdraw, xgc, i, i, WINDOWWIDTH + BORDERWIDTH * 2 - 1 - i * 2, WINDOWHEIGHT + BORDERWIDTH * 2 - 1 - i * 2);
         }
 
-        // storage mode: draw red CLEAR button
+        // storage mode: draw CLEAR button
         if (neweflags & EF_ST) {
-            if (foreground != redpixel) {
-                foreground = redpixel;
+            if (foreground != magenpix) {
+                foreground = magenpix;
                 XSetForeground (xdis, xgc, foreground);
             }
-            XDrawArc (xdis, drawable, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
-            XDrawString (xdis, drawable, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
+            XDrawArc (xdis, xdraw, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
+            XDrawString (xdis, xdraw, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
         }
 
         XFlush (xdis);

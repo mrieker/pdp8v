@@ -60,7 +60,7 @@ private:
     pthread_cond_t cond;
     pthread_mutex_t lock;
 
-    void insertpoint ();
+    void insertpoint (uint16_t t);
     void wakethread ();
     void thread ();
     void updintreq ();
