@@ -33,8 +33,7 @@ INCS,	0
 EXTRA,	0
 BIAS,	0
 
-TEM,    .-.
-C,      .-.
+SCOUNT, .-.
 THREE,	3
 FOUR,	4
 TWO,	2
@@ -52,19 +51,29 @@ START,
 	TAD	BIAS	/ SHORTEN THE 4096 CYCLES FOR NEXT TIME
 	BSW
 	DCA	EXTRA
-	TAD	BIAS	/ DISPLAY SHIFT COUNT IN 'SC' LEDS ON PIDP PANEL
+	TAD	BIAS	/ UPDATE SHIFT COUNT IN LOOP 2,3,4,5
 	RTR
 	AND	THREE
-	TAD	TWO
 	CMA
+	DCA	SCOUNT	/ SAVE COUNT 2 AS -1, COUNT 3 AS -2, COUNT 4 AS -3, COUNT 5 AS -4
+	CLA CLL CMA RAL
+	TAD	SCOUNT	/ DISPLAY COUNT IN 'SC' ON PIDP8 PANEL
 	DCA	.+2
 	SCL
-SCOUNT,	7775		/ (one's comp shift count)
+	.-.
 	DIRE		/ flip color
 	TAD	FOUR
 	AND	FOUR
 	DILE
-	CLA
+	TAD	SCOUNT	/ SET UP SHIFTING BY THAT AMOUNT
+	CLL RAL
+	TAD	_SCPOS1
+	DCA	SCPOS
+	TAD	SCOUNT
+	CLL RAL
+	TAD	_SCNEG1
+	DCA	SCNEG
+
 SAMEXTRA,
 	TAD	EXTRA	/ DISPLAY 4K COUNTER IN 'MQ' LEDS ON PIDP PANEL
 	MQL
@@ -78,19 +87,7 @@ SAMEXTRA,
 	JMS     SCALE
 	TAD     Y
 	DCA     Y       / Y = Y - SCALE(X)
-	JMS	PLOTXY
-	OSR
-	SMA CLA
-	JMP	START
-	IAC
-	JMS	PLOTXY
-	CLL IAC RAL
-	JMS	PLOTXY
-	CLL CML IAC RAL
-	JMS	PLOTXY
-	JMP	START
 
-PLOTXY,	.-.
 	DCA	INCS
 	TAD	INCS
 	CLL RAR
@@ -102,27 +99,48 @@ PLOTXY,	.-.
 	TAD	Y	/ send new point Y to display
 	DILY
 	CLL CLA
-	JMP I	PLOTXY
+	JMP	START
 
 / Divide AC (signed) by 2**(BIAS/4&3+2)
+_SCPOS1, JMP	SCPOS1
+_SCNEG1, JMP	SCNEG1
+
 SCALE,  .-.
-	DCA     TEM
-	TAD	SCOUNT	/ one's comp shift count
-	IAC		/ two's comp shift count
-	DCA     C
-	TAD     TEM	/ get signed AC value
-	SPA
-	JMP	SCNEG
-SCPOS,
-	CLL
-	RAR             / Arithmetic right shift
-	ISZ     C
-	JMP     SCPOS
-	JMP I   SCALE
-SCNEG,
-	CLL CML
-	RAR             / Arithmetic right shift
-	ISZ     C
-	JMP     SCNEG
-	JMP I   SCALE
+	SMA
+SCPOS,	JMP	SCPOS2
+SCNEG,	JMP	SCNEG2
+
+SCPOS5,
+	CLL		/ shift right positive
+	RAR
+SCPOS4,
+	CLL		/ shift right positive
+	RAR
+SCPOS3,
+	CLL		/ shift right positive
+	RAR
+SCPOS2,
+	CLL		/ shift right positive
+	RAR
+SCPOS1,
+	CLL		/ shift right positive
+	RAR
+	JMP I	SCALE
+
+SCNEG5,
+	CLL CML		/ shift right negative
+	RAR
+SCNEG4,
+	CLL CML		/ shift right negative
+	RAR
+SCNEG3,
+	CLL CML		/ shift right negative
+	RAR
+SCNEG2,
+	CLL CML		/ shift right negative
+	RAR
+SCNEG1,
+	CLL CML		/ shift right negative
+	RAR
+	JMP I	SCALE
 
