@@ -494,6 +494,8 @@ void IODevVC8::thread ()
     persisbutton.setpms (this->pms);
 
     // repeat until ioreset() is called
+    uint32_t lastsec = 0;
+    uint32_t counter = 0;
     int allins = 0;
     int allrem = 0;
     uint16_t oldeflags = 0;
@@ -529,6 +531,7 @@ void IODevVC8::thread ()
             if (allrem == allins) {
                 allrem = (allrem + 1) % MAXBUFFPTS;     // ring overflowed, remove oldest point
             }
+            counter ++;
         }
         this->remove = rem;
 
@@ -626,6 +629,17 @@ void IODevVC8::thread ()
         foreground = magenpix;
 
         XFlush (xdis);
+
+        // maybe print counts once per minute
+        uint32_t thissec = ts.tv_sec;
+        if (lastsec / 60 != thissec / 60) {
+            if ((lastsec != 0) && getmintimes ()) {
+                uint32_t pps = counter / (thissec - lastsec);
+                if (pps != 0) fprintf (stderr, "IODevVC8::thread: %u point%s per second\n", pps, (pps == 1 ? "" : "s"));
+            }
+            lastsec = thissec;
+            counter = 0;
+        }
 
         // storage mode: check for clear button clicked
         if (neweflags & EF_ST) {
