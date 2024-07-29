@@ -22,6 +22,8 @@ DISD=   6052
 DILX=   6053
 DILY=   6054
 DIXY=   6055
+DILE=	6056
+DIRE=	6057
 
 *	0020
 
@@ -34,6 +36,7 @@ BIAS,	0
 TEM,    .-.
 C,      .-.
 THREE,	3
+FOUR,	4
 TWO,	2
 O77,	077
 
@@ -57,6 +60,10 @@ START,
 	DCA	.+2
 	SCL
 SCOUNT,	7775		/ (one's comp shift count)
+	DIRE		/ flip color
+	TAD	FOUR
+	AND	FOUR
+	DILE
 	CLA
 SAMEXTRA,
 	TAD	EXTRA	/ DISPLAY 4K COUNTER IN 'MQ' LEDS ON PIDP PANEL
