@@ -27,7 +27,7 @@
 #include "abcd.h"
 #include "pindefs.h"
 
-ABCD::ABCD ()
+void ABCD::zeroit ()
 {
     memset (cons, 0, sizeof cons);
     decode ();

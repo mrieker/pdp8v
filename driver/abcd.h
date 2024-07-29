@@ -120,7 +120,7 @@ struct ABCD {
     uint16_t irq;
     uint16_t DATA;
 
-    ABCD ();
+    void zeroit ();
     void decode ();
     void encode ();
     std::string states ();

@@ -1054,6 +1054,7 @@ static void mainloop_alu ()
     douts = D__newlink;
 
     ABCD abcd;
+    abcd.zeroit ();
 
     for ever {
 
@@ -1385,6 +1386,7 @@ static bool rpiprintf (bool bad, char const *fmt, ...)
 static void mainloop_rpi ()
 {
     ABCD abcd;
+    abcd.zeroit ();
     abcd.clok2 = true;
     abcd.intrq = true;
     abcd.ioskp = true;

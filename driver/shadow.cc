@@ -621,6 +621,9 @@ void Shadow::checkgpio (uint32_t sample, uint32_t expect)
     if (paddles) {
         ABCD abcdmask, abcdvals;
 
+        abcdmask.zeroit ();
+        abcdvals.zeroit ();
+
         uint16_t gdata = (sample & G_DATA) / G_DATA0;
 
         abcdmask.pcq = 07777;           abcdvals.pcq = r.pc;
