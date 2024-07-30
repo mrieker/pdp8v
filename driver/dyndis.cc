@@ -32,9 +32,10 @@
 
 struct Access {
     Access *next;
-    bool write;
     Shadow::State state;
+    uint32_t refs;
     uint16_t pc;
+    bool write;
 };
 
 bool dyndisena;
@@ -131,9 +132,8 @@ void dyndisdump (FILE *dumpfile)
             fprintf (dumpfile, "%05o:  %04o  %s\n", addr, data, d);
 
             for (Access *access = accesses[addr]; access != NULL; access = access->next) {
-                if (access->state != Shadow::FETCH2) {
-                    fprintf (dumpfile, "    %-6s  %c  %05o\n", Shadow::statestr (access->state), (access->write ? 'w' : 'r'), access->pc);
-                }
+                fprintf (dumpfile, "    %-6s  %c  %05o  %10u\n",
+                    Shadow::statestr (access->state), (access->write ? 'w' : 'r'), access->pc, access->refs);
             }
         }
     }
@@ -151,17 +151,19 @@ static void addaccess (uint16_t addr, bool write, Shadow::State state, uint16_t 
 {
     ASSERT (addr < MEMSIZE);
     pthread_mutex_lock (&accesslock);
-    for (Access *access = accesses[addr]; access != NULL; access = access->next) {
-        if ((access->write == write) && (access->state == state) && (access->pc == pc)) goto ret;
+    Access *access;
+    for (access = accesses[addr]; access != NULL; access = access->next) {
+        if ((access->pc == pc) && (access->state == state) && (access->write == write)) goto ret;
     }
-    {
-        Access *access = new Access ();
-        access->next   = accesses[addr];
-        access->write  = write;
-        access->state  = state;
-        access->pc     = pc;
-        accesses[addr] = access;
-    }
+    access = new Access ();
+    access->next   = accesses[addr];
+    access->write  = write;
+    access->state  = state;
+    access->pc     = pc;
+    access->refs   = 0;
+    accesses[addr] = access;
 ret:;
+    uint32_t r = access->refs + 1;
+    if (r != 0) access->refs = r;
     pthread_mutex_unlock (&accesslock);
 }
