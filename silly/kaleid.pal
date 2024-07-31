@@ -2,21 +2,15 @@
 / ../asm/assemble -pal kaleid.pal kaleid.obj > kaleid.lis
 / ../asm/link -o kaleid.oct kaleid.obj > kaleid.map
 
-/       tubes: vc8pms=2000 vc8type=e switchregister=3 ../driver/raspictl kaleid.oct
-/        zynq: vc8pms=2000 vc8type=e switchregister=3 ../driver/raspictl -zynqlib kaleid.oct
+/       tubes: vc8pms=2000 vc8type=e ../driver/raspictl kaleid.oct
+/        zynq: vc8pms=2000 vc8type=e ../driver/raspictl -zynqlib kaleid.oct
 /  pidp panel: vc8pms=500 vc8type=e ../driver/raspictl -pidp -nohwlib kaleid.oct
-/              ...switches set to 4003 for example
 
 / https://homepage.cs.uiowa.edu/~jones/pdp8/man/vc8e.html
 
 / Kaleidoscope program for the VC8E/VR14 scope.
 / Based on suggestions from page 6-19 of the Small Computer
 / Handbook, 1973.
-
-/ The advice given is to experiment with settings of
-/ the switch register bit positions 9, 10 and 11, leaving
-/ all higher bits zero.  The advice is good; this is a
-/ nice "screen saver" for non-storage scopes.
 
 	DISD = 6052
 	DILX = 6053
@@ -136,7 +130,7 @@ STEPPT,
 	DCA	SCNEG
 	JMP	START2
 
-/ Divide AC (signed) by 2**(BIAS/4&3+2)
+/ Divide AC (signed) by 2**(2 or 3)
 _SCPOS1, JMP	SCPOS1
 _SCNEG1, JMP	SCNEG1
 
