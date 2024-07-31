@@ -487,6 +487,7 @@ void IODevTC08::thread ()
             IODevTC08Drive *drive = &shm->drives[driveno];
             if (drive->dtfd < 0) {
                 shm->status_b |= SELERR;
+                DBGPR ("IODevTC08::thread: no file for drive %d\n", driveno);
                 goto finerror;
             }
 
@@ -615,6 +616,7 @@ void IODevTC08::thread ()
                 // WRITE DATA (2.5.1.7 p 28)
                 case 4: {
                     if (shm->drives[driveno].rdonly) {
+                        DBGPR ("IODevTC08::thread: write attempt on read-only drive %d\n", driveno);
                         shm->status_b |= SELERR;
                         goto finerror;
                     }
