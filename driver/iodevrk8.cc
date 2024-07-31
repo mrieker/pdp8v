@@ -36,6 +36,7 @@
 
 #include "iodevrk8.h"
 #include "memory.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 #define NCYLS 203
@@ -301,6 +302,7 @@ void IODevRK8::startio (RK8IO rk8io)
 // thread what does the disk file I/O
 void *IODevRK8::threadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevRK8 *)zhis)->thread ();
     return NULL;
 }

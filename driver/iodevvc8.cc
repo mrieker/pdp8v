@@ -30,6 +30,7 @@
 #include <X11/Xlib.h>
 
 #include "iodevvc8.h"
+#include "rdcyc.h"
 
 #define MAXBUFFPTS 65536
 #define DEFPERSISTMS 500    // how long non-storage points last
@@ -397,6 +398,7 @@ void IODevVC8::wakethread ()
 // thread what does the display I/O
 void *IODevVC8::threadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevVC8 *)zhis)->thread ();
     return NULL;
 }

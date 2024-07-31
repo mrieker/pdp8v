@@ -289,13 +289,11 @@ uint16_t ScnCall::docall (uint16_t data)
                 lineclockabs.tv_sec  = irqatts / 4096;
                 lineclockabs.tv_nsec = ((irqatts % 4096) * 1000000000ULL) / 4096;
                 if (! lineclockrun) {
-                    rdcycuninit ();
                     pthread_t pid;
                     int rc = pthread_create (&pid, NULL, lineclockthread, NULL);
                     if (rc != 0) ABORT ();
                     pthread_detach (pid);
                     lineclockrun = true;
-                    rdcycinit ();
                 }
             } else {
                 memset (&lineclockabs, 0, sizeof lineclockabs);
@@ -732,6 +730,7 @@ static uint16_t scngetenv (GetStrz *getstrz, PutBuf *putbuf, uint16_t data, uint
 // exits when woken with lineclockabs.tv == 0
 static void *lineclockthread (void *dummy)
 {
+    rdcycuninit ();
     pthread_mutex_lock (&lineclocklock);
     while (lineclockabs.tv_sec != 0) {
 

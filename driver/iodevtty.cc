@@ -35,6 +35,7 @@
 #include "iodevtty.h"
 #include "linc.h"
 #include "memory.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 IODevTTY iodevtty;
@@ -455,6 +456,7 @@ void IODevTTY::stopthreads ()
 
 void *IODevTTY::tcpthreadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevTTY *)zhis)->tcpthread ();
     return NULL;
 }
@@ -567,6 +569,7 @@ done:;
 
 void *IODevTTY::kbthreadwrap (void *zhis)
 {
+    rdcycuninit ();
     pthread_mutex_lock (&((IODevTTY *)zhis)->lock);
     ((IODevTTY *)zhis)->kbthreadlk ();
     pthread_mutex_unlock (&((IODevTTY *)zhis)->lock);
@@ -651,6 +654,7 @@ void IODevTTY::kbthreadlk ()
 
 void *IODevTTY::prthreadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevTTY *)zhis)->prthread ();
     return NULL;
 }

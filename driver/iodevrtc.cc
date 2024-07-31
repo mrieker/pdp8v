@@ -32,6 +32,7 @@
 
 #include "iodevrtc.h"
 #include "memory.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 IODevRTC iodevrtc;
@@ -207,6 +208,7 @@ void IODevRTC::update ()
 // thread what sets status and posts interrupt when counter overflows
 void *IODevRTC::threadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevRTC *)zhis)->thread ();
     return NULL;
 }

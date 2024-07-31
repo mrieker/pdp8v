@@ -41,6 +41,7 @@
 #include "iodevtc08.h"
 #include "memext.h"
 #include "memory.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 /*
@@ -458,6 +459,7 @@ uint16_t IODevTC08::ioinstr (uint16_t opcode, uint16_t input)
 // thread what does the tape file I/O
 void *IODevTC08::threadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevTC08 *)zhis)->thread ();
     return NULL;
 }

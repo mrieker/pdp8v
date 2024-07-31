@@ -34,6 +34,7 @@
 #include "dyndis.h"
 #include "iodevrk8je.h"
 #include "memory.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 #define NCYLS 203
@@ -387,6 +388,7 @@ void IODevRK8JE::startio ()
 // thread what does the disk file I/O
 void *IODevRK8JE::threadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevRK8JE *)zhis)->thread ();
     return NULL;
 }

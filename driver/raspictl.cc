@@ -1312,6 +1312,8 @@ static void *mintimesthread (void *dummy)
 {
     struct timespec nowts, waits;
 
+    rdcycuninit ();
+
     pthread_mutex_lock (&mintimeslock);
 
     if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();

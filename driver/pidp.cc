@@ -100,6 +100,8 @@ static void *pidpthread (void *dummy)
     int buttonindex = 0;
     memset (buttonring, 0, sizeof buttonring);
 
+    rdcycuninit ();
+
     // set up sequence number gt anything previously used
     PiDPMsg pidpmsg;
     memset (&pidpmsg, 0, sizeof pidpmsg);

@@ -32,6 +32,7 @@
 #include "memext.h"
 #include "memory.h"
 #include "miscdefs.h"
+#include "rdcyc.h"
 #include "readprompt.h"
 #include "rimloader.h"
 #include "script.h"
@@ -115,6 +116,8 @@ static FunDef fundefs[] = {
 static void *tclthread (void *fnv)
 {
     char const *fn = (char const *) fnv;
+
+    rdcycuninit ();
 
     interp = Tcl_CreateInterp ();
     if (Tcl_Init (interp) != TCL_OK) ABORT ();

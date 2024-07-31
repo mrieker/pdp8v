@@ -32,6 +32,7 @@
 
 #include "iodevptape.h"
 #include "miscdefs.h"
+#include "rdcyc.h"
 #include "shadow.h"
 
 IODevPTape iodevptape;
@@ -429,6 +430,7 @@ void IODevPTape::startrdrthread (int fd)
 
 void *IODevPTape::rdrthreadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevPTape *)zhis)->rdrthread ();
     return NULL;
 }
@@ -604,6 +606,7 @@ void IODevPTape::startpunthread (int fd)
 
 void *IODevPTape::punthreadwrap (void *zhis)
 {
+    rdcycuninit ();
     ((IODevPTape *)zhis)->punthread ();
     return NULL;
 }
