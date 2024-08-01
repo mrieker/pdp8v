@@ -35,17 +35,27 @@ struct VC8Pt {
     uint16_t t;
 };
 
+struct _XDisplay;
+struct _XGC;
+
 struct IODevVC8 : IODev {
+    uint32_t winsize;
+    unsigned long xwin;
+    _XDisplay *xdis;
+    _XGC *xgc;
+
     IODevVC8 ();
     virtual ~IODevVC8 ();
 
     virtual void ioreset ();
     virtual SCRet *scriptcmd (int argc, char const *const *argv);
     virtual uint16_t ioinstr (uint16_t opcode, uint16_t input);
+    void setfg (unsigned long color);
 
 private:
     bool resetting;
     bool waiting;
+    int *indices;
     int insert;
     int remove;
     uint16_t eflags;
@@ -53,6 +63,11 @@ private:
     uint16_t ycobuf;
     uint16_t intens;
     uint16_t pms;
+    unsigned long blackpixel;
+    unsigned long foreground;
+    unsigned long graylevels[6];
+    unsigned long whitepixel;
+    VC8Pt *allpoints;
     VC8Pt *buffer;
     VC8Type type;
 
@@ -63,6 +78,8 @@ private:
     void insertpoint (uint16_t t);
     void wakethread ();
     void thread ();
+    void drawpt (int i, bool erase);
+    int mappedxy (VC8Pt const *pt);
     void updintreq ();
 
     static void *threadwrap (void *zhis);

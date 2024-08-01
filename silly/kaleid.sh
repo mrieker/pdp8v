@@ -11,9 +11,10 @@
 #   -mintimes : print instruction and point plotting rates once per minute
 #   -pidp : update PiDP8 panel leds
 #
-#  Envars:
+#  Optional envars:
 #
 #   vc8pms= persistence in milliseconds (default 500)
+#   vc8size= initial window size (default 1024)
 #
 cd `dirname $0`
 if [ kaleid.oct -ot kaleid.pal ]

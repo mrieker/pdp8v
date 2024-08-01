@@ -21,7 +21,10 @@
 // VC8 small computer handbook PDP-8/I, 1970, p87
 
 // can emulate VC8/E or VC8/I
-// must set envar vc8type=e or =i to select which
+// envars:
+//   vc8type=e or =i to select which (required)
+//   vc8pms=<persistence milliseconds> (optional, default 500)
+//   vc8size=<x and y size in pixels> (optional, default 1024)
 
 #include <fcntl.h>
 #include <pthread.h>
@@ -37,9 +40,11 @@
 #define MINPERSISTMS 10     // ...smaller and the up/down buttons won't work
 #define MAXPERSISTMS 60000  // ...larger and it will overflow 16-bit counter
 
+#define XYSIZE 1024
+#define DEFWINSIZE XYSIZE
+#define MINWINSIZE 64
+#define MAXWINSIZE XYSIZE
 #define BORDERWIDTH 2
-#define WINDOWWIDTH 1024
-#define WINDOWHEIGHT 1024
 
 #define EF_DN 04000     // done executing last command
 #define EF_WT 00040     // de-focus beam for writing
@@ -52,28 +57,28 @@
 #define EF_MASK 077
 
 struct Button {
-    Button (Display *xdis, Window xwin, GC xgc);
+    Button (IODevVC8 *vc8);
     virtual ~Button ();
 
     virtual void draw (unsigned long color) = 0;
     bool clicked ();
 
 protected:
-    Display *xdis;
-    Window xwin;
-    GC xgc;
+    IODevVC8 *vc8;
 
     bool lastpressed;
     int xleft, xrite, ytop, ybot;
 };
 
 struct ClearButton : Button {
-    ClearButton (Display *xdis, Window xwin, GC xgc);
+    ClearButton (IODevVC8 *vc8);
+    void position ();
     virtual void draw (unsigned long color);
 };
 
 struct TriButton : Button {
-    TriButton (Display *xdis, Window xwin, GC xgc, bool upbut);
+    TriButton (IODevVC8 *vc8, bool upbut);
+    void position ();
     virtual void draw (unsigned long color);
 
 private:
@@ -85,14 +90,12 @@ struct PersisButton {
     TriButton upbutton;
     TriButton dnbutton;
 
-    PersisButton (Display *xdis, Window xwin, GC xgc);
+    PersisButton (IODevVC8 *vc8);
     void setpms (uint16_t pms);
     void draw (unsigned long color);
 
 private:
-    Display *xdis;
-    Window xwin;
-    GC xgc;
+    IODevVC8 *vc8;
 
     char pmsbuf[12];
     int pmslen;
@@ -187,6 +190,11 @@ IODevVC8::IODevVC8 ()
     this->intens    = 3;
     this->eflags    = 0;
     this->waiting   = false;
+    this->xdis      = NULL;
+    this->xwin      = 0;
+    this->xgc       = NULL;
+    this->allpoints = NULL;
+    this->indices   = NULL;
 }
 
 IODevVC8::~IODevVC8 ()
@@ -276,14 +284,14 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
 
                 // DILX (VC8/E) Load X
                 case 06053: {
-                    this->xcobuf  = (input + WINDOWWIDTH / 2) % WINDOWWIDTH;
+                    this->xcobuf  = (input + XYSIZE / 2) % XYSIZE;
                     this->eflags |= EF_DN;
                     break;
                 }
 
                 // DILY (VC8/E) Load Y
                 case 06054: {
-                    this->ycobuf  = (input + WINDOWHEIGHT / 2) % WINDOWHEIGHT;
+                    this->ycobuf  = (input + XYSIZE / 2) % XYSIZE;
                     this->eflags |= EF_DN;
                     break;
                 }
@@ -322,14 +330,14 @@ uint16_t IODevVC8::ioinstr (uint16_t opcode, uint16_t input)
             switch (opcode) {
                 case 06051 ... 06057: {
                     if (opcode & 1) this->xcobuf  = 0;
-                    if (opcode & 2) this->xcobuf |= input % WINDOWWIDTH;
+                    if (opcode & 2) this->xcobuf |= input % XYSIZE;
                     if (opcode & 4) this->insertpoint (this->intens);
                     break;
                 }
 
                 case 06061 ... 06067: {
                     if (opcode & 1) this->ycobuf  = 0;
-                    if (opcode & 2) this->ycobuf |= input % WINDOWHEIGHT;
+                    if (opcode & 2) this->ycobuf |= input % XYSIZE;
                     if (opcode & 4) this->insertpoint (this->intens);
                     break;
                 }
@@ -405,9 +413,17 @@ void *IODevVC8::threadwrap (void *zhis)
 
 void IODevVC8::thread ()
 {
+    // get initial window size
+    this->winsize = DEFWINSIZE;
+    char const *envsize = getenv ("vc8size");
+    if (envsize != NULL) {
+        this->winsize = atoi (envsize);
+        if (this->winsize < MINWINSIZE) this->winsize = MINWINSIZE;
+    }
+
     // open connection to XServer
-    Display *xdis = XOpenDisplay (NULL);
-    if (xdis == NULL) {
+    this->xdis = XOpenDisplay (NULL);
+    if (this->xdis == NULL) {
         fprintf (stderr, "IODevVC8::thread: error opening X display\n");
         ABORT ();
     }
@@ -416,11 +432,12 @@ void IODevVC8::thread ()
     XSetIOErrorHandler (xioerror);
 
     // create and display a window
-    unsigned long blackpixel = XBlackPixel (xdis, 0);
-    unsigned long whitepixel = XWhitePixel (xdis, 0);
-    Window xrootwin = XDefaultRootWindow (xdis);
-    Window xwin = XCreateSimpleWindow (xdis, xrootwin, 100, 100, WINDOWWIDTH + BORDERWIDTH * 2, WINDOWHEIGHT + BORDERWIDTH * 2, 0, whitepixel, blackpixel);
-    XMapRaised (xdis, xwin);
+    this->blackpixel = XBlackPixel (this->xdis, 0);
+    this->whitepixel = XWhitePixel (this->xdis, 0);
+    Window xrootwin = XDefaultRootWindow (this->xdis);
+    this->xwin = XCreateSimpleWindow (this->xdis, xrootwin, 100, 100,
+        this->winsize + BORDERWIDTH * 2, this->winsize + BORDERWIDTH * 2, 0, this->whitepixel, this->blackpixel);
+    XMapRaised (this->xdis, this->xwin);
 
     char const *typname;
     switch (this->type) {
@@ -433,19 +450,17 @@ void IODevVC8::thread ()
     hostname[255] = 0;
     char windowname[8+256+12];
     snprintf (windowname, sizeof windowname, "%s (%s:%d)", typname, hostname, (int) getpid ());
-    XStoreName (xdis, xwin, windowname);
+    XStoreName (this->xdis, this->xwin, windowname);
 
     // set up to draw on the window
-    Drawable xdraw = xwin;
     XGCValues gcvalues;
     memset (&gcvalues, 0, sizeof gcvalues);
-    gcvalues.foreground = whitepixel;
-    gcvalues.background = blackpixel;
-    GC xgc = XCreateGC (xdis, xdraw, GCForeground | GCBackground, &gcvalues);
+    gcvalues.foreground = this->whitepixel;
+    gcvalues.background = this->blackpixel;
+    this->xgc = XCreateGC (this->xdis, this->xwin, GCForeground | GCBackground, &gcvalues);
 
     // set up gray levels for the intensities
-    Colormap cmap = XDefaultColormap (xdis, 0);
-    unsigned long graylevels[6];
+    Colormap cmap = XDefaultColormap (this->xdis, 0);
     for (int i = 0; i < 4; i ++) {
         XColor xcolor;
         memset (&xcolor, 0, sizeof xcolor);
@@ -453,10 +468,10 @@ void IODevVC8::thread ()
         xcolor.green = (i + 1) * 65535 / 4;
         xcolor.blue  = (i + 1) * 65535 / 4;
         xcolor.flags = DoRed | DoGreen | DoBlue;
-        XAllocColor (xdis, cmap, &xcolor);
-        graylevels[i] = xcolor.pixel;
+        XAllocColor (this->xdis, cmap, &xcolor);
+        this->graylevels[i] = xcolor.pixel;
     }
-    unsigned long graypixel = graylevels[2];
+    unsigned long graypixel = this->graylevels[2];
 
     // set up red and green colors
     unsigned long greenpix, magenpix, redpixel;
@@ -465,34 +480,34 @@ void IODevVC8::thread ()
         memset (&xcolor, 0, sizeof xcolor);
         xcolor.red   = 65535;
         xcolor.flags = DoRed | DoGreen | DoBlue;
-        XAllocColor (xdis, cmap, &xcolor);
-        graylevels[5] = redpixel = xcolor.pixel;
+        XAllocColor (this->xdis, cmap, &xcolor);
+        this->graylevels[5] = redpixel = xcolor.pixel;
 
         xcolor.blue  = 65535;
-        XAllocColor (xdis, cmap, &xcolor);
+        XAllocColor (this->xdis, cmap, &xcolor);
         magenpix = xcolor.pixel;
 
         xcolor.red   = 0;
         xcolor.blue  = 0;
         xcolor.green = 65535;
-        XAllocColor (xdis, cmap, &xcolor);
-        graylevels[4] = greenpix = xcolor.pixel;
+        XAllocColor (this->xdis, cmap, &xcolor);
+        this->graylevels[4] = greenpix = xcolor.pixel;
     }
 
     // allocate buffer to hold all points
-    VC8Pt *allpoints = (VC8Pt *) malloc (WINDOWWIDTH * WINDOWHEIGHT * sizeof *allpoints);
-    if (allpoints == NULL) ABORT ();
+    this->allpoints = (VC8Pt *) malloc (XYSIZE * XYSIZE * sizeof *this->allpoints);
+    if (this->allpoints == NULL) ABORT ();
 
-    uint16_t *timemss = (uint16_t *) malloc (WINDOWWIDTH * WINDOWHEIGHT * sizeof *timemss);
+    uint16_t *timemss = (uint16_t *) malloc (XYSIZE * XYSIZE * sizeof *timemss);
     if (timemss == NULL) ABORT ();
 
-    int *indices = (int *) malloc (WINDOWWIDTH * WINDOWHEIGHT * sizeof *indices);
-    if (indices == NULL) ABORT ();
-    memset (indices, -1, WINDOWWIDTH * WINDOWHEIGHT * sizeof *indices);
+    this->indices = (int *) malloc (MAXWINSIZE * MAXWINSIZE * sizeof *this->indices);
+    if (this->indices == NULL) ABORT ();
+    memset (this->indices, -1, MAXWINSIZE * MAXWINSIZE * sizeof *this->indices);
 
     // buttons
-    ClearButton clearbutton (xdis, xwin, xgc);
-    PersisButton persisbutton (xdis, xwin, xgc);
+    ClearButton clearbutton (this);
+    PersisButton persisbutton (this);
     persisbutton.setpms (this->pms);
 
     // repeat until ioreset() is called
@@ -501,7 +516,7 @@ void IODevVC8::thread ()
     int allins = 0;
     int allrem = 0;
     uint16_t oldeflags = 0;
-    unsigned long foreground = whitepixel;
+    this->foreground = this->whitepixel;
     pthread_mutex_lock (&this->lock);
     while (! this->resetting) {
 
@@ -525,10 +540,11 @@ void IODevVC8::thread ()
         while (rem != this->insert) {
             VC8Pt *p = &this->buffer[rem];              // get point queued by processor
             rem = (rem + 1) % MAXBUFFPTS;
-            int xy = p->y * WINDOWWIDTH + p->x;         // this is latest occurrence of the x,y
-            indices[xy] = allins;
+            int mxy = this->mappedxy (p);               // this pixel is occupied by this point now
+            this->indices[mxy] = allins;
+            int xy = p->y * XYSIZE + p->x;              // this is latest occurrence of the x,y
             timemss[xy] = timems;                       // remember when we got it
-            allpoints[allins] = *p;                     // copy to end of all points ring
+            this->allpoints[allins] = *p;               // copy to end of all points ring
             allins = (allins + 1) % MAXBUFFPTS;
             if (allrem == allins) {
                 allrem = (allrem + 1) % MAXBUFFPTS;     // ring overflowed, remove oldest point
@@ -545,8 +561,8 @@ void IODevVC8::thread ()
 
         // maybe erase everything
         if (~ oldeflags & neweflags & EF_ER) {
-            XClearWindow (xdis, xwin);
-            XFlush (xdis);
+            XClearWindow (this->xdis, this->xwin);
+            XFlush (this->xdis);
             usleep (450000);
             pthread_mutex_lock (&this->lock);
             this->eflags |= EF_DN;
@@ -554,6 +570,39 @@ void IODevVC8::thread ()
             pthread_mutex_unlock (&this->lock);
             allins = allnew = allrem = 0;
             this->insert = this->remove = 0;
+        }
+
+        // get window size
+        XWindowAttributes winattrs;
+        if (XGetWindowAttributes (this->xdis, this->xwin, &winattrs) == 0) ABORT ();
+        uint32_t newwinxsize = winattrs.width;
+        uint32_t newwinysize = winattrs.height;
+        uint32_t newwinsize  = (newwinxsize < newwinysize) ? newwinxsize : newwinysize;
+        if (newwinsize < MINWINSIZE + BORDERWIDTH * 2) newwinsize = MINWINSIZE + BORDERWIDTH * 2;
+        newwinsize -= BORDERWIDTH * 2;
+
+        // if window size changed, clear window then re-draw old points at new scaling
+        if (this->winsize != newwinsize) {
+            fprintf (stderr, "IODevVC8::thread: window size %u\n", newwinsize);
+            this->winsize = newwinsize;
+            XClearWindow (this->xdis, this->xwin);
+
+            // refill indices to indicate where the latest point can be found
+            memset (this->indices, -1, MAXWINSIZE * MAXWINSIZE * sizeof *this->indices);
+            for (int refill = allrem; refill != allins; refill = (refill + 1) % (XYSIZE * XYSIZE)) {
+                int mxy = this->mappedxy (&this->allpoints[refill]);
+                this->indices[mxy] = refill;
+            }
+
+            // redraw the oldest points
+            for (int redraw = allrem; redraw != allnew; redraw = (redraw + 1) % (XYSIZE * XYSIZE)) {
+                this->drawpt (redraw, false);
+            }
+
+            // set new positions of buttons
+            clearbutton.position ();
+            persisbutton.upbutton.position ();
+            persisbutton.dnbutton.position ();
         }
 
         // ephemeral mode: erase old points what have timed out
@@ -565,72 +614,45 @@ void IODevVC8::thread ()
 
                 // see if it has timed out or has been superceded
                 // draw in black and remove if so
-                int xy = p->y * WINDOWWIDTH + p->x;
+                int xy = p->y * XYSIZE + p->x;
+                int mxy = this->mappedxy (p);
                 uint16_t dtms = timems - timemss[xy];
-                if ((indices[xy] == allrem) && (dtms < this->pms)) break;
+                if ((this->indices[mxy] == allrem) && (dtms < this->pms)) break;
 
-                // if it has been superceded by a point later on in ring, don't erase it
-                if (indices[xy] == allrem) {
-                    indices[xy] = -1;
-                    if (foreground != blackpixel) {
-                        foreground = blackpixel;
-                        XSetForeground (xdis, xgc, foreground);
-                    }
-                    XDrawPoint (xdis, xdraw, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
-                }
+                this->drawpt (allrem, true);
 
                 // in either case, remove timed-out entry from ring
-                allrem = (allrem + 1) % (WINDOWWIDTH * WINDOWHEIGHT);
+                allrem = (allrem + 1) % (XYSIZE * XYSIZE);
             }
         }
 
         // draw new points passed to us from processor
         while (allnew != allins) {
-
-            // get new point
-            VC8Pt *p = &allpoints[allnew];
-
-            // don't bother drawing if superceded
-            int xy = p->y * WINDOWWIDTH + p->x;
-            if (indices[xy] == allnew) {
-
-                // latest of this xy, draw point
-                if (foreground != graylevels[p->t]) {
-                    foreground = graylevels[p->t];
-                    XSetForeground (xdis, xgc, foreground);
-                }
-                XDrawPoint (xdis, xdraw, xgc, p->x + BORDERWIDTH, p->y + BORDERWIDTH);
-            }
-
-            // on to next point
-            allnew = (allnew + 1) % (WINDOWWIDTH * WINDOWHEIGHT);
+            this->drawpt (allnew, false);
+            allnew = (allnew + 1) % (XYSIZE * XYSIZE);
         }
 
         // draw border box
-        if (foreground != graypixel) {
-            foreground = graypixel;
-            XSetForeground (xdis, xgc, foreground);
-        }
+        this->setfg (graypixel);
         for (int i = 0; i < BORDERWIDTH; i ++) {
-            XDrawRectangle (xdis, xdraw, xgc, i, i, WINDOWWIDTH + BORDERWIDTH * 2 - 1 - i * 2, WINDOWHEIGHT + BORDERWIDTH * 2 - 1 - i * 2);
+            XDrawRectangle (this->xdis, this->xwin, this->xgc, i, i, this->winsize + BORDERWIDTH * 2 - 1 - i * 2, this->winsize + BORDERWIDTH * 2 - 1 - i * 2);
         }
 
         // storage mode: draw CLEAR button
         // ephemeral mode: draw persistance UP/DOWN buttons
         if (neweflags & EF_ST) {
             if (! (oldeflags & EF_ST)) {
-                persisbutton.draw (blackpixel);
+                persisbutton.draw (this->blackpixel);
             }
             clearbutton.draw (magenpix);
         } else {
             if (oldeflags & EF_ST) {
-                clearbutton.draw (blackpixel);
+                clearbutton.draw (this->blackpixel);
             }
             persisbutton.draw (magenpix);
         }
-        foreground = magenpix;
 
-        XFlush (xdis);
+        XFlush (this->xdis);
 
         // maybe print counts once per minute
         uint32_t thissec = ts.tv_sec;
@@ -645,7 +667,7 @@ void IODevVC8::thread ()
 
         // storage mode: check for clear button clicked
         if (neweflags & EF_ST) {
-            if (clearbutton.clicked ()) XClearWindow (xdis, xwin);
+            if (clearbutton.clicked ()) XClearWindow (this->xdis, this->xwin);
         } else {
             int16_t delta = 0;
             if (persisbutton.upbutton.clicked ()) {
@@ -655,7 +677,7 @@ void IODevVC8::thread ()
                 delta -= this->pms / 4;
             }
             if (delta != 0) {
-                persisbutton.draw (blackpixel);
+                persisbutton.draw (this->blackpixel);
                 this->pms += delta;
                 if (this->pms < MINPERSISTMS) this->pms = MINPERSISTMS;
                 if (this->pms > MAXPERSISTMS) this->pms = MAXPERSISTMS;
@@ -670,10 +692,48 @@ void IODevVC8::thread ()
 
     // ioreset(), unlock, close display and exit thread
     pthread_mutex_unlock (&this->lock);
-    free (allpoints);
+    free (this->allpoints);
     free (timemss);
-    free (indices);
-    XCloseDisplay (xdis);
+    free (this->indices);
+    XCloseDisplay (this->xdis);
+    this->xdis = NULL;
+    this->xwin = 0;
+    this->xgc = NULL;
+    this->allpoints = NULL;
+    this->indices = NULL;
+}
+
+void IODevVC8::drawpt (int i, bool erase)
+{
+    // don't bother drawing if superceded
+    VC8Pt *pt = &this->allpoints[i];
+    int mxy = this->mappedxy (pt);
+    if (this->indices[mxy] == i) {
+
+        // latest of this xy, draw point
+        this->setfg (erase ? this->blackpixel : this->graylevels[pt->t]);
+        int mx = pt->x * this->winsize / XYSIZE;
+        int my = pt->y * this->winsize / XYSIZE;
+        XDrawPoint (this->xdis, this->xwin, this->xgc, mx + BORDERWIDTH, my + BORDERWIDTH);
+
+        // if erasing, point no longer in allpoints
+        if (erase) this->indices[mxy] = -1;
+    }
+}
+
+int IODevVC8::mappedxy (VC8Pt const *pt)
+{
+    int mx = pt->x * this->winsize / XYSIZE;
+    int my = pt->y * this->winsize / XYSIZE;
+    return my * MAXWINSIZE + mx;
+}
+
+void IODevVC8::setfg (unsigned long color)
+{
+    if (this->foreground != color) {
+        this->foreground = color;
+        XSetForeground (this->xdis, this->xgc, this->foreground);
+    }
 }
 
 void IODevVC8::updintreq ()
@@ -697,11 +757,9 @@ static int xioerror (Display *xdis)
 //  Common to all Buttons  //
 /////////////////////////////
 
-Button::Button (Display *xdis, Window xwin, GC xgc)
+Button::Button (IODevVC8 *vc8)
 {
-    this->xdis  = xdis;
-    this->xwin  = xwin;
-    this->xgc   = xgc;
+    this->vc8   = vc8;
     lastpressed = false;
 }
 
@@ -713,7 +771,7 @@ bool Button::clicked ()
     Window root, child;
     int root_x, root_y, win_x, win_y;
     unsigned int mask;
-    Bool ok = XQueryPointer (xdis, xwin, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
+    Bool ok = XQueryPointer (vc8->xdis, vc8->xwin, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask);
     if (ok && (win_x > xleft) && (win_x < xrite) && (win_y > ytop) && (win_y < ybot)) {
         // mouse inside button area, if pressed, remember that
         if (mask & Button1Mask) {
@@ -736,20 +794,25 @@ bool Button::clicked ()
 
 #define BUTTONDIAM 32
 
-ClearButton::ClearButton (Display *xdis, Window xwin, GC xgc)
-    : Button (xdis, xwin, xgc)
+ClearButton::ClearButton (IODevVC8 *vc8)
+    : Button (vc8)
 {
-    xleft = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-    xrite = WINDOWWIDTH  + BORDERWIDTH;
-    ytop  = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM;
-    ybot  = WINDOWHEIGHT + BORDERWIDTH;
+    position ();
+}
+
+void ClearButton::position ()
+{
+    xleft = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+    xrite = vc8->winsize + BORDERWIDTH;
+    ytop  = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+    ybot  = vc8->winsize + BORDERWIDTH;
 }
 
 void ClearButton::draw (unsigned long color)
 {
-    XSetForeground (xdis, xgc, color);
-    XDrawArc (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
-    XDrawString (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
+    vc8->setfg (color);
+    XDrawArc (vc8->xdis, vc8->xwin, vc8->xgc, vc8->winsize + BORDERWIDTH - BUTTONDIAM, vc8->winsize + BORDERWIDTH - BUTTONDIAM, BUTTONDIAM - 1, BUTTONDIAM - 1, 0, 360 * 64);
+    XDrawString (vc8->xdis, vc8->xwin, vc8->xgc, vc8->winsize + BORDERWIDTH + 1 - BUTTONDIAM, vc8->winsize + BORDERWIDTH + 4 - BUTTONDIAM / 2, "CLEAR", 5);
 }
 
 #undef BUTTONDIAM
@@ -760,62 +823,65 @@ void ClearButton::draw (unsigned long color)
 
 #define BUTTONDIAM 48
 
-TriButton::TriButton (Display *xdis, Window xwin, GC xgc, bool upbut)
-    : Button (xdis, xwin, xgc)
+TriButton::TriButton (IODevVC8 *vc8, bool upbut)
+    : Button (vc8)
 {
-    xleft = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-    xrite = WINDOWWIDTH  + BORDERWIDTH;
     this->upbut = upbut;
-    if (upbut) {
-        ytop = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
-        ybot = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
-        segs[0].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-        segs[0].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
-        segs[0].x2 = WINDOWWIDTH  + BORDERWIDTH - 1;
-        segs[0].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
-        segs[1].x1 = WINDOWWIDTH  + BORDERWIDTH - 1;
-        segs[1].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
-        segs[1].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[1].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
-        segs[2].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[2].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
-        segs[2].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-        segs[2].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+    position ();
+}
+
+void TriButton::position ()
+{
+    xleft = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+    xrite = vc8->winsize + BORDERWIDTH;
+    if (this->upbut) {
+        ytop = vc8->winsize + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        ybot = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[0].x1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+        segs[0].y1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[0].x2 = vc8->winsize + BORDERWIDTH - 1;
+        segs[0].y2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[1].x1 = vc8->winsize + BORDERWIDTH - 1;
+        segs[1].y1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
+        segs[1].x2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].y2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        segs[2].x1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[2].y1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM     - BUTTONDIAM / 2;
+        segs[2].x2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+        segs[2].y2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2 - BUTTONDIAM / 2;
     } else {
-        ytop = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
-        ybot = WINDOWHEIGHT + BORDERWIDTH;
-        segs[0].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-        segs[0].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[0].x2 = WINDOWWIDTH  + BORDERWIDTH - 1;
-        segs[0].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[1].x1 = WINDOWWIDTH  + BORDERWIDTH - 1;
-        segs[1].y1 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[1].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[1].y2 = WINDOWHEIGHT + BORDERWIDTH - 1;
-        segs[2].x1 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM / 2;
-        segs[2].y1 = WINDOWHEIGHT + BORDERWIDTH - 1;
-        segs[2].x2 = WINDOWWIDTH  + BORDERWIDTH - BUTTONDIAM;
-        segs[2].y2 = WINDOWHEIGHT + BORDERWIDTH - BUTTONDIAM / 2;
+        ytop = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        ybot = vc8->winsize + BORDERWIDTH;
+        segs[0].x1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+        segs[0].y1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[0].x2 = vc8->winsize + BORDERWIDTH - 1;
+        segs[0].y2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].x1 = vc8->winsize + BORDERWIDTH - 1;
+        segs[1].y1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].x2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[1].y2 = vc8->winsize + BORDERWIDTH - 1;
+        segs[2].x1 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
+        segs[2].y1 = vc8->winsize + BORDERWIDTH - 1;
+        segs[2].x2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM;
+        segs[2].y2 = vc8->winsize + BORDERWIDTH - BUTTONDIAM / 2;
     }
 }
 
 void TriButton::draw (unsigned long color)
 {
-    XSetForeground (xdis, xgc, color);
-    XDrawSegments (xdis, xwin, xgc, segs, 3);
+    vc8->setfg (color);
+    XDrawSegments (vc8->xdis, vc8->xwin, vc8->xgc, segs, 3);
 }
 
 //////////////////////////
 //  Persistance Button  //
 //////////////////////////
 
-PersisButton::PersisButton (Display *xdis, Window xwin, GC xgc)
-    : upbutton (xdis, xwin, xgc, true),
-      dnbutton (xdis, xwin, xgc, false)
+PersisButton::PersisButton (IODevVC8 *vc8)
+    : upbutton (vc8, true),
+      dnbutton (vc8, false)
 {
-    this->xdis = xdis;
-    this->xwin = xwin;
-    this->xgc  = xgc;
+    this->vc8 = vc8;
 
     pmslen = 0;
 }
@@ -829,7 +895,7 @@ void PersisButton::draw (unsigned long color)
 {
     upbutton.draw (color);
     dnbutton.draw (color);
-    XDrawString (xdis, xwin, xgc, WINDOWWIDTH + BORDERWIDTH + 1 - BUTTONDIAM, WINDOWHEIGHT + BORDERWIDTH + 4 - BUTTONDIAM * 3 / 4, pmsbuf, pmslen);
+    XDrawString (vc8->xdis, vc8->xwin, vc8->xgc, vc8->winsize + BORDERWIDTH + 1 - BUTTONDIAM, vc8->winsize + BORDERWIDTH + 4 - BUTTONDIAM * 3 / 4, pmsbuf, pmslen);
 }
 
 #undef BUTTONDIAM
