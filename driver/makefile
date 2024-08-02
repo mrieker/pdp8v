@@ -1,6 +1,6 @@
 CFLAGS ?= -O2 -Werror
 MACH   := $(shell uname -m)
-TCLINC := -I/usr/include/tcl8.6
+TCLINC := -I$(shell ./tclinc.sh)
 GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
