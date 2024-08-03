@@ -1,4 +1,4 @@
 #!/bin/bash
-#  telnet into this host port 12303 with another screen after this starts
-#  optionally run ../driver/dtapestatus on another screen
-exec ../../driver/raspictl -csrclib -script d3eb.tcl
+#  sets up tty to print here on stdout, but doesn't print anything
+#  optionally run ../driver/tc08status on another screen
+exec ../../driver/raspictl -nohwlib -script d3eb.tcl

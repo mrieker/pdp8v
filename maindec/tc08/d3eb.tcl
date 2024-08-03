@@ -1,7 +1,7 @@
 loadbin d3eb-pb
-iodev tty telnet 12303
-iodev dtape loadrw 1 tape1.dtp
-iodev dtape debug 0
+iodev tty pipes /dev/null -
+iodev tc08 loadrw 1 tape1.dtp
+iodev tc08 debug [getenv debug 0]
 swreg 01074
 option set haltstop 1
 reset 0200

@@ -52,6 +52,7 @@ _3000:	.word	03000
 _3777:	.word	03777
 _4321:	.word	04321
 _4444:	.word	04444
+_5000:	.word	05000
 _5076:	.word	05076
 _5077:	.word	05077
 _7000:	.word	07000
@@ -437,9 +438,10 @@ _sebm5:	.word	sbbm5
 waitsuccess: .word .-.
 	jms	waitfordone
 	tad	_7777
-	sza
-	jmsi	_fatal
+	sna
 	jmpi	waitsuccess
+	iac
+	jmsi	_fatal
 
 ;
 ; wait for end-of-tape status - fatal if something else
@@ -449,9 +451,10 @@ waitsuccess: .word .-.
 waitforeot: .word .-.
 	jms	waitfordone
 	tad	_3000
-	sza
-	jmsi	_fatal
+	sna
 	jmpi	waitforeot
+	tad	_5000
+	jmsi	_fatal
 
 ;
 ; wait for operation to complete
@@ -684,37 +687,21 @@ getrand: .word .-.
 obvcomp: .word	.-.
 	; AC = ~abcdefghijkl
 	cll cma bsw
-	; AC = ghijklabcdef
+	; AC =  ghijklabcdef
 	dca	oc_temp1
 	tad	oc_temp1
 	and	_7070
 	rtr
 	rar
-	; AC = 000ghi000abc
+	; AC =  000ghi000abc
 	dca	oc_temp2
 	tad	oc_temp1
 	and	_0707
 	rtl
 	ral
-	; AC = jkl000def000
+	; AC =  jkl000def000
 	tad	oc_temp2
-	; AC = jklghidefabc
-	dca	oc_temp1
-	tad	oc_temp1
-	and	_4444
-	rtr
-	; AC = 00j00g00d00a
-	dca	oc_temp2
-	tad	oc_temp1
-	and	_2222
-	tad	oc_temp2
-	; AC = 0kj0hg0ed0ba
-	dca	oc_temp2
-	tad	oc_temp1
-	and	_1111
-	rtl
-	tad	oc_temp2
-	; AC = lkjihgfedcba
+	; AC =  jklghidefabc
 	jmpi	obvcomp
 
 oc_temp1: .word .-.
@@ -784,6 +771,8 @@ fatal:	.word	.-.
 	jmsi	_printstrz
 	tad	fatalac
 	jmsi	_printoct
+	jmsi	_printcrlf
+	jmsi	_printcrlf
 	hlt
 	jmp	.-1
 

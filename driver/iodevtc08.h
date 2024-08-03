@@ -46,10 +46,11 @@ private:
     void thread ();
     bool stepskip (IODevTC08Drive *drive);
     bool stepxfer (IODevTC08Drive *drive);
-    void dumpbuf (IODevTC08Drive *drive, char const *label, uint16_t const *buff);
+    void dumpbuf (IODevTC08Drive *drive, char const *label, uint16_t const *buff, int nwords);
     bool delayblk ();
     bool delayloop (int usec);
     void updateirq ();
+    void dbgpr (int level, char const *fmt, ...);
 };
 
 struct IODevTC08Drive {
