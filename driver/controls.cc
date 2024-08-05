@@ -70,6 +70,27 @@ bool ctl_halt ()
     return false;
 }
 
+// flag processor to halt for the given reason
+// does not wait for processor to halt
+bool ctl_haltfor (char const *reason)
+{
+    bool sigint = ctl_lock ();
+    if (haltflags & HF_HALTIT) {
+        ctl_unlock (sigint);
+        return true;
+    }
+
+    // if nothing else has requested halt, request halt and say because of halt button
+    haltreason = reason;
+    haltflags |= HF_HALTIT;
+
+    // if raspictl.cc main sleeping in an HLT instruction, wake it up
+    haltwake ();
+
+    ctl_unlock (sigint);
+    return false;
+}
+
 bool ctl_ishalted ()
 {
     return (haltflags & HF_HALTED) != 0;

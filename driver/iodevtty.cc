@@ -32,11 +32,19 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "controls.h"
 #include "iodevtty.h"
 #include "linc.h"
 #include "memory.h"
 #include "rdcyc.h"
 #include "shadow.h"
+
+struct TTYHaltOn {
+    TTYHaltOn *next;
+    char *buff;
+    int hits;
+    char reas[1];
+};
 
 IODevTTY iodevtty;
 IODevTTY iodevtty40(040);
@@ -67,6 +75,9 @@ static uint64_t getnowus ()
     if (gettimeofday (&nowtv, NULL) < 0) ABORT ();
     return nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
 }
+
+static bool haltoncheck (TTYHaltOn *const halton, char prchar);
+
 
 // iobase by default is 003
 // typical alternates are 040, 042, 044, 046
@@ -127,6 +138,9 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->tlfd     = -1;
     this->kbtid    =  0;
     this->prtid    =  0;
+    this->haltons  = NULL;
+    this->injbuf   = NULL;
+    this->injidx   = 0;
     this->eight    = false;
     this->lcucin   = false;
     this->stopping = false;
@@ -141,6 +155,11 @@ IODevTTY::~IODevTTY ()
     if (this->logfile != NULL) {
         fclose (this->logfile);
         this->logfile = NULL;
+    }
+    this->haltonsfree ();
+    if (this->injbuf != NULL) {
+        free (this->injbuf);
+        this->injbuf = NULL;
     }
     pthread_mutex_unlock (&this->lock);
 }
@@ -176,6 +195,54 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev %s eight [0/1]", iodevname);
     }
 
+    // halton              - return list of current haltons
+    // halton ""           - clear list of haltons
+    // halton <string> ... - set list of haltons
+    if (strcmp (argv[0], "halton") == 0) {
+
+        // no args, return list of existing halton strings
+        if (argc == 1) {
+            pthread_mutex_lock (&this->lock);
+            int i = 0;
+            for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
+                i ++;
+            }
+            SCRetList *scretlist = new SCRetList (i);
+            i = 0;
+            for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
+                scretlist->elems[i++] = new SCRetStr ("%d:%s", halton->hits, halton->buff);
+            }
+            pthread_mutex_unlock (&this->lock);
+            return scretlist;
+        }
+
+        // args, clear existing list, then make new list from non-null strings
+        pthread_mutex_lock (&this->lock);
+        this->haltonsfree ();
+        TTYHaltOn **lasthalton = &this->haltons;
+        for (int i = 1; i < argc; i ++) {
+            int len = strlen (argv[i]);
+            if (len > 0) {
+                int dnlen = strlen (this->iodevname);
+                TTYHaltOn *halton = (TTYHaltOn *) malloc (sizeof *halton + dnlen + 10 + len);
+                if (halton == NULL) ABORT ();
+                *lasthalton  = halton;
+                lasthalton   = &halton->next;
+                halton->hits = 0;
+                // set up halton->reas string: <iodevname> halton <haltonstring>
+                // then/and point halton->buff to the <haltonstring> at the end
+                memcpy (halton->reas, this->iodevname, dnlen);
+                memcpy (halton->reas + dnlen, " halton ", 8);
+                halton->buff = halton->reas + dnlen + 8;
+                memcpy (halton->buff, argv[i], len + 1);
+            }
+        }
+        *lasthalton = NULL;
+        pthread_mutex_unlock (&this->lock);
+
+        return NULL;
+    }
+
     if (strcmp (argv[0], "help") == 0) {
         puts ("");
         puts ("valid sub-commands:");
@@ -183,6 +250,11 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("  debug               - see if debug is enabled");
         puts ("  debug 0/1/2         - set debug printing");
         puts ("  eight [0/1]         - allow all 8 bits to pass through");
+        puts ("  halton              - return list of defined haltons");
+        puts ("  halton \"\"           - clear halton strings");
+        puts ("  halton <string> ... - set list of strings to halt on");
+        puts ("  inject              - return remaining injection");
+        puts ("  inject <string>     - set up keyboard injection");
         puts ("  lcucin [0/1]        - lowercase->uppercase on input");
         puts ("  logfile             - get name of current logfile or null");
         puts ("  logfile -           - turn logging off");
@@ -197,6 +269,25 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("                        allowed range 1..65535");
         puts ("");
         return NULL;
+    }
+
+    // inject          - return remaining injection if any
+    // inject <string> - set up injection string
+    if (strcmp (argv[0], "inject") == 0) {
+        if (argc == 1) {
+            if (this->injbuf == NULL) return NULL;
+            return new SCRetStr ("%s", this->injbuf + this->injidx);
+        }
+
+        if (argc == 2) {
+            pthread_mutex_lock (&this->lock);
+            if (this->injbuf != NULL) free (this->injbuf);
+            this->injidx = 0;
+            this->injbuf = strdup (argv[1]);
+            if (this->injbuf == NULL) ABORT ();
+            pthread_mutex_unlock (&this->lock);
+            return NULL;
+        }
     }
 
     // lcucin [0/1/2]
@@ -600,9 +691,20 @@ void IODevTTY::kbthreadlk ()
                 }
             }
 
+            // maybe there is an injection character
+            pthread_mutex_lock (&this->lock);
+            char inj;
+            if ((this->injbuf != NULL) && ((inj = this->injbuf[this->injidx]) != 0)) {
+                this->kbbuff = inj;
+                this->injidx ++;
+                goto gotchar;
+            }
+            pthread_mutex_unlock (&this->lock);
+
             // it's been a while, so block here until keyboard char is available
             // this can get sigint'd by stopthreads()
-            int rc = poll (&pfd, 1, -1);
+            // only wait 1 sec max in case we just got an injection
+            int rc = poll (&pfd, 1, 1000);
             int en = errno;
 
             // return if connection fd has been closed
@@ -612,19 +714,21 @@ void IODevTTY::kbthreadlk ()
             // break out of loop if char ready to be read
             if (rc > 0) break;
 
-            // otherwise it should be EINTR, repeat if so
-            if ((rc == 0) || (en != EINTR)) ABORT ();
+            // otherwise it should be timed out or EINTR, repeat if so
+            if ((rc < 0) && (en != EINTR)) ABORT ();
         }
 
         // we know a char is available (or eof), read it
-        int rc = read (this->kbfd, &this->kbbuff, 1);
-        if (rc <= 0) {
-            if (rc == 0) fprintf (stderr, "IODevTTY::kbthread: %02o eof reading from pipe\n", iobasem3 + 3);
-              else fprintf (stderr, "IODevTTY::kbthread: %02o error reading from pipe: %m\n", iobasem3 + 3);
-            if ((isatty (this->kbfd) > 0) && (tcsetattr (this->kbfd, TCSAFLUSH, &this->oldattr) < 0)) ABORT ();
-            close (this->kbfd);
-            this->kbfd = -1;
-            break;
+        {
+            int rc = read (this->kbfd, &this->kbbuff, 1);
+            if (rc <= 0) {
+                if (rc == 0) fprintf (stderr, "IODevTTY::kbthread: %02o eof reading from pipe\n", iobasem3 + 3);
+                  else fprintf (stderr, "IODevTTY::kbthread: %02o error reading from pipe: %m\n", iobasem3 + 3);
+                if ((isatty (this->kbfd) > 0) && (tcsetattr (this->kbfd, TCSAFLUSH, &this->oldattr) < 0)) ABORT ();
+                close (this->kbfd);
+                this->kbfd = -1;
+                break;
+            }
         }
 
         // discard telnet IAC x x sequences
@@ -634,6 +738,7 @@ void IODevTTY::kbthreadlk ()
         }
 
         // maybe convert lower case to upper case
+    gotchar:;
         if (this->lcucin && ((this->kbbuff & 0177) >= 'a') && ((this->kbbuff & 0177) <= 'z')) this->kbbuff += 'A' - 'a';
 
         // pdp-8 software likes top bit set (eg, focal, os/8)
@@ -644,7 +749,7 @@ void IODevTTY::kbthreadlk ()
             printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
         }
 
-        nextreadus = getnowus () + this->usperchr;
+        nextreadus = getnowus () + this->usperchr * 2;
 
         // we have a character now, maybe request interrupt
         this->kbflag = true;
@@ -725,6 +830,15 @@ void IODevTTY::prthread ()
 
         nextwriteus = getnowus () + this->usperchr;
 
+        // check any haltons, flag processor to halt if any triggered
+        bool first = true;
+        for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
+            if (haltoncheck (halton, this->prbuff) && first) {
+                ctl_haltfor (halton->reas);
+                first = false;
+            }
+        }
+
         // we have a room for another, maybe request interrupt
         this->prfull = false;
         this->prflag = true;
@@ -732,6 +846,59 @@ void IODevTTY::prthread ()
     }
 done:;
     pthread_mutex_unlock (&this->lock);
+}
+
+// have outgoing char, step halton state and see if complete match has occurred
+static bool haltoncheck (TTYHaltOn *const halton, char prchar)
+{
+    // null doesn't match anything so reset
+    if (prchar == 0) {
+        halton->hits = 0;
+        return false;
+    }
+
+    // if char matches next coming up, increment number of matching chars
+    // if reached the end, this one is completely matched
+    // if previously completely matched, prchar will mismatch on the null
+    int i = halton->hits;
+    if (halton->buff[i] != prchar) {
+
+        // mismatch, but maybe an earlier part is still matched
+        // eg, looking for "abcabcabd" but got "abcabcabc", we reset to 6
+        //     looking for "abcd" but got "abca", we reset to 1
+        // also has to work for case where "aaa" was completely matched last time,
+        //   if prchar is 'a', we say complete match this time, else reset to 0
+        do {
+            char *p = (char *) memrchr (halton->buff, prchar, i);
+            if (p == NULL) {
+                i = -1;
+                break;
+            }
+            i = p - halton->buff;
+
+            // prchar = 'c'
+            // hits = 8 in "abcabcabd"
+            //                      ^hits
+            //    i = 5 in "abcabcabd"
+            //                   ^i
+        } while (memcmp (halton->buff, halton->buff + halton->hits - i, i) != 0);
+    }
+
+    // i = index where prchar matches (or -1 if not at all)
+    halton->hits = ++ i;
+    return halton->buff[i] == 0;
+}
+
+// free all the haltons
+void IODevTTY::haltonsfree ()
+{
+    bool sigint = ctl_lock ();
+    for (TTYHaltOn *halton; (halton = this->haltons) != NULL;) {
+        this->haltons = halton->next;
+        if (haltreason == halton->reas) haltreason = "";
+        free (halton);
+    }
+    ctl_unlock (sigint);
 }
 
 // a tty i/o instruction has been detected, set up keyboard

@@ -37,6 +37,7 @@ struct IODevOps {
 struct SCRet;
 struct SCRetErr;
 struct SCRetInt;
+struct SCRetList;
 struct SCRetLong;
 struct SCRetStr;
 
@@ -58,6 +59,7 @@ struct SCRet {
     enum Type {
         SCRT_ERR,
         SCRT_INT,
+        SCRT_LIST,
         SCRT_LONG,
         SCRT_STR
     };
@@ -66,6 +68,7 @@ struct SCRet {
     virtual Type gettype () = 0;
     virtual SCRetErr  *casterr  () { return NULL; }
     virtual SCRetInt  *castint  () { return NULL; }
+    virtual SCRetList *castlist () { return NULL; }
     virtual SCRetLong *castlong () { return NULL; }
     virtual SCRetStr  *caststr  () { return NULL; }
 };
@@ -84,6 +87,16 @@ struct SCRetInt : SCRet {
     virtual SCRetInt *castint () { return this; }
 
     int val;
+};
+
+struct SCRetList : SCRet {
+    SCRetList (int nelems);
+    virtual ~SCRetList ();
+    virtual Type gettype () { return SCRT_LIST; }
+    virtual SCRetList *castlist () { return this; }
+
+    int nelems;
+    SCRet **elems;
 };
 
 struct SCRetLong : SCRet {

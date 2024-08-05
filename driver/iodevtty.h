@@ -25,6 +25,8 @@
 
 #include "iodevs.h"
 
+struct TTYHaltOn;
+
 struct IODevTTY : IODev {
     IODevTTY (uint16_t iobase = 3);
     virtual ~IODevTTY ();
@@ -51,9 +53,11 @@ private:
     bool stopping;      // threads are being stopped
     bool telnetd;       // being serviced in telnet daemon mode
     bool tsfwait;       // doing wait for prflag optimization
+    char *injbuf;       // keyboard injection string buffer
     char ttydevname[8];
     FILE *logfile;
     int debug;
+    int injidx;         // keyboard injection string index
     int kbfd;           // -1: kb shut down or being shut down; else: fd for keyboard i/o
     int prfd;           // -1: pr shut down or being shut down; else: fd for printer i/o
     int tlfd;           // -1: tcp listener shut down or being shut down; else: fd for listening
@@ -61,6 +65,7 @@ private:
     pthread_t kbtid;    // non-zero iff keyboard thread running (set by creator, cleared by joiner)
     pthread_t prtid;    // non-zero iff printer thread running (set by creator, cleared by joiner)
     struct termios oldattr;
+    TTYHaltOn *haltons;
     uint32_t usperchr;
     uint16_t iobasem3;
     uint16_t lastin;
@@ -81,6 +86,7 @@ private:
     void tcpthread ();
     void kbthreadlk ();
     void prthread ();
+    void haltonsfree ();
     void dokbsetup ();
     void setkbrawmode ();
     void updintreqlk ();

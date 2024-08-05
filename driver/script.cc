@@ -1319,6 +1319,18 @@ static int procscret (Tcl_Interp *interp, SCRet *scret)
             Tcl_SetObjResult (interp, Tcl_NewIntObj (scret->castint ()->val));
             break;
         }
+        case SCRet::SCRT_LIST: {
+            SCRetList *scretlist = scret->castlist ();
+            int nelems = scretlist->nelems;
+            Tcl_Obj *elemobjs[nelems];
+            for (int i = 0; i < nelems; i ++) {
+                SCRetStr *scretstr = scretlist->elems[i]->caststr ();
+                ASSERT (scretstr != NULL);
+                elemobjs[i] = Tcl_NewStringObj (scretstr->str, -1);
+            }
+            Tcl_SetObjResult (interp, Tcl_NewListObj (nelems, elemobjs));
+            break;
+        }
         case SCRet::SCRT_LONG: {
             Tcl_SetObjResult (interp, Tcl_NewLongObj (scret->castlong ()->val));
             break;
@@ -1360,6 +1372,31 @@ SCRetErr::SCRetErr (char const *fmt, ...)
 SCRetInt::SCRetInt (int val)
 {
     this->val = val;
+}
+
+SCRetList::SCRetList (int nelems)
+{
+    this->nelems = nelems;
+    if (nelems > 0) {
+        this->elems = (SCRet **) calloc (nelems, sizeof *this->elems);
+        if (this->elems == NULL) ABORT ();
+    } else {
+        this->elems = NULL;
+    }
+}
+
+SCRetList::~SCRetList ()
+{
+    if (this->elems != NULL) {
+        for (int i = 0; i < this->nelems; i ++) {
+            if (this->elems[i] != NULL) {
+                delete this->elems[i];
+                this->elems[i] = NULL;
+            }
+        }
+        free (this->elems);
+        this->elems = NULL;
+    }
 }
 
 SCRetLong::SCRetLong (long val)
