@@ -123,65 +123,27 @@ IODevTC08::IODevTC08 ()
         ocarray[i] = reverse;
     }
 
-    // create shared memory for tc08status.cc program to access tape state
-    this->shmfd = shm_open (shmname, O_RDWR | O_CREAT, 0600);
-    if (this->shmfd < 0) {
-        fprintf (stderr, "IODevTC08::IODevTC08: error creating shared memory %s: %m\n", shmname);
-        ABORT ();
-    }
-    if (ftruncate (this->shmfd, sizeof *this->shm) < 0) {
-        fprintf (stderr, "IODevTC08::IODevTC08: error setting shared memory %s size: %m\n", shmname);
-        close (this->shmfd);
-        this->shmfd = -1;
-        shm_unlink (shmname);
-        ABORT ();
-    }
-
-    // map it to va space and zero it out
-    void *shmptr = mmap (NULL, sizeof *this->shm, PROT_READ | PROT_WRITE, MAP_SHARED, this->shmfd, 0);
-    if (shmptr == MAP_FAILED) {
-        fprintf (stderr, "IODevTC08::IODevTC08: error accessing shared memory %s: %m\n", shmname);
-        close (this->shmfd);
-        this->shmfd = -1;
-        shm_unlink (shmname);
-        ABORT ();
-    }
-
-    this->shm = (IODevTC08Shm *) shmptr;
-    memset (this->shm, 0, sizeof *this->shm);
-
     // initialize everything
-    pthread_condattr_t condattrs;
-    if (pthread_condattr_init (&condattrs) != 0) ABORT ();
-    if (pthread_condattr_setpshared (&condattrs, PTHREAD_PROCESS_SHARED) != 0) ABORT ();
-    if (pthread_cond_init (&shm->cond, &condattrs) != 0) ABORT ();
-
-    pthread_mutexattr_t lockattrs;
-    if (pthread_mutexattr_init (&lockattrs) != 0) ABORT ();
-    if (pthread_mutexattr_setpshared (&lockattrs, PTHREAD_PROCESS_SHARED) != 0) ABORT ();
-    if (pthread_mutex_init (&shm->lock, &lockattrs) != 0) ABORT ();
-
-    shm->dtpid = getpid ();
-    for (int i = 0; i < 8; i ++) {
-        shm->drives[i].dtfd = -1;
-    }
-
+    this->shm = NULL;
+    this->shmfd = -1;
     this->allowskipopt = true;
     this->dskpwait = false;
-
-    // lock and unlock for a barrier
-    pthread_mutex_lock (&shm->lock);
-    shm->initted = true;
-    pthread_mutex_unlock (&shm->lock);
 }
 
 IODevTC08::~IODevTC08 ()
 {
+    // nothing to do if shared memory was never set up
+    if (this->shm == NULL) return;
+
     // lock and unlock for a barrier
     pthread_mutex_lock (&shm->lock);
     shm->exiting = true;
     pthread_mutex_unlock (&shm->lock);
 
+    // stop thread
+    this->ioreset ();
+
+    // delete shared memory
     shm_unlink (shmname);
     for (int i = 0; i < 8; i ++) {
         close (shm->drives[i].dtfd);
@@ -198,15 +160,22 @@ IODevTC08::~IODevTC08 ()
 // - kill thread
 void IODevTC08::ioreset ()
 {
+    // nothing to do if shared memory isn't set up
+    if (this->shm == NULL) return;
+
     pthread_mutex_lock (&shm->lock);
 
+    // if another thread is doing the reset, wait for it to complete
     if (shm->resetting) {
         do pthread_cond_wait (&shm->cond, &shm->lock);
         while (shm->resetting);
     } else {
+
+        // no other thread doing reset, tell others we are doing reset
         shm->resetting = true;
         pthread_cond_broadcast (&shm->cond);
 
+        // if our thread is running, tell it to stop and wait for it to stop
         if (shm->threadid != 0) {
             pthread_mutex_unlock (&shm->lock);
             pthread_join (shm->threadid, NULL);
@@ -214,6 +183,7 @@ void IODevTC08::ioreset ()
             shm->threadid = 0;
         }
 
+        // clear status to reset state
         shm->status_a = 0;
         shm->status_b = 0;
         clrintreqmask (IRQ_DTAPE);
@@ -228,6 +198,59 @@ void IODevTC08::ioreset ()
 // load/unload files
 SCRet *IODevTC08::scriptcmd (int argc, char const *const *argv)
 {
+    // create shared memory if not already
+    if (this->shm == NULL) {
+
+        // create shared memory for tc08status.cc program to access tape state
+        this->shmfd = shm_open (shmname, O_RDWR | O_CREAT, 0600);
+        if (this->shmfd < 0) {
+            fprintf (stderr, "IODevTC08::IODevTC08: error creating shared memory %s: %m\n", shmname);
+            ABORT ();
+        }
+        if (ftruncate (this->shmfd, sizeof *this->shm) < 0) {
+            fprintf (stderr, "IODevTC08::IODevTC08: error setting shared memory %s size: %m\n", shmname);
+            close (this->shmfd);
+            this->shmfd = -1;
+            shm_unlink (shmname);
+            ABORT ();
+        }
+
+        // map it to va space and zero it out
+        void *shmptr = mmap (NULL, sizeof *this->shm, PROT_READ | PROT_WRITE, MAP_SHARED, this->shmfd, 0);
+        if (shmptr == MAP_FAILED) {
+            fprintf (stderr, "IODevTC08::IODevTC08: error accessing shared memory %s: %m\n", shmname);
+            close (this->shmfd);
+            this->shmfd = -1;
+            shm_unlink (shmname);
+            ABORT ();
+        }
+
+        IODevTC08Shm *lclshm = (IODevTC08Shm *) shmptr;
+        memset (lclshm, 0, sizeof *lclshm);
+
+        // initialize everything
+        pthread_condattr_t condattrs;
+        if (pthread_condattr_init (&condattrs) != 0) ABORT ();
+        if (pthread_condattr_setpshared (&condattrs, PTHREAD_PROCESS_SHARED) != 0) ABORT ();
+        if (pthread_cond_init (&lclshm->cond, &condattrs) != 0) ABORT ();
+
+        pthread_mutexattr_t lockattrs;
+        if (pthread_mutexattr_init (&lockattrs) != 0) ABORT ();
+        if (pthread_mutexattr_setpshared (&lockattrs, PTHREAD_PROCESS_SHARED) != 0) ABORT ();
+        if (pthread_mutex_init (&lclshm->lock, &lockattrs) != 0) ABORT ();
+
+        lclshm->dtpid = getpid ();
+        for (int i = 0; i < 8; i ++) {
+            lclshm->drives[i].dtfd = -1;
+        }
+
+        // lock and unlock for a barrier
+        pthread_mutex_lock (&lclshm->lock);
+        lclshm->initted = true;
+        pthread_mutex_unlock (&lclshm->lock);
+        this->shm = lclshm;
+    }
+
     // debug <level>
     if (strcmp (argv[0], "debug") == 0) {
         if (argc == 1) {
@@ -337,6 +360,72 @@ SCRet *IODevTC08::scriptcmd (int argc, char const *const *argv)
 
 // perform i/o instruction
 uint16_t IODevTC08::ioinstr (uint16_t opcode, uint16_t input)
+{
+    return (this->shm == NULL) ? ioinstroffline (opcode, input) : ioinstronline (opcode, input);
+}
+
+// - no shared memory, report drive offline status
+uint16_t IODevTC08::ioinstroffline (uint16_t opcode, uint16_t input)
+{
+    switch (opcode) {
+
+        // DTRA (TC08) read status register A
+        // p 396
+        case 06761: {
+            break;
+        }
+
+        // DTCA (TC08) clear status register A
+        case 06762: {
+            break;
+        }
+
+        // DTLA (TC08) clear and load status register A
+        case 06766: {
+            // fall through
+        }
+
+        // DTXA (TC08) load status register A
+        case 06764: {
+            input &= IO_LINK;
+            break;
+        }
+
+        // DTSF (TC08) skip on flag
+        case 06771: {
+            input |= IO_SKIP;
+            break;
+        }
+
+        // DTRB (TC08) read status register B
+        case 06772: {
+            input |= SELERR;
+            break;
+        }
+
+        // DTSF (TC08) skip on flag
+        // DTRB (TC08) read status register B
+        case 06773: {
+            input |= IO_SKIP | SELERR;
+            break;
+        }
+
+        // DTXB (TC08) load status register B <05:03>
+        case 06774: {
+            input &= IO_LINK;
+            break;
+        }
+
+        default: {
+            input = UNSUPIO;
+            break;
+        }
+    }
+    return input;
+}
+
+// - have shared memory, process i/o instruction
+uint16_t IODevTC08::ioinstronline (uint16_t opcode, uint16_t input)
 {
     pthread_mutex_lock (&shm->lock);
 
@@ -545,7 +634,7 @@ void IODevTC08::thread ()
                         memfield[idca] = drive->tapepos / 4;                    // write out mark we just hopped over
                         DBGPR (2, "IODevTC08::thread: search memarray[IDWC] = %04o ; memfield[%04o] <= %04o\n", idwc, idca, drive->tapepos / 4);
                     } while (CONTIN && (idwc != 0));
-                    goto normal;
+                    goto success;
                 }
 
                 // READ DATA (2.5.1.5 p 27)
@@ -618,7 +707,7 @@ void IODevTC08::thread ()
                             }
                         }
                     } while (CONTIN && (idwc != 0));
-                    goto normal;
+                    goto success;
                 }
 
                 // READ ALL
@@ -695,7 +784,7 @@ void IODevTC08::thread ()
                         memarray[IDCA] = idca;
                         memarray[IDWC] = idwc;
                     } while (CONTIN && (idwc != 0));
-                    goto normal;
+                    goto success;
                 }
 
                 // WRITE DATA (2.5.1.7 p 28)
@@ -755,7 +844,7 @@ void IODevTC08::thread ()
                             ABORT ();
                         }
                     } while (CONTIN && (idwc != 0));
-                    goto normal;
+                    goto success;
                 }
 
                 default: {
@@ -771,9 +860,13 @@ void IODevTC08::thread ()
         finerror:;
             shm->status_a &= ~ GOBIT;   // any error shuts the GO bit off
             goto finished;
-        normal:;
+        success:;
             DBGPR (2, "IODevTC08::thread: - final idwc=%04o idca=%o.%04o\n", memarray[IDWC], field >> 12, memarray[IDCA]);
             shm->status_b |=  DTFLAG;   // errors do not get DTFLAG
+            // if normal mode with non-zero remaining IDWC,
+            //  real dectapes will start the next transfer when the next bits come under the tape head in a few milliseconds
+            //    failing with timing error if DTFLAG has not been cleared by the processor by then
+            //  in our case, we process the next block when the processor clears DTFLAG because the tubes may take a while to clear DTFLAG
         finished:;
             DBGPR (1, "IODevTC08::thread: st_B=%04o idwc=%04o->%04o\n", shm->status_b, oldidwc, memarray[IDWC]);
 
@@ -904,6 +997,13 @@ bool IODevTC08::delayblk ()
     return this->delayloop (usec);
 }
 
+// delay the given number of microseconds, unlocking during the wait
+// check for changed command during the wait
+// also make sure processor has executed at least 100 cycles since i/o instruction
+// ...so processor has time to set up dma descriptor words after starting the i/o
+//  output:
+//   returns true: command changed during wait
+//          false: command remained the same
 bool IODevTC08::delayloop (int usec)
 {
     // detect if status_a register changed while unlocked
@@ -941,6 +1041,7 @@ void IODevTC08::updateirq ()
     }
 }
 
+// print message if debug is at or above the given level
 void IODevTC08::dbgpr (int level, char const *fmt, ...)
 {
     if (shm->debug >= level) {

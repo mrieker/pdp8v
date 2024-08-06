@@ -42,6 +42,8 @@ private:
     bool allowskipopt;
     bool dskpwait;
 
+    uint16_t ioinstroffline (uint16_t opcode, uint16_t input);
+    uint16_t ioinstronline (uint16_t opcode, uint16_t input);
     static void *threadwrap (void *zhis);
     void thread ();
     bool stepskip (IODevTC08Drive *drive);
