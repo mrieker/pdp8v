@@ -11,4 +11,7 @@ if {([cpu get pc] != 00147)} {
     exit
 }
 puts "starting..."
-run ; wait ; exit
+run
+wait
+puts "halted: [haltreason] [cpu get]"
+exit

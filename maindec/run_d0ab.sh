@@ -7,4 +7,5 @@
 #  ./run_d0ab.sh -csrclib  # run on PC
 #  ./run_d0ab.sh -zynqlib  # run on zynq
 #
+cd `dirname $0`
 exec ../driver/raspictl "$@" -script d0ab.tcl
