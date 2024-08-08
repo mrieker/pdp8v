@@ -193,7 +193,7 @@ void IODevRTC::update ()
     if (this->calcnextoflo ()) {
         pthread_cond_broadcast (&this->cond);
         if ((this->threadid == 0) && (this->nspertick != 0) && (this->nextoflons != NEXTOFLONSOFF)) {
-            int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
+            int rc = createthread (&this->threadid, threadwrap, this);
             if (rc != 0) {
                 fprintf (stderr, "IODevRTC::update: error %d creating thread: %s\n", rc, strerror (rc));
                 ABORT ();
@@ -208,7 +208,6 @@ void IODevRTC::update ()
 // thread what sets status and posts interrupt when counter overflows
 void *IODevRTC::threadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevRTC *)zhis)->thread ();
     return NULL;
 }

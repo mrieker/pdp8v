@@ -489,7 +489,7 @@ uint16_t IODevTC08::ioinstronline (uint16_t opcode, uint16_t input)
                 shm->cycles = shadow.getcycles ();
                 pthread_cond_broadcast (&shm->cond);
                 if (shm->threadid == 0) {
-                    int rc = pthread_create (&shm->threadid, NULL, threadwrap, this);
+                    int rc = createthread (&shm->threadid, threadwrap, this);
                     if (rc != 0) ABORT ();
                 }
             }
@@ -544,7 +544,6 @@ uint16_t IODevTC08::ioinstronline (uint16_t opcode, uint16_t input)
 // thread what does the tape file I/O
 void *IODevTC08::threadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevTC08 *)zhis)->thread ();
     return NULL;
 }

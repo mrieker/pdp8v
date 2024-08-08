@@ -412,7 +412,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
             this->tlfd = lfd;
             this->telnetd = true;
 
-            int rc = pthread_create (&this->kbtid, NULL, tcpthreadwrap, this);
+            int rc = createthread (&this->kbtid, tcpthreadwrap, this);
             if (rc != 0) ABORT ();
 
             pthread_mutex_unlock (&this->lock);
@@ -460,10 +460,10 @@ SCRetErr *IODevTTY::openpipes (char const *kbname, char const *prname)
     if (this->kbsetup) this->setkbrawmode ();
 
     // start the threads going
-    int rc = pthread_create (&this->kbtid, NULL, kbthreadwrap, this);
+    int rc = createthread (&this->kbtid, kbthreadwrap, this);
     if (rc != 0) ABORT ();
 
-    rc = pthread_create (&this->prtid, NULL, prthreadwrap, this);
+    rc = createthread (&this->prtid, prthreadwrap, this);
     if (rc != 0) ABORT ();
 
     pthread_mutex_unlock (&this->lock);
@@ -547,7 +547,6 @@ void IODevTTY::stopthreads ()
 
 void *IODevTTY::tcpthreadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevTTY *)zhis)->tcpthread ();
     return NULL;
 }
@@ -615,7 +614,7 @@ void IODevTTY::tcpthread ()
         if (this->prfd < 0) ABORT ();
 
         // do printer stuff in separate thread
-        rc = pthread_create (&this->prtid, NULL, prthreadwrap, this);
+        rc = createthread (&this->prtid, prthreadwrap, this);
         if (rc != 0) ABORT ();
 
         // process keyboard stuff in this thread
@@ -660,7 +659,6 @@ done:;
 
 void *IODevTTY::kbthreadwrap (void *zhis)
 {
-    rdcycuninit ();
     pthread_mutex_lock (&((IODevTTY *)zhis)->lock);
     ((IODevTTY *)zhis)->kbthreadlk ();
     pthread_mutex_unlock (&((IODevTTY *)zhis)->lock);
@@ -759,7 +757,6 @@ void IODevTTY::kbthreadlk ()
 
 void *IODevTTY::prthreadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevTTY *)zhis)->prthread ();
     return NULL;
 }

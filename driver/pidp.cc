@@ -80,7 +80,7 @@ void pidp_start ()
 {
     ASSERT (threadid == 0);
     running = true;
-    int rc = pthread_create (&threadid, NULL, pidpthread, NULL);
+    int rc = createthread (&threadid, pidpthread, NULL);
     if (rc != 0) ABORT ();
 }
 
@@ -99,8 +99,6 @@ static void *pidpthread (void *dummy)
     uint32_t lastbuttons = 0;
     int buttonindex = 0;
     memset (buttonring, 0, sizeof buttonring);
-
-    rdcycuninit ();
 
     // set up sequence number gt anything previously used
     PiDPMsg pidpmsg;

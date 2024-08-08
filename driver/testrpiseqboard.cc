@@ -56,6 +56,7 @@
 #include "gpiolib.h"
 #include "miscdefs.h"
 #include "pindefs.h"
+#include "rdcyc.h"
 
 #define NSAVEDCYCLES 16
 
@@ -518,7 +519,7 @@ void setmintimes (bool mintimes)
 {
     pthread_mutex_lock (&mintimeslock);
     if (mintimes && (mintimestid == 0)) {
-        int rc = pthread_create (&mintimestid, NULL, mintimesthread, NULL);
+        int rc = createthread (&mintimestid, mintimesthread, NULL);
         if (rc != 0) ABORT ();
         pthread_mutex_unlock (&mintimeslock);
         return;

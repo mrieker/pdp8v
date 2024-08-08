@@ -20,11 +20,14 @@
 #ifndef _RDCYC_H
 #define _RDCYC_H
 
+#include <pthread.h>
+
 #include "miscdefs.h"
 
 void rdcycinit (void);
-void rdcycuninit (void);
 double rdcycfreq (void);
 uint32_t rdcyc (void);
+
+int createthread (pthread_t *tid, void *(*entry) (void *param), void *param);
 
 #endif

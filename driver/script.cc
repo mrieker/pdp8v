@@ -49,7 +49,7 @@ void runscript (char const *argv0, char const *filename)
 {
     Tcl_FindExecutable (argv0);
     pthread_t tclpid;
-    int rc = pthread_create (&tclpid, NULL, tclthread, (void *) filename);
+    int rc = createthread (&tclpid, tclthread, (void *) filename);
     if (rc != 0) ABORT ();
     pthread_detach (tclpid);
     pthread_setname_np (tclpid, "script");
@@ -116,8 +116,6 @@ static FunDef fundefs[] = {
 static void *tclthread (void *fnv)
 {
     char const *fn = (char const *) fnv;
-
-    rdcycuninit ();
 
     interp = Tcl_CreateInterp ();
     if (Tcl_Init (interp) != TCL_OK) ABORT ();

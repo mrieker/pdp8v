@@ -45,9 +45,6 @@ void rdcycinit ()
     }
 }
 
-void rdcycuninit ()
-{ }
-
 double rdcycfreq ()
 {
     return 1000000;
@@ -57,4 +54,10 @@ double rdcycfreq ()
 uint32_t rdcyc (void)
 {
     return *ctrpt;
+}
+
+// we just have one core so default attrs will do
+int createthread (pthread_t *tid, void *(*entry) (void *param), void *param)
+{
+    return pthread_create (tid, NULL, entry, param);
 }

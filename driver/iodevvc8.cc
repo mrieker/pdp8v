@@ -394,7 +394,7 @@ void IODevVC8::insertpoint (uint16_t t)
 void IODevVC8::wakethread ()
 {
     if (this->threadid == 0) {
-        int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
+        int rc = createthread (&this->threadid, threadwrap, this);
         if (rc != 0) ABORT ();
         this->buffer = (VC8Pt *) malloc (MAXBUFFPTS * sizeof *this->buffer);
         if (this->buffer == NULL) ABORT ();
@@ -406,7 +406,6 @@ void IODevVC8::wakethread ()
 // thread what does the display I/O
 void *IODevVC8::threadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevVC8 *)zhis)->thread ();
     return NULL;
 }

@@ -291,7 +291,7 @@ void IODevRK8::startio (RK8IO rk8io)
     // tell thread to start doing an I/O request
     this->rk8io = rk8io;
     if (this->threadid == 0) {
-        int rc = pthread_create (&this->threadid, NULL, threadwrap, this);
+        int rc = createthread (&this->threadid, threadwrap, this);
         if (rc != 0) ABORT ();
     }
     pthread_cond_broadcast (&this->cond);
@@ -302,7 +302,6 @@ void IODevRK8::startio (RK8IO rk8io)
 // thread what does the disk file I/O
 void *IODevRK8::threadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevRK8 *)zhis)->thread ();
     return NULL;
 }

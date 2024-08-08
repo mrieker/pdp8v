@@ -421,7 +421,7 @@ void IODevPTape::startrdrthread (int fd)
     this->rdrrun = true;
     this->rdrfd  = fd;
 
-    int rc = pthread_create (&this->rdrtid, NULL, rdrthreadwrap, this);
+    int rc = createthread (&this->rdrtid, rdrthreadwrap, this);
     if (rc != 0) ABORT ();
     ASSERT (this->rdrtid != 0);
 
@@ -430,7 +430,6 @@ void IODevPTape::startrdrthread (int fd)
 
 void *IODevPTape::rdrthreadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevPTape *)zhis)->rdrthread ();
     return NULL;
 }
@@ -597,7 +596,7 @@ void IODevPTape::startpunthread (int fd)
     this->punrun = true;
     this->punfd  = fd;
 
-    int rc = pthread_create (&this->puntid, NULL, punthreadwrap, this);
+    int rc = createthread (&this->puntid, punthreadwrap, this);
     if (rc != 0) ABORT ();
     ASSERT (this->puntid != 0);
 
@@ -606,7 +605,6 @@ void IODevPTape::startpunthread (int fd)
 
 void *IODevPTape::punthreadwrap (void *zhis)
 {
-    rdcycuninit ();
     ((IODevPTape *)zhis)->punthread ();
     return NULL;
 }

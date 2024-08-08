@@ -28,6 +28,7 @@
 
 static double rasphz;
 static int numcores = -1;
+static pthread_attr_t allcpuattr;
 
 void rdcycinit ()
 {
@@ -54,6 +55,16 @@ void rdcycinit ()
         fprintf (stderr, "rdcycinit: numcores %d; rasphz %0.0f\n", numcores, rasphz);
         if ((numcores <= 0) || (rasphz == 0.0)) ABORT ();
         ASSERT ((numcores == 1) || ! UNIPROC);
+
+        // all created threads can run on any cpu
+        // only the main thread what calls rdcyc() gets locked to one cpu
+        if (pthread_attr_init (&allcpuattr) != 0) ABORT ();
+        if (numcores > 1) {
+            cpu_set_t cpuset;
+            CPU_ZERO (&cpuset);
+            for (int i = 0; i < numcores; i ++) CPU_SET (i, &cpuset);
+            if (pthread_attr_setaffinity_np (&allcpuattr, sizeof cpuset, &cpuset) != 0) ABORT ();
+        }
     }
 
     // stay on one core so rdcyc() will work
@@ -61,21 +72,6 @@ void rdcycinit ()
         cpu_set_t cpuset;
         CPU_ZERO (&cpuset);
         CPU_SET (1, &cpuset);
-        if (sched_setaffinity (0, sizeof cpuset, &cpuset) < 0) {
-            ABORT ();
-        }
-    }
-}
-
-void rdcycuninit ()
-{
-    // not main thread, any core will do
-    if (numcores > 1) {
-        cpu_set_t cpuset;
-        CPU_ZERO (&cpuset);
-        for (int i = numcores; -- i >= 0;) {
-            CPU_SET (i, &cpuset);
-        }
         if (sched_setaffinity (0, sizeof cpuset, &cpuset) < 0) {
             ABORT ();
         }
@@ -93,4 +89,10 @@ uint32_t rdcyc (void)
     uint32_t cyc;
     asm volatile ("rdtsc" : "=a" (cyc) :: "edx");
     return cyc;
+}
+
+// create thread to run on any cpu
+int createthread (pthread_t *tid, void *(*entry) (void *param), void *param)
+{
+    return pthread_create (tid, (numcores <= 1) ? NULL : &allcpuattr, entry, param);
 }

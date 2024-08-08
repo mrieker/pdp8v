@@ -1291,7 +1291,7 @@ void setmintimes (bool mintimes)
 {
     pthread_mutex_lock (&mintimeslock);
     if (mintimes && (mintimestid == 0)) {
-        int rc = pthread_create (&mintimestid, NULL, mintimesthread, NULL);
+        int rc = createthread (&mintimestid, mintimesthread, NULL);
         if (rc != 0) ABORT ();
         pthread_mutex_unlock (&mintimeslock);
         return;
@@ -1311,8 +1311,6 @@ void setmintimes (bool mintimes)
 static void *mintimesthread (void *dummy)
 {
     struct timespec nowts, waits;
-
-    rdcycuninit ();
 
     pthread_mutex_lock (&mintimeslock);
 
