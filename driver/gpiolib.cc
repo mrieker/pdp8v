@@ -195,8 +195,6 @@ GpioFile::~GpioFile ()
 
 void *GpioFile::open (char const *devname)
 {
-    struct flock flockit;
-
     // access gpio page in physical memory
     memfd = ::open (devname, O_RDWR);
     if (memfd < 0) {
@@ -205,18 +203,9 @@ void *GpioFile::open (char const *devname)
     }
 
     // make sure another copy isn't running
-trylk:;
-    memset (&flockit, 0, sizeof flockit);
-    flockit.l_type   = F_WRLCK;
-    flockit.l_whence = SEEK_SET;
-    flockit.l_len    = 4096;
-    if (fcntl (memfd, F_SETLK, &flockit) < 0) {
-        if (((errno == EACCES) || (errno == EAGAIN)) && (fcntl (memfd, F_GETLK, &flockit) >= 0)) {
-            if (flockit.l_type == F_UNLCK) goto trylk;
-            fprintf (stderr, "GpioFile::open: error locking %s: locked by pid %d\n", devname, (int) flockit.l_pid);
-            ABORT ();
-        }
-        fprintf (stderr, "GpioFile::open: error locking %s: %m\n", devname);
+    char *lockerr = lockfile (memfd, F_WRLCK);
+    if (lockerr != NULL) {
+        fprintf (stderr, "GpioFile::open: error locking %s: %s\n", devname, lockerr);
         ABORT ();
     }
 
@@ -236,4 +225,33 @@ void GpioFile::close ()
     ::close (memfd);
     memptr = NULL;
     memfd  = -1;
+}
+
+// try to lock the given file
+//  input:
+//   fd = file to lock
+//   how = F_WRLCK: exclusive access
+//         F_RDLCK: shared access
+//  output:
+//   returns NULL: successful
+//           else: error message
+char *lockfile (int fd, int how)
+{
+    struct flock flockit;
+
+trylk:;
+    memset (&flockit, 0, sizeof flockit);
+    flockit.l_type   = how;
+    flockit.l_whence = SEEK_SET;
+    flockit.l_len    = 4096;
+    if (fcntl (fd, F_SETLK, &flockit) >= 0) return NULL;
+
+    char *errmsg = NULL;
+    if (((errno == EACCES) || (errno == EAGAIN)) && (fcntl (fd, F_GETLK, &flockit) >= 0)) {
+        if (flockit.l_type == F_UNLCK) goto trylk;
+        if (asprintf (&errmsg, "locked by pid %d", (int) flockit.l_pid) < 0) ABORT ();
+    } else {
+        if (asprintf (&errmsg, "%m") < 0) ABORT ();
+    }
+    return errmsg;
 }

@@ -269,4 +269,6 @@ private:
 
     void opengpio ();
 };
+
+char *lockfile (int fd, int how);
 #endif

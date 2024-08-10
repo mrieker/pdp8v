@@ -118,7 +118,17 @@ static void *tclthread (void *fnv)
     char const *fn = (char const *) fnv;
 
     interp = Tcl_CreateInterp ();
-    if (Tcl_Init (interp) != TCL_OK) ABORT ();
+    if (interp == NULL) ABORT ();
+    int rc = Tcl_Init (interp);
+    if (rc != TCL_OK) {
+        char const *err = Tcl_GetStringResult (interp);
+        if ((err != NULL) && (err[0] != 0)) {
+            fprintf (stderr, "script: error %d initialing tcl: %s\n", rc, err);
+        } else {
+            fprintf (stderr, "script: error %d initialing tcl\n", rc);
+        }
+        ABORT ();
+    }
 
     // https://www.tcl-lang.org/man/tcl/TclLib/CrtObjCmd.htm
 
@@ -133,7 +143,7 @@ static void *tclthread (void *fnv)
     char const *scriptini = getenv ("scriptini");
     char *inihelp = NULL;
     if (scriptini != NULL) {
-        int rc = Tcl_EvalFile (interp, scriptini);
+        rc = Tcl_EvalFile (interp, scriptini);
         if (rc != TCL_OK) {
             char const *err = Tcl_GetStringResult (interp);
             if ((err == NULL) || (err[0] == 0)) fprintf (stderr, "script: error %d evaluating scriptini %s\n", rc, scriptini);
@@ -147,7 +157,7 @@ static void *tclthread (void *fnv)
 
     // if given a filename, process that file as a whole
     if (strcmp (fn, "-") != 0) {
-        int rc = Tcl_EvalFile (interp, fn);
+        rc = Tcl_EvalFile (interp, fn);
         if (rc != TCL_OK) {
             char const *res = Tcl_GetStringResult (interp);
             if ((res == NULL) || (res[0] == 0)) fprintf (stderr, "script: error %d evaluating script %s\n", rc, fn);
@@ -160,6 +170,7 @@ static void *tclthread (void *fnv)
     // either way, prompt and process commands from stdin
     // to have a script file with no stdin processing, end script file with 'run ; wait ; exit'
     puts ("\nTCL scripting, do 'help' for raspictl-specific commands");
+    puts ("  do 'exit' to exit raspictl");
     if (inihelp != NULL) {
         puts (inihelp);
         free (inihelp);
@@ -169,7 +180,7 @@ static void *tclthread (void *fnv)
         line = readprompt ("raspictl> ");
         if (line == NULL) break;
         ctrlcflag = false;
-        int rc = Tcl_EvalEx (interp, line, -1, TCL_EVAL_GLOBAL);
+        rc = Tcl_EvalEx (interp, line, -1, TCL_EVAL_GLOBAL);
         char const *res = Tcl_GetStringResult (interp);
         if (rc != TCL_OK) {
             if ((res == NULL) || (res[0] == 0)) fprintf (stderr, "script: error %d evaluating command\n", rc);

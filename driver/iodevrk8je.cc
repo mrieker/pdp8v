@@ -32,6 +32,7 @@
 #include <unistd.h>
 
 #include "dyndis.h"
+#include "gpiolib.h"
 #include "iodevrk8je.h"
 #include "memory.h"
 #include "rdcyc.h"
@@ -180,14 +181,16 @@ SCRet *IODevRK8JE::scriptcmd (int argc, char const *const *argv)
             if ((*p != 0) || (diskno < 0) || (diskno > 3)) return new SCRetErr ("disknumber %s not in range 0..3", argv[1]);
             int fd = open (argv[2], loadrw ? O_RDWR | O_CREAT : O_RDONLY, 0666);
             if (fd < 0) return new SCRetErr (strerror (errno));
-            if (flock (fd, (loadro ? LOCK_SH : LOCK_EX) | LOCK_NB) < 0) {
-                SCRetErr *err = new SCRetErr (strerror (errno));
+            char *lockerr = lockfile (fd, loadro ? F_RDLCK : F_WRLCK);
+            if (lockerr != NULL) {
+                SCRetErr *err = new SCRetErr ("%s", lockerr);
                 close (fd);
+                free (lockerr);
                 return err;
             }
             long oldsize = lseek (fd, 0, SEEK_END);
             if (loadrw && (ftruncate (fd, NBLKS * 512) < 0)) {
-                SCRetErr *err = new SCRetErr (strerror (errno));
+                SCRetErr *err = new SCRetErr ("%m");
                 close (fd);
                 return err;
             }
