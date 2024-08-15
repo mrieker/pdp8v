@@ -62,6 +62,7 @@ private:
     int prfd;           // -1: pr shut down or being shut down; else: fd for printer i/o
     int tlfd;           // -1: tcp listener shut down or being shut down; else: fd for listening
     int servport;       // tcp port number
+    pthread_t intid;    // non-zero iff injection thread running (set by creator, cleared by joiner)
     pthread_t kbtid;    // non-zero iff keyboard thread running (set by creator, cleared by joiner)
     pthread_t prtid;    // non-zero iff printer thread running (set by creator, cleared by joiner)
     struct termios oldattr;
@@ -85,6 +86,8 @@ private:
     void startdeflisten ();
     void tcpthread ();
     void kbthreadlk ();
+    void inthread ();
+    void gotkbchar ();
     void prthread ();
     void haltonsfree ();
     void dokbsetup ();
@@ -93,6 +96,7 @@ private:
 
     static void *tcpthreadwrap (void *zhis);
     static void *kbthreadwrap (void *zhis);
+    static void *inthreadwrap (void *zhis);
     static void *prthreadwrap (void *zhis);
 };
 

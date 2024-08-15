@@ -136,6 +136,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->kbstdin  = false;
     this->prfd     = -1;
     this->tlfd     = -1;
+    this->intid    =  0;
     this->kbtid    =  0;
     this->prtid    =  0;
     this->haltons  = NULL;
@@ -157,10 +158,6 @@ IODevTTY::~IODevTTY ()
         this->logfile = NULL;
     }
     this->haltonsfree ();
-    if (this->injbuf != NULL) {
-        free (this->injbuf);
-        this->injbuf = NULL;
-    }
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -275,17 +272,25 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
     // inject <string> - set up injection string
     if (strcmp (argv[0], "inject") == 0) {
         if (argc == 1) {
-            if (this->injbuf == NULL) return NULL;
-            return new SCRetStr ("%s", this->injbuf + this->injidx);
+            SCRet *scret = NULL;
+            pthread_mutex_lock (&this->lock);
+            if (this->injbuf != NULL) scret = new SCRetStr ("%s", this->injbuf + this->injidx);
+            pthread_mutex_unlock (&this->lock);
+            return scret;
         }
 
         if (argc == 2) {
             pthread_mutex_lock (&this->lock);
-            if (this->injbuf != NULL) free (this->injbuf);
+            bool wasrunning = (this->injbuf != NULL);
+            if (wasrunning) free (this->injbuf);
             this->injidx = 0;
             this->injbuf = strdup (argv[1]);
             if (this->injbuf == NULL) ABORT ();
             pthread_mutex_unlock (&this->lock);
+            if (! wasrunning) {
+                int rc = createthread (&this->intid, inthreadwrap, this);
+                if (rc != 0) ABORT ();
+            }
             return NULL;
         }
     }
@@ -480,7 +485,13 @@ void IODevTTY::stopthreads ()
     }
 
     // nothing else is trying to stop them, see if threads are stopped
-    if ((this->kbtid != 0) || (this->prtid != 0)) {
+    if ((this->intid != 0) || (this->kbtid != 0) || (this->prtid != 0)) {
+
+        // if injection thread running, tell it to stop
+        if (this->injbuf != NULL) {
+            free (this->injbuf);
+            this->injbuf = NULL;
+        }
 
         // if we had a keyboard set up, restore its attributes
         if (this->kbsetup && (isatty (this->kbfd) > 0) && (tcsetattr (this->kbfd, TCSAFLUSH, &this->oldattr) < 0)) ABORT ();
@@ -498,7 +509,7 @@ void IODevTTY::stopthreads ()
         int kbfd = this->kbfd;
         if ((kbfd >= 0) && (dup2 (nullfd, kbfd) < 0)) ABORT ();
 
-        // same with printing device
+        // null out printing device
         // make that poll() complete immediately if it hasn't begun
         int prfd = this->prfd;
         if ((prfd >= 0) && (dup2 (nullfd, prfd) < 0)) ABORT ();
@@ -525,12 +536,14 @@ void IODevTTY::stopthreads ()
         if (this->prtid != 0) pthread_kill (this->prtid, SIGCHLD);
 
         // wait for threads to exit
+        if (this->intid != 0) pthread_join (this->intid, NULL);
         if (this->kbtid != 0) pthread_join (this->kbtid, NULL);
         if (this->prtid != 0) pthread_join (this->prtid, NULL);
 
         // the threads are no longer running
         pthread_mutex_lock (&this->lock);
         this->stopping = false;
+        this->intid = 0;
         this->kbtid = 0;
         this->prtid = 0;
 
@@ -538,11 +551,13 @@ void IODevTTY::stopthreads ()
         pthread_cond_broadcast (&this->prcond);
     }
 
-    ASSERT (this->kbfd == -1);
-    ASSERT (this->prfd == -1);
-    ASSERT (this->tlfd == -1);
-    ASSERT (this->kbtid == 0);
-    ASSERT (this->prtid == 0);
+    ASSERT (this->injbuf == NULL);
+    ASSERT (this->kbfd   == -1);
+    ASSERT (this->prfd   == -1);
+    ASSERT (this->tlfd   == -1);
+    ASSERT (this->intid  ==  0);
+    ASSERT (this->kbtid  ==  0);
+    ASSERT (this->prtid  ==  0);
 }
 
 void *IODevTTY::tcpthreadwrap (void *zhis)
@@ -689,20 +704,9 @@ void IODevTTY::kbthreadlk ()
                 }
             }
 
-            // maybe there is an injection character
-            pthread_mutex_lock (&this->lock);
-            char inj;
-            if ((this->injbuf != NULL) && ((inj = this->injbuf[this->injidx]) != 0)) {
-                this->kbbuff = inj;
-                this->injidx ++;
-                goto gotchar;
-            }
-            pthread_mutex_unlock (&this->lock);
-
             // it's been a while, so block here until keyboard char is available
             // this can get sigint'd by stopthreads()
-            // only wait 1 sec max in case we just got an injection
-            int rc = poll (&pfd, 1, 1000);
+            int rc = poll (&pfd, 1, -1);
             int en = errno;
 
             // return if connection fd has been closed
@@ -735,24 +739,60 @@ void IODevTTY::kbthreadlk ()
             if ((skipchars > 0) && (-- skipchars >= 0)) continue;
         }
 
-        // maybe convert lower case to upper case
-    gotchar:;
-        if (this->lcucin && ((this->kbbuff & 0177) >= 'a') && ((this->kbbuff & 0177) <= 'z')) this->kbbuff += 'A' - 'a';
-
-        // pdp-8 software likes top bit set (eg, focal, os/8)
-        if (! this->eight) this->kbbuff |= 0200;
-
-        if (this->debug > 0) {
-            uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
-            printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
-        }
+        // notify processor
+        this->gotkbchar ();
 
         nextreadus = getnowus () + this->usperchr * 2;
-
-        // we have a character now, maybe request interrupt
-        this->kbflag = true;
-        this->updintreqlk ();
     }
+}
+
+// thread what passes injection string to keyboard
+void *IODevTTY::inthreadwrap (void *zhis)
+{
+    ((IODevTTY *)zhis)->inthread ();
+    return NULL;
+}
+
+void IODevTTY::inthread ()
+{
+    while (true) {
+
+        // pass next char to processor, but stop if none
+        pthread_mutex_lock (&this->lock);
+        if (this->injbuf == NULL) break;
+        this->kbbuff = this->injbuf[this->injidx++];
+        if (this->kbbuff == 0) {
+            free (this->injbuf);
+            this->injbuf = NULL;
+            break;
+        }
+        this->gotkbchar ();
+        pthread_mutex_unlock (&this->lock);
+
+        // don't inject another until CPS delay
+        usleep (this->usperchr * 2);
+    }
+
+    pthread_mutex_unlock (&this->lock);
+}
+
+// got kb char in kbbuff, tell processor to get it
+void IODevTTY::gotkbchar ()
+{
+    // maybe convert lower case to upper case
+    if (this->lcucin && ((this->kbbuff & 0177) >= 'a') && ((this->kbbuff & 0177) <= 'z')) this->kbbuff += 'A' - 'a';
+
+    // pdp-8 software likes top bit set (eg, focal, os/8)
+    if (! this->eight) this->kbbuff |= 0200;
+
+    if (this->debug > 0) {
+        uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
+        printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
+    }
+
+    // we have a character now, maybe request interrupt
+    this->kbflag = true;
+    this->updintreqlk ();
 }
 
 void *IODevTTY::prthreadwrap (void *zhis)
