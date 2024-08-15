@@ -19,7 +19,7 @@ endif
 
 LIBS = lib.$(MACH).a
 
-.PRECIOUS: csrcmod_%.cc csrcmod_%.$(MACH).so
+.PRECIOUS: csrcmod_%.cc
 
 default: autoboardtest.$(MACH) gpioudpserver.$(MACH) pidpudpserver.$(MACH) \
 	raspictl.$(MACH) tc08status.$(MACH) tclboardtest.$(MACH) testrpiseqboard.$(MACH) zynqtest.$(MACH) \
@@ -30,6 +30,8 @@ lib.$(MACH).a: \
 		binloader.$(MACH).o \
 		controls.$(MACH).o \
 		csrclib.$(MACH).o \
+		csrcmod.$(MACH).o \
+		csrcmod_proc.$(MACH).o \
 		disassemble.$(MACH).o \
 		dyndis.$(MACH).o \
 		extarith.$(MACH).o \
@@ -149,11 +151,14 @@ testrpiseqboard.$(MACH): testrpiseqboard.$(MACH).o $(LIBS)
 zynqtest.$(MACH): zynqtest.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
-csrcmod_%.$(MACH).so: csrcmod_%.cc csrcmod.cc
-	$(GPP) -shared -o $@ $^
+csrcmod_proc.cc: ../modules/whole.mod ../netgen/classes/NetGen.class FixCSrcModProc.class
+	rm -f csrcmod_proc.xx
+	../netgen/netgen.sh ../modules/whole.mod -gen proc -csource csrcmod_proc.xx
+	java FixCSrcModProc < csrcmod_proc.xx > csrcmod_proc.cc
+	rm -f csrcmod_proc.xx
 
-csrcmod_%.cc: ../modules/whole.mod ../netgen/classes/NetGen.class
-	../netgen/netgen.sh ../modules/whole.mod -gen $* -csource $@
+FixCSrcModProc.class: FixCSrcModProc.java
+	javac FixCSrcModProc.java
 
 ../netgen/classes/NetGen.class:
 	cd ../netgen ; make

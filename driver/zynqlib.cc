@@ -31,19 +31,19 @@ ZynqLib::ZynqLib ()
     : ZynqLib ("aclalumapcrpiseq")
 { }
 
-ZynqLib::ZynqLib (char const *modnames)
+ZynqLib::ZynqLib (char const *modname)
 {
     libname = "zynqlib";
 
     gpiopage = NULL;
 
     boardena =
-        ((strstr (modnames, "acl") != NULL) ? 001 : 0) |
-        ((strstr (modnames, "alu") != NULL) ? 002 : 0) |
-        ((strstr (modnames, "ma")  != NULL) ? 004 : 0) |
-        ((strstr (modnames, "pc")  != NULL) ? 010 : 0) |
-        ((strstr (modnames, "rpi") != NULL) ? 020 : 0) |
-        ((strstr (modnames, "seq") != NULL) ? 040 : 0);
+        ((strstr (modname, "acl") != NULL) ? 001 : 0) |
+        ((strstr (modname, "alu") != NULL) ? 002 : 0) |
+        ((strstr (modname, "ma")  != NULL) ? 004 : 0) |
+        ((strstr (modname, "pc")  != NULL) ? 010 : 0) |
+        ((strstr (modname, "rpi") != NULL) ? 020 : 0) |
+        ((strstr (modname, "seq") != NULL) ? 040 : 0);
 }
 
 ZynqLib::~ZynqLib ()

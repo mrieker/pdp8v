@@ -36,8 +36,9 @@ struct CSrcMod {
     Var const *vararray;
     unsigned varcount;
     char const *modname;
-    unsigned nto;   // num triodes off (outputting 1)
-    unsigned ntt;   // num total triodes
+    unsigned boardena;  // enabled board bits (BE_*)
+    unsigned nto;       // num triodes off (outputting 1)
+    unsigned ntt;       // num total triodes
 
     CSrcMod (bool *ba, unsigned bc, Var const *va, unsigned vc, char const *mn);
     virtual ~CSrcMod ();
@@ -50,12 +51,17 @@ struct CSrcMod {
     virtual uint32_t readcconwork () = 0;
     virtual uint32_t readdconwork () = 0;
     virtual void writegpiowork (uint32_t valu) = 0;
-    virtual void writeaconwork (uint32_t valu) = 0;
-    virtual void writebconwork (uint32_t valu) = 0;
-    virtual void writecconwork (uint32_t valu) = 0;
-    virtual void writedconwork (uint32_t valu) = 0;
+    virtual void writeaconwork (uint32_t mask, uint32_t valu) = 0;
+    virtual void writebconwork (uint32_t mask, uint32_t valu) = 0;
+    virtual void writecconwork (uint32_t mask, uint32_t valu) = 0;
+    virtual void writedconwork (uint32_t mask, uint32_t valu) = 0;
 
     void DFFStep (bool d, bool t, bool _pc, bool _ps, bool old_q, bool oldq, bool *new_q, bool *newq, bool *lastt, char const *name);
     void DLatStep (bool d, bool g, bool _pc, bool _ps, bool *q, bool *_q, char const *name);
 };
+
+extern "C" {
+    CSrcMod *CSrcMod_proc_ctor ();
+}
+
 #endif

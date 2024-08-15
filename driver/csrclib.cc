@@ -22,14 +22,6 @@
 // ...to provide for simulation
 // fastest simulation that verifies module files
 
-// module-specific code is loaded from .so files generated via make:
-//  make csrcmod_<modname>.$(MACH).so
-//   <modname> = proc : whole processor (ACL + ALU + MA + PC + RPI + SEQ boards) accessed via GPIO connector
-//           proc_seq : just SEQ board + RPI board to hook up to GPIO connector
-//            seqcirc : just SEQ board, no GPIO simulation, simulates A,B,C,D paddles for testing
-
-#include <dirent.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +30,6 @@
 
 #include "csrcmod.h"
 #include "gpiolib.h"
-#include "makepipelibmod.h"
 
 // construct the library object
 CSrcLib::CSrcLib (char const *modname)
@@ -48,67 +39,17 @@ CSrcLib::CSrcLib (char const *modname)
     latestwdata = 0;
     latestwvalu = 0;
 
-    // get executable directory
-    char linkbuf[4000];
-    char *mach = getexedir (linkbuf, sizeof linkbuf);
-
-    // make sure <modname> is included in ../modules/whole.mod so netgen can generate the csource file
-    // this also switches "rpi" to "rpi_testpads"
-    modname = makepipelibmod (modname);
-
-    // get .so loaded that contains generated simulation code derived from the module files
-    // name is <this-executable-directory>/csrcmod_<modname>.<this-executable-machname>.so
-    std::string soname;
-    soname.append (linkbuf);
-    soname.append ("csrcmod_");
-    soname.append (modname);
-    if (mach != NULL) {
-        soname.append (mach);
-    }
-    soname.append (".so");
-
-    // if .so file doesn't exist, try to make it
-    char const *sonamestr = soname.c_str ();
-    if (access (sonamestr, R_OK) < 0) {
-        if (errno != ENOENT) {
-            fprintf (stderr, "CSrcLib::CSrcLib: error accessing %s: %m\n", sonamestr);
-            ABORT ();
-        }
-        std::string makecmd;
-        makecmd.append ("cd ");
-        makecmd.append (linkbuf);
-        makecmd.append (" ; make csrcmod_");
-        makecmd.append (modname);
-        if (mach != NULL) {
-            makecmd.append (mach);
-        }
-        makecmd.append (".so");
-        fprintf (stderr, "CSrcLib::CSrcLib: %s\n", makecmd.c_str ());
-        int rc = system (makecmd.c_str ());
-        if (rc != 0) fprintf (stderr, "CSrcLib::CSrcLib: - make status %d, errno %d\n", rc, errno);
-    }
-
-    // now try to open it
-    modhand = dlopen (sonamestr, RTLD_NOW);
-    if (modhand == NULL) {
-        fprintf (stderr, "CSrcLib::CSrcLib: error opening %s\n", sonamestr);
-        ABORT ();
-    }
-
-    // look for CSrcMod_<modname>_ctor() function that instantiates the module
-    std::string ctorname;
-    ctorname.append ("CSrcMod_");
-    ctorname.append (modname);
-    ctorname.append ("_ctor");
-
-    CSrcMod *(*ctorfunc) () = (CSrcMod *(*) ()) dlsym (modhand, ctorname.c_str ());
-    if (ctorfunc == NULL) {
-        fprintf (stderr, "CSrcLib::CSrcLib: file %s does not define %s\n", soname.c_str (), ctorname.c_str ());
-        ABORT ();
-    }
+    uint32_t boardena = ((modname == NULL) || (strcmp (modname, "proc") == 0)) ? BE_all :
+        (((strstr (modname, "acl") != NULL) ? BE_acl : 0) |
+         ((strstr (modname, "alu") != NULL) ? BE_alu : 0) |
+         ((strstr (modname, "ma")  != NULL) ? BE_ma  : 0) |
+         ((strstr (modname, "pc")  != NULL) ? BE_pc  : 0) |
+         ((strstr (modname, "rpi") != NULL) ? BE_rpi : 0) |
+         ((strstr (modname, "seq") != NULL) ? BE_seq : 0));
 
     // create the module instance
-    module = (*ctorfunc) ();
+    module = CSrcMod_proc_ctor ();
+    module->boardena = boardena;
 }
 
 CSrcLib::~CSrcLib ()
@@ -117,15 +58,19 @@ CSrcLib::~CSrcLib ()
         delete module;
         module = NULL;
     }
-    if (modhand != NULL) {
-        dlclose (modhand);
-        modhand = NULL;
-    }
 }
 
 void CSrcLib::open ()
 {
-    fprintf (stderr, "CSrcLib::open: module=%s\n", module->modname);
+    char mods[24] = "";
+    if (module->boardena & BE_acl) strcat (mods, " acl");
+    if (module->boardena & BE_alu) strcat (mods, " alu");
+    if (module->boardena & BE_ma)  strcat (mods, " ma");
+    if (module->boardena & BE_pc)  strcat (mods, " pc");
+    if (module->boardena & BE_rpi) strcat (mods, " rpi");
+    if (module->boardena & BE_seq) strcat (mods, " seq");
+    fprintf (stderr, "CSrcLib::open: modules%s\n", mods);
+
     writecount = 0;
     writeloops = 0;
     maxloops = 0;
@@ -211,10 +156,10 @@ void CSrcLib::readpads (uint32_t *pinss)
 // write A,B,C,D connectors
 void CSrcLib::writepads (uint32_t const *masks, uint32_t const *pinss)
 {
-    module->writeaconwork (pinss[0]);
-    module->writebconwork (pinss[1]);
-    module->writecconwork (pinss[2]);
-    module->writedconwork (pinss[3]);
+    module->writeaconwork (masks[0], pinss[0]);
+    module->writebconwork (masks[1], pinss[1]);
+    module->writecconwork (masks[2], pinss[2]);
+    module->writedconwork (masks[3], pinss[3]);
 }
 
 int CSrcLib::examine (char const *varname, uint32_t *value)

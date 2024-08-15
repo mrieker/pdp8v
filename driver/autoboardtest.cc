@@ -632,28 +632,28 @@ static void mainloop_mult ()
     printf ("  reset hw AC=%04o  L=%o  _L=%o  IR=%04o  MA=%04o  _MA=%04o\n", abcd.acq, abcd.lnq, abcd._lnq, abcd.irq, abcd.maq, abcd._maq);
     uint16_t oldir = abcd.irq;
 
-    *simulatr->getvarbool ("_Q/lnreg/aclcirc", 0) =  abcd.lnq;
-    *simulatr->getvarbool  ("Q/lnreg/aclcirc", 0) = abcd._lnq;
+    *simulatr->getvarbool ("_Q/lnreg/acl", 0) =  abcd.lnq;
+    *simulatr->getvarbool  ("Q/lnreg/acl", 0) = abcd._lnq;
 
     for (int i = 0; i < 4; i ++) {
-        *simulatr->getvarbool  ("Q/achi/aclcirc",  i) =   (abcd.acq >> (8 + i)) & 1;
-        *simulatr->getvarbool  ("Q/acmid/aclcirc", i) =   (abcd.acq >> (4 + i)) & 1;
-        *simulatr->getvarbool  ("Q/aclo/aclcirc",  i) =   (abcd.acq >> (0 + i)) & 1;
-        *simulatr->getvarbool ("_Q/achi/aclcirc",  i) = ~ (abcd.acq >> (8 + i)) & 1;
-        *simulatr->getvarbool ("_Q/acmid/aclcirc", i) = ~ (abcd.acq >> (4 + i)) & 1;
-        *simulatr->getvarbool ("_Q/aclo/aclcirc",  i) = ~ (abcd.acq >> (0 + i)) & 1;
+        *simulatr->getvarbool  ("Q/achi/acl",  i) =   (abcd.acq >> (8 + i)) & 1;
+        *simulatr->getvarbool  ("Q/acmid/acl", i) =   (abcd.acq >> (4 + i)) & 1;
+        *simulatr->getvarbool  ("Q/aclo/acl",  i) =   (abcd.acq >> (0 + i)) & 1;
+        *simulatr->getvarbool ("_Q/achi/acl",  i) = ~ (abcd.acq >> (8 + i)) & 1;
+        *simulatr->getvarbool ("_Q/acmid/acl", i) = ~ (abcd.acq >> (4 + i)) & 1;
+        *simulatr->getvarbool ("_Q/aclo/acl",  i) = ~ (abcd.acq >> (0 + i)) & 1;
 
-        *simulatr->getvarbool ("_Q/mahi/macirc",   i) =   (abcd.maq >> (8 + i)) & 1;
-        *simulatr->getvarbool ("_Q/mamid/macirc",  i) =   (abcd.maq >> (4 + i)) & 1;
-        *simulatr->getvarbool ("_Q/malo/macirc",   i) =   (abcd.maq >> (0 + i)) & 1;
-        *simulatr->getvarbool  ("Q/mahi/macirc",   i) =  (abcd._maq >> (8 + i)) & 1;
-        *simulatr->getvarbool  ("Q/mamid/macirc",  i) =  (abcd._maq >> (4 + i)) & 1;
-        *simulatr->getvarbool  ("Q/malo/macirc",   i) =  (abcd._maq >> (0 + i)) & 1;
+        *simulatr->getvarbool ("_Q/mahi/ma",   i) =   (abcd.maq >> (8 + i)) & 1;
+        *simulatr->getvarbool ("_Q/mamid/ma",  i) =   (abcd.maq >> (4 + i)) & 1;
+        *simulatr->getvarbool ("_Q/malo/ma",   i) =   (abcd.maq >> (0 + i)) & 1;
+        *simulatr->getvarbool  ("Q/mahi/ma",   i) =  (abcd._maq >> (8 + i)) & 1;
+        *simulatr->getvarbool  ("Q/mamid/ma",  i) =  (abcd._maq >> (4 + i)) & 1;
+        *simulatr->getvarbool  ("Q/malo/ma",   i) =  (abcd._maq >> (0 + i)) & 1;
     }
 
     for (int i = 9; i < 12; i ++) {
         char _varname[20];
-        sprintf (_varname, "_Q/ireg%02d/seqcirc", i);
+        sprintf (_varname, "_Q/ireg%02d/seq", i);
         *simulatr->getvarbool (_varname, 0) =   ~ (abcd.irq >> i) & 1;
         *simulatr->getvarbool (_varname + 1, 0) = (abcd.irq >> i) & 1;
     }
@@ -663,8 +663,8 @@ static void mainloop_mult ()
     bool intrequest = false;
     bool sendrandata = false;
 
-    bool const *sim_fetch2d = simulatr->getvarbool ("_fetch2d/seqcirc", 0);
-    bool const *sim_fetch2q = simulatr->getvarbool ("_fetch2q/seqcirc", 0);
+    bool const *sim_fetch2d = simulatr->getvarbool ("_fetch2d/seq", 0);
+    bool const *sim_fetch2q = simulatr->getvarbool ("_fetch2q/seq", 0);
     std::string str;
 
     while (true) {
@@ -988,8 +988,8 @@ static void mainloop_acl ()
 
                 if (!i) {
                     uint32_t _lnq, rotq;
-                    if (simulatr->examine ("_lnq/aclcirc", &_lnq) !=  1) ABORT ();
-                    if (simulatr->examine ("rotq/aclcirc", &rotq) != 12) ABORT ();
+                    if (simulatr->examine ("_lnq/acl", &_lnq) !=  1) ABORT ();
+                    if (simulatr->examine ("rotq/acl", &rotq) != 12) ABORT ();
                     printf ("%10u %s: _ac_aluq=%o _ln_wrt=%o _ac_sc=%o _aluq=%04o maq[6:1]=%02o _maq[3:1]=%o _newlink=%o _lnq=%o rotq=%04o => acq=%04o acqzero=%o _lnq=%o lnq=%o grpb_skip=%o\n",
                             cycleno, (err ? "sim" : "   "),
                             abcd._ac_aluq, abcd._ln_wrt, abcd._ac_sc, abcd._aluq, (abcd.maq >> 1) & 63, (abcd._maq >> 1) & 7, abcd._newlink, _lnq, rotq,
@@ -1134,8 +1134,8 @@ static void mainloop_alu ()
             printf ("cycle %10u:\n", savecycleno);
 
             uint32_t _aluashouldbe, _alubshouldbe;
-            if (simulatr->examine ("_alua/alucirc", &_aluashouldbe) != 12) ABORT ();
-            if (simulatr->examine ("_alub/alucirc", &_alubshouldbe) != 12) ABORT ();
+            if (simulatr->examine ("_alua/alu", &_aluashouldbe) != 12) ABORT ();
+            if (simulatr->examine ("_alub/alu", &_alubshouldbe) != 12) ABORT ();
 
             printf ("  _alua_m1=%o _alua_ma=%o alua_mq0600=%o alua_mq1107=%o alua_pc0600=%o alua_pc1107=%o\n",
                     abcd._alua_m1, abcd._alua_ma, abcd.alua_mq0600, abcd.alua_mq1107, abcd.alua_pc0600, abcd.alua_pc1107);

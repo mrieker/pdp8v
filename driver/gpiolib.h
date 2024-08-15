@@ -116,6 +116,14 @@ struct GpioLib {
     static std::string decogpio (uint32_t bits);
 };
 
+#define BE_all 077
+#define BE_acl 001
+#define BE_alu 002
+#define BE_ma  004
+#define BE_pc  010
+#define BE_rpi 020
+#define BE_seq 040
+
 struct CSrcMod;
 
 struct CSrcLib : GpioLib {
@@ -249,7 +257,7 @@ private:
 
 struct ZynqLib : TimedLib {
     ZynqLib ();
-    ZynqLib (char const *modnames);
+    ZynqLib (char const *modname);
     virtual ~ZynqLib ();
     virtual void open ();
     virtual void close ();
