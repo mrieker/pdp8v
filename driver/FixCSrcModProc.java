@@ -32,9 +32,9 @@ public class FixCSrcModProc
         String[][] paddles = new String[4][32];
         int readingpaddle = -1;
         int writingpaddle = -1;
+        String lastmodname = null;
 
         BufferedReader stdin = new BufferedReader (new InputStreamReader (System.in));
-
         for (String line; (line = stdin.readLine ()) != null;) {
 
             // check various statements that need an 'if (boardena & BE_<modname>)' prefix
@@ -101,8 +101,15 @@ public class FixCSrcModProc
                 }
             }
 
-            // output statement possibly with 'if (boardena & BE_<modname>)' prefix
-            if (modname != null) System.out.print ("    if (boardena & BE_" + modname + ")");
+            // output statement possibly subject to 'if (boardena & BE_<modname>)'
+            if ((lastmodname != null) && ! lastmodname.equals (modname)) {
+                System.out.println ("  }");
+                lastmodname = null;
+            }
+            if ((modname != null) && ! modname.equals (lastmodname)) {
+                System.out.println ("  if (boardena & BE_" + modname + ") {");
+                lastmodname = modname;
+            }
             System.out.println (line);
         }
     }
