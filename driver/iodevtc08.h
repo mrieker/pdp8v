@@ -52,10 +52,12 @@ private:
     bool delayblk ();
     bool delayloop (int usec);
     void updateirq ();
+    void unloadrive (int driveno);
     void dbgpr (int level, char const *fmt, ...);
 };
 
 struct IODevTC08Drive {
+    uint64_t unldat;
     int dtfd;
     uint16_t tapepos;
     bool rdonly;

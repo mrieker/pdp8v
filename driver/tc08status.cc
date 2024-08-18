@@ -54,6 +54,8 @@
 
 static char const *const funcmnes[8] = { "MOVE", "SRCH", "RDAT", "RALL", "WDAT", "WALL", "WTIM", "ERR7" };
 
+static uint64_t getnowns ();
+
 int main ()
 {
     setlinebuf (stdout);
@@ -126,7 +128,8 @@ int main ()
                 tmp.status_b);
 
             // display line for each drive with a tape file loaded
-            char rw = "  rRwWW "[func];
+            uint64_t nowns = getnowns ();
+            char rwfc = "  rRwWW "[func];
             for (int i = 0; i < MAXDRIVES; i ++) {
                 IODevTC08Drive *drive = &tmp.drives[i];
                 if (drive->dtfd >= 0) {
@@ -148,13 +151,18 @@ int main ()
 
                     bool gofwd = go && ! rev && (i == driveno);
                     bool gorev = go &&   rev && (i == driveno);
-                    printf (ESC_EREOL "\n  %o: %c%s" ESC_EREOL "\n", i, (drive->rdonly ? '-' : '+'), drive->fname);
+                    char rorw  = drive->rdonly ? '-' : '+';
+                    printf (ESC_EREOL "\n  %o: %c%s", i, rorw, drive->fname);
+                    if (drive->unldat < 0xFFFFFFFFFFFFFFFFULL) {
+                        printf ("  [%3.1f]", ((int64_t)(drive->unldat - nowns)) / 1000000000.0);
+                    }
+                    printf (ESC_EREOL "\n");
                     printf (" [%s" ESC_EREOL "\n", bargraph);
                     printf ("%*s%c%c^%04o%c%c%c%6u wps" ESC_EREOL "\n",
                         drive->tapepos * 16 / BLOCKSPERTAPE, "",
-                        (gorev ? rw : ' '), (gorev ? '<' : ' '),
+                        (gorev ? rwfc : ' '), (gorev ? '<' : ' '),
                         blocknumber, 'a' + drive->tapepos % 4,
-                        (gofwd ? '>' : ' '), (gofwd ? rw : ' '),
+                        (gofwd ? '>' : ' '), (gofwd ? rwfc : ' '),
                         blockspersec * WORDSPERBLOCK);
                 } else {
                     filesizes[i] = 0xFFFFFFFFU;
@@ -178,4 +186,12 @@ int main ()
     }
 
     return 0;
+}
+
+// get time that pthread_cond_timedwait() is based on
+static uint64_t getnowns ()
+{
+    struct timespec nowts;
+    if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+    return ((uint64_t) nowts.tv_sec) * 1000000000 + nowts.tv_nsec;
 }

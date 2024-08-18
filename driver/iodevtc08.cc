@@ -64,6 +64,7 @@
 #define BLOCKSPERTAPE 1474  // 02702
 #define WORDSPERBLOCK 129
 #define BYTESPERBLOCK (WORDSPERBLOCK*2)
+#define UNLOADNS 5000000000ULL
 
 #define CONTIN (shm->status_a & 00100)
 #define NORMAL (! CONTIN)
@@ -103,6 +104,7 @@ static IODevOps const iodevops[] = {
 
 static char const *const cmdmnes[8] = { "MOVE", "SRCH", "RDAT", "RALL", "WDAT", "WALL", "WTIM", "ERR7" };
 
+static uint64_t getnowns ();
 static bool dmareadoverwritesinstructions (uint16_t field, uint16_t idca, uint16_t idwc);
 static SCRetErr *writeformat (int fd);
 
@@ -243,6 +245,7 @@ SCRet *IODevTC08::scriptcmd (int argc, char const *const *argv)
         lclshm->dtpid = getpid ();
         for (int i = 0; i < 8; i ++) {
             lclshm->drives[i].dtfd = -1;
+            lclshm->drives[i].unldat = 0xFFFFFFFFFFFFFFFFULL;
         }
 
         // lock and unlock for a barrier
@@ -332,6 +335,7 @@ SCRet *IODevTC08::scriptcmd (int argc, char const *const *argv)
             drive->dtfd    = fd;
             drive->rdonly  = loadro;
             drive->tapepos = 0;
+            drive->unldat  = 0xFFFFFFFFFFFFFFFFULL;
             strncpy (drive->fname, argv[2], sizeof drive->fname);
             drive->fname[sizeof drive->fname-1] = 0;
             pthread_mutex_unlock (&shm->lock);
@@ -347,10 +351,8 @@ SCRet *IODevTC08::scriptcmd (int argc, char const *const *argv)
             char *p;
             int driveno = strtol (argv[1], &p, 0);
             if ((*p != 0) || (driveno < 0) || (driveno > 7)) return new SCRetErr ("drivenumber %s not in range 0..7", argv[1]);
-            fprintf (stderr, "IODevTC08::scriptcmd: drive %d unloaded\n", driveno);
             pthread_mutex_lock (&shm->lock);
-            close (shm->drives[driveno].dtfd);
-            shm->drives[driveno].dtfd = -1;
+            this->unloadrive (driveno);
             pthread_mutex_unlock (&shm->lock);
             return NULL;
         }
@@ -475,13 +477,13 @@ uint16_t IODevTC08::ioinstronline (uint16_t opcode, uint16_t input)
             }
             updateirq ();
 
-            {
-                int drno = (shm->status_a >> 9) & 7;
-                DBGPR (1, "IODevTC08::ioinstr: st_A=%04o  st_B=%04o  startio  %o %s %s %s %s  tpos=%04o%c\n",
+            int driveno = (shm->status_a >> 9) & 7;
+            IODevTC08Drive *drive = &shm->drives[driveno];
+            drive->unldat = 0xFFFFFFFFFFFFFFFFULL;
+            DBGPR (1, "IODevTC08::ioinstr: st_A=%04o  st_B=%04o  startio  %o %s %s %s %s  tpos=%04o%c\n",
                     shm->status_a, shm->status_b, (shm->status_a >> 9) & 7, CONTIN ? "CON" : "NOR",
                     (shm->status_a & REVBIT) ? "REV" : "FWD", (shm->status_a & GOBIT) ? "GO" : "ST",
-                    cmdmnes[(shm->status_a&070)>>3], shm->drives[drno].tapepos / 4, (shm->drives[drno].tapepos & 3) + 'a');
-            }
+                    cmdmnes[(shm->status_a&070)>>3], drive->tapepos / 4, (drive->tapepos & 3) + 'a');
 
             if ((shm->status_a ^ oldstata) & (GOBIT | REVBIT)) {
                 shm->startdelay = true;                     // additional delay if direction changed or just started or stopped
@@ -558,8 +560,27 @@ void IODevTC08::thread ()
 
         // waiting for another I/O request
         if (! shm->iopend) {
-            int rc = pthread_cond_wait (&shm->cond, &shm->lock);
-            if (rc != 0) ABORT ();
+
+            // unload drives that were left running for UNLOADNS
+            uint64_t nowns = getnowns ();
+            uint64_t earliestunload = 0xFFFFFFFFFFFFFFFFULL;
+            for (int i = 0; i < 8; i ++) {
+                IODevTC08Drive *drive = &shm->drives[i];
+                if (nowns > drive->unldat) this->unloadrive (i);
+                if (earliestunload > drive->unldat) earliestunload = drive->unldat;
+            }
+
+            // wait for another I/O or a drive to unload
+            if (earliestunload < 0xFFFFFFFFFFFFFFFFULL) {
+                struct timespec unldts;
+                unldts.tv_sec  = earliestunload / 1000000000;
+                unldts.tv_nsec = earliestunload % 1000000000;
+                int rc = pthread_cond_timedwait (&shm->cond, &shm->lock, &unldts);
+                if ((rc != 0) && (rc != ETIMEDOUT)) ABORT ();
+            } else {
+                int rc = pthread_cond_wait (&shm->cond, &shm->lock);
+                if (rc != 0) ABORT ();
+            }
         } else {
             shm->iopend = false;
 
@@ -567,17 +588,19 @@ void IODevTC08::thread ()
             uint16_t field = (shm->status_b & 070) << 9;
             uint16_t *memfield = &memarray[field];
 
-            // if tape stopped, we can't do anything
-            if (! (shm->status_a & GOBIT)) continue;
-
-            // select error if no tape loaded
             int driveno = (shm->status_a >> 9) & 007;
             IODevTC08Drive *drive = &shm->drives[driveno];
+            drive->unldat = 0xFFFFFFFFFFFFFFFFULL;
+
+            // select error if no tape loaded
             if (drive->dtfd < 0) {
                 shm->status_b |= SELERR;
                 DBGPR (2, "IODevTC08::thread: no file for drive %d\n", driveno);
                 goto finerror;
             }
+
+            // if tape stopped, we can't do anything
+            if (! (shm->status_a & GOBIT)) continue;
 
             // blocks are conceptually stored:
             //  fwdmark          revmark
@@ -723,9 +746,9 @@ void IODevTC08::thread ()
 
                         // read 129 data words from file
                         // leave room for header words
-                        uint16_t buff[5+WORDSPERBLOCK+1];
+                        uint16_t buff[5+WORDSPERBLOCK+5];
                         uint16_t blknum = drive->tapepos / 4;
-                        uint16_t *databuff = REVERS ? &buff[1] : &buff[5];
+                        uint16_t *databuff = &buff[5];
                         int rc = pread (drive->dtfd, databuff, BYTESPERBLOCK, blknum * BYTESPERBLOCK);
                         if (rc < 0) {
                             fprintf (stderr, "IODevTC08::thread: error reading tape %d file: %m\n", driveno);
@@ -737,24 +760,33 @@ void IODevTC08::thread ()
                         }
 
                         // make up header words tacked on beginning and end of data words
+                        ASSERT (blknum <= 07777);
                         if (REVERS) {
-                            buff[WORDSPERBLOCK+5] = 0;
-                            buff[WORDSPERBLOCK+4] = 0;
-                            buff[WORDSPERBLOCK+3] = 0;
-                            buff[WORDSPERBLOCK+2] = 0;
-                            buff[WORDSPERBLOCK+1] = 07700;
+                            buff[WORDSPERBLOCK+9] = 0;
+                            buff[WORDSPERBLOCK+8] = ocarray[blknum];
+                            buff[WORDSPERBLOCK+7] = 0;
+                            buff[WORDSPERBLOCK+6] = 0;
+                            buff[WORDSPERBLOCK+5] = 07700;
                             uint16_t parity = 0;
                             for (int i = 0; i < WORDSPERBLOCK; i ++) parity ^= databuff[i] ^ (databuff[i] >> 6);
-                            buff[0] = parity & 00077;
+                            buff[4] = parity & 00077;
+                            buff[3] = 0;
+                            buff[2] = 0;
+                            buff[1] = blknum;
+                            buff[0] = 0;
                         } else {
                             buff[0] = 0;
-                            buff[1] = 0;
+                            buff[1] = blknum;
                             buff[2] = 0;
                             buff[3] = 0;
                             buff[4] = 00077;
                             uint16_t parity = 0;
                             for (int i = 0; i < WORDSPERBLOCK; i ++) parity ^= databuff[i] ^ (databuff[i] << 6);
                             buff[WORDSPERBLOCK+5] = parity & 07700;
+                            buff[WORDSPERBLOCK+6] = 0;
+                            buff[WORDSPERBLOCK+7] = 0;
+                            buff[WORDSPERBLOCK+8] = ocarray[blknum];
+                            buff[WORDSPERBLOCK+9] = 0;
                         }
 
                         if (shm->debug >= 3) this->dumpbuf (drive, "rall", buff, 5 + WORDSPERBLOCK + 1);
@@ -769,14 +801,14 @@ void IODevTC08::thread ()
                         dyndisdma (field + idca, MIN (5 + WORDSPERBLOCK + 1, 010000 - idwc), true, shm->dmapc);
                         DBGPR (2, "IODevTC08::thread: rall idwc=%04o (%4u) idca=%o.%04o block=%04o\n", idwc, (010000 - idwc), field >> 12, idca, blknum);
                         if (REVERS) {
-                            for (int i = 5 + WORDSPERBLOCK + 1; -- i >= 0;) {
+                            for (int i = 5 + WORDSPERBLOCK + 5; -- i >= 0;) {
                                 idca = (idca + 1) & 07777;
                                 memfield[idca] = ocarray[buff[i]&07777];
                                 idwc = (idwc + 1) & 07777;
                                 if (idwc == 0) break;
                             }
                         } else {
-                            for (int i = 0; i < 5 + WORDSPERBLOCK + 1; i ++) {
+                            for (int i = 0; i < 5 + WORDSPERBLOCK + 5; i ++) {
                                 idwc = (idwc + 1) & 07777;
                                 idca = (idca + 1) & 07777;
                                 memfield[idca] = buff[i] & 07777;
@@ -874,6 +906,13 @@ void IODevTC08::thread ()
 
             // maybe request an interrupt
             this->updateirq ();
+
+            // if drive is running and we don't get another command in UNLOADNS, unload it
+            if (shm->status_a & GOBIT) {
+                drive->unldat = getnowns () + UNLOADNS;
+            } else {
+                drive->unldat = 0xFFFFFFFFFFFFFFFFULL;
+            }
         }
     }
 
@@ -1043,6 +1082,16 @@ void IODevTC08::updateirq ()
     }
 }
 
+// unload the drive
+void IODevTC08::unloadrive (int driveno)
+{
+    IODevTC08Drive *drive = &shm->drives[driveno];
+    close (drive->dtfd);
+    drive->dtfd = -1;
+    drive->unldat = 0xFFFFFFFFFFFFFFFFULL;
+    fprintf (stderr, "IODevTC08::unloadrive: drive %d unloaded\n", driveno);
+}
+
 // print message if debug is at or above the given level
 void IODevTC08::dbgpr (int level, char const *fmt, ...)
 {
@@ -1052,6 +1101,14 @@ void IODevTC08::dbgpr (int level, char const *fmt, ...)
         vfprintf (stderr, fmt, ap);
         va_end (ap);
     }
+}
+
+// get time that pthread_cond_timedwait() is based on
+static uint64_t getnowns ()
+{
+    struct timespec nowts;
+    if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+    return ((uint64_t) nowts.tv_sec) * 1000000000 + nowts.tv_nsec;
 }
 
 // contents of a freshly zeroed dectape in OS/8
