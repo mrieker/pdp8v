@@ -197,8 +197,6 @@ struct TimedLib : GpioLib {
     virtual void open ();
     virtual void halfcycle (bool aluadd);
 
-protected:
-    uint32_t gpiovalu;
 private:
     struct timespec hafcycts;
     uint32_t hafcychi, hafcyclo;
@@ -235,6 +233,7 @@ private:
     struct sockaddr_in gpioudpsa;
     uint32_t gpiomask;
     uint32_t gpioreadflip;
+    uint32_t gpiovalu;
     uint32_t volatile *gpiopage;
     uint32_t lastretries;
     uint64_t writecount;
@@ -271,11 +270,7 @@ struct ZynqLib : TimedLib {
 private:
     GpioFile gpiofile;
     uint32_t boardena;
-    uint32_t gpioreadflip;
     uint32_t volatile *gpiopage;
-    uint64_t writecount;
-
-    void opengpio ();
 };
 
 char *lockfile (int fd, int how);
