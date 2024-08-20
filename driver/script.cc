@@ -53,7 +53,7 @@ void runscript (char const *argv0, char const *filename)
     if (rc != 0) ABORT ();
     pthread_detach (tclpid);
     pthread_setname_np (tclpid, "script");
-    haltflags = HF_HALTIT;
+    stopflags = SF_STOPIT;
 }
 
 static Tcl_ObjCmdProc cmd_alliodevs;
@@ -63,8 +63,8 @@ static Tcl_ObjCmdProc cmd_dyndis;
 static Tcl_ObjCmdProc cmd_end;
 static Tcl_ObjCmdProc cmd_gpio;
 static Tcl_ObjCmdProc cmd_halfcycle;
-static Tcl_ObjCmdProc cmd_halt;
-static Tcl_ObjCmdProc cmd_haltreason;
+static Tcl_ObjCmdProc cmd_stop;
+static Tcl_ObjCmdProc cmd_stopreason;
 static Tcl_ObjCmdProc cmd_help;
 static Tcl_ObjCmdProc cmd_iodev;
 static Tcl_ObjCmdProc cmd_loadbin;
@@ -94,8 +94,8 @@ static FunDef fundefs[] = {
     { cmd_end,        "end",        "exit script thread" },
     { cmd_gpio,       "gpio",       "access gpio state" },
     { cmd_halfcycle,  "halfcycle",  "delay a half cycle" },
-    { cmd_halt,       "halt",       "halt processor" },
-    { cmd_haltreason, "haltreason", "reason halted" },
+    { cmd_stop,       "stop",       "stop processor" },
+    { cmd_stopreason, "stopreason", "reason stopped" },
     { cmd_help,       "help",       "print this help" },
     { cmd_iodev,      "iodev",      "access i/o device state" },
     { cmd_loadbin,    "loadbin",    "load bin format tape file" },
@@ -108,7 +108,7 @@ static FunDef fundefs[] = {
     { cmd_stepcyc,    "stepcyc",    "step a single cycle" },
     { cmd_stepins,    "stepins",    "step a single instruction" },
     { cmd_swreg,      "swreg",      "access switch register" },
-    { cmd_wait,       "wait",       "wait for processor to halt" },
+    { cmd_wait,       "wait",       "wait for processor to stop" },
     { cmd_writemem,   "writemem",   "write memory location" },
     { NULL, NULL, NULL }
 };
@@ -641,8 +641,8 @@ static int cmd_gpio (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
 
     // get [a/b/c/d/g]
     if (strcmp (argv[0], "get") == 0) {
-        if (! ctl_ishalted ()) {
-            scret = new SCRetErr ("processor not halted");
+        if (! ctl_isstopped ()) {
+            scret = new SCRetErr ("processor not stopped");
             goto ret;
         }
 
@@ -729,8 +729,8 @@ static int cmd_gpio (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Ob
     }
 
     if (strcmp (argv[0], "set") == 0) {
-        if (! ctl_ishalted ()) {
-            scret = new SCRetErr ("processor not halted");
+        if (! ctl_isstopped ()) {
+            scret = new SCRetErr ("processor not stopped");
             goto ret;
         }
         if (argc == 3) {
@@ -783,21 +783,21 @@ static int cmd_halfcycle (ClientData clientdata, Tcl_Interp *interp, int objc, T
     return TCL_OK;
 }
 
-// halt processor if not already
+// stop processor if not already
 // - tells raspictl main to suspend clocking the processor
-// - halts at the end of a cycle
-// returns: 0=was running, now halted; 1=was already halted
-static int cmd_halt (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+// - stops at the end of a cycle
+// returns: 0=was running, now stopped; 1=was already stopped
+static int cmd_stop (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    bool washalted = ctl_halt ();
-    Tcl_SetObjResult (interp, Tcl_NewBooleanObj ((int) washalted));
+    bool wasstopped = ctl_stop ();
+    Tcl_SetObjResult (interp, Tcl_NewBooleanObj ((int) wasstopped));
     return TCL_OK;
 }
 
-// returns reason for halt
-static int cmd_haltreason (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+// returns reason for stop
+static int cmd_stopreason (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
-    Tcl_SetResult (interp, (char *) haltreason, TCL_STATIC);
+    Tcl_SetResult (interp, (char *) stopreason, TCL_STATIC);
     return TCL_OK;
 }
 
@@ -948,7 +948,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         int retint;
         if (objc == 3) {
             if (strcmp (opname, "ctrlc")      == 0) { retint = ctrlcflag;         goto ret; }
-            if (strcmp (opname, "haltstop")   == 0) { retint = haltstop;          goto ret; }
+            if (strcmp (opname, "stopstop")   == 0) { retint = haltstop;          goto ret; }
             if (strcmp (opname, "jmpdotstop") == 0) { retint = jmpdotstop;        goto ret; }
             if (strcmp (opname, "mintimes")   == 0) { retint = getmintimes ();    goto ret; }
             if (strcmp (opname, "os8zap")     == 0) { retint = os8zap;            goto ret; }
@@ -1075,7 +1075,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         bool *boolptr;
         if (objc == 4) {
             if (strcmp (opname, "ctrlc")      == 0) { boolptr = &ctrlcflag;  goto setbool; }
-            if (strcmp (opname, "haltstop")   == 0) { boolptr = &haltstop;   goto setbool; }
+            if (strcmp (opname, "stopstop")   == 0) { boolptr = &haltstop;   goto setbool; }
             if (strcmp (opname, "jmpdotstop") == 0) { boolptr = &jmpdotstop; goto setbool; }
             if (strcmp (opname, "os8zap")     == 0) { boolptr = &os8zap;     goto setbool; }
             if (strcmp (opname, "printinstr") == 0) { boolptr = &shadow.printinstr; goto setbool; }
@@ -1173,7 +1173,7 @@ static int cmd_readmem (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
     }
 }
 
-// halt then reset processor, optionally setting start address
+// stop then reset processor, optionally setting start address
 static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     int addr;
@@ -1202,7 +1202,7 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
         }
     }
 
-    ctl_halt ();
+    ctl_stop ();
     if (! ctl_reset (addr)) {
         Tcl_SetResult (interp, (char *) "failed to reset", TCL_STATIC);
         return TCL_ERROR;
@@ -1215,7 +1215,7 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
 static int cmd_run (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     if (! ctl_run ()) {
-        Tcl_SetResult (interp, (char *) "not halted", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "not stopped", TCL_STATIC);
         return TCL_ERROR;
     }
     return TCL_OK;
@@ -1223,11 +1223,11 @@ static int cmd_run (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj
 
 // tell processor to step one cycle
 // - tells raspictl main to clock the processor a single cycle
-// - halts at the end of the next cycle
+// - stops at the end of the next cycle
 static int cmd_stepcyc (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     if (! ctl_stepcyc ()) {
-        Tcl_SetResult (interp, (char *) "not halted", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "not stopped", TCL_STATIC);
         return TCL_ERROR;
     }
     return TCL_OK;
@@ -1235,11 +1235,11 @@ static int cmd_stepcyc (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl
 
 // tell processor to step one instruction
 // - tells raspictl main to clock the processor a single cycle
-// - halts at the end of the next FETCH2 or INTAK1 cycle
+// - stops at the end of the next FETCH2 or INTAK1 cycle
 static int cmd_stepins (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     if (! ctl_stepins ()) {
-        Tcl_SetResult (interp, (char *) "not halted", TCL_STATIC);
+        Tcl_SetResult (interp, (char *) "not stopped", TCL_STATIC);
         return TCL_ERROR;
     }
     return TCL_OK;
@@ -1276,8 +1276,8 @@ static int cmd_swreg (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     }
 }
 
-// wait for halt (control-C, haltstop, stopat, etc)
-// returns immediately if already halted
+// wait for stop (control-C, haltstop, stopat, etc)
+// returns immediately if already stopped
 static int cmd_wait (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {
     ctl_wait ();

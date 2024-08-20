@@ -121,26 +121,26 @@ JNIEXPORT void JNICALL Java_GUIRasPiCtl_setsr (JNIEnv *env, jclass klass, jint s
     switchregister = sr & 32767;
 }
 
-// returns true = processor is halted
+// returns true = processor is stopped
 //        false = processor is running
-JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_gethalt (JNIEnv *env, jclass klass)
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_getstop (JNIEnv *env, jclass klass)
 {
-    return ctl_ishalted ();
+    return ctl_isstopped ();
 }
 
 // input:
-//  halt = true: halt the processor
+//  stop = true: stop the processor
 //        false: run the processor
 // returns:
-//    true = was halted
+//    true = was stopped
 //   false = was running
-JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_sethalt (JNIEnv *env, jclass klass, jboolean halt)
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_setstop (JNIEnv *env, jclass klass, jboolean stop)
 {
-    return halt ? ctl_halt () : ctl_run ();
+    return stop ? ctl_stop () : ctl_run ();
 }
 
 // returns:
-//   true = was halted, stepped one cycle, now halted again
+//   true = was stopped, stepped one cycle, now stopped again
 //  false = was running, not stepped, still running
 JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepcyc (JNIEnv *env, jclass klass)
 {
@@ -148,7 +148,7 @@ JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepcyc (JNIEnv *env, jclass klass)
 }
 
 // returns:
-//   true = was halted, stepped to FETCH2 or INTAK1, now halted again
+//   true = was stopped, stepped to FETCH2 or INTAK1, now stopped again
 //  false = was running, not stepped, still running
 JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_stepins (JNIEnv *env, jclass klass)
 {
@@ -178,7 +178,7 @@ JNIEXPORT jint JNICALL Java_GUIRasPiCtl_wrmem (JNIEnv *env, jclass klass, jint a
 }
 
 // returns:
-//   true = was halted, reset, now halted again
+//   true = was stopped, reset, now stopped again
 //  false = failed
 JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, jint addr)
 {

@@ -25,7 +25,7 @@
 
 #include "iodevs.h"
 
-struct TTYHaltOn;
+struct TTYStopOn;
 
 struct IODevTTY : IODev {
     IODevTTY (uint16_t iobase = 3);
@@ -66,7 +66,7 @@ private:
     pthread_t kbtid;    // non-zero iff keyboard thread running (set by creator, cleared by joiner)
     pthread_t prtid;    // non-zero iff printer thread running (set by creator, cleared by joiner)
     struct termios oldattr;
-    TTYHaltOn *haltons;
+    TTYStopOn *stopons;
     uint32_t usperchr;
     uint16_t iobasem3;
     uint16_t lastin;
@@ -89,7 +89,7 @@ private:
     void inthread ();
     void gotkbchar ();
     void prthread ();
-    void haltonsfree ();
+    void stoponsfree ();
     void dokbsetup ();
     void setkbrawmode ();
     void updintreqlk ();

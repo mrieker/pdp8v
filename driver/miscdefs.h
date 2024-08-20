@@ -59,7 +59,7 @@ extern bool skipopt;
 extern bool tubesaver;
 extern bool waitingforinterrupt;
 extern char **cmdargv;
-extern char const *haltreason;
+extern char const *stopreason;
 extern GpioLib *gpio;
 extern int cmdargc;
 extern int numstopats;
@@ -71,23 +71,22 @@ extern uint16_t stopats[MAXSTOPATS];
 
 uint16_t readswitches (char const *swvar);
 void haltinstr (char const *fmt, ...);
-void haltordie (char const *reason);
+void stopordie (char const *reason);
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag);
 void clrintreqmask (uint16_t mask, bool wake = false);
 void setintreqmask (uint16_t mask);
 void haltwake ();
+void stopwake ();
 uint16_t getintreqmask ();
 char *getexedir (char *buf, int buflen);
 
-#define HF_HALTED  1
-#define HF_HALTIT  2
-#define HF_RESETIT 4
+#define SF_STOPPED  1
+#define SF_STOPIT  2
+#define SF_RESETIT 4
 
-extern pthread_cond_t haltcond;
-extern pthread_cond_t haltcond2;
-extern pthread_mutex_t haltmutex;
-extern uint32_t haltflags;
-extern uint32_t haltsample;
+extern pthread_cond_t stopcond2;
+extern pthread_mutex_t stopmutex;
+extern uint32_t stopflags;
 
 bool getmintimes ();
 void setmintimes (bool mintimes);

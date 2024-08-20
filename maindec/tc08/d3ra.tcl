@@ -5,7 +5,7 @@ iodev tc08 loadrw 2 tape2.dtp
 iodev tc08 loadrw 3 tape3.dtp
 iodev tc08 debug [getenv debug 0]
 iodev tty pipes /dev/null -
-iodev tty halton "ADDRS INC\r\n"
+iodev tty stopon "ADDRS INC\r\n"
 reset 00200
 swreg 03400
 run
@@ -18,5 +18,5 @@ swreg 00000
 puts "d3ra: starting..."
 run
 wait
-puts "d3ra: [haltreason]"
+puts "d3ra: [stopreason]"
 puts "d3ra: [cpu get]"

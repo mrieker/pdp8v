@@ -46,7 +46,7 @@ static IOWKIT56_IO_REPORT const allonepins = { 0, { 255, 255, 255, 255, 255, 255
 static IOWKIT56_SPECIAL_REPORT const reqallpins[] = { 255 };
 
 static bool automode;
-static bool haltedonmismatch;
+static bool stoppedonmismatch;
 static char const *oldsn, *newsn;
 static IOWKIT_HANDLE oldiowh, newiowh;
 static sigset_t sigintmask;
@@ -454,10 +454,10 @@ static void manualtest ()
 
         if (automode && ((oldinputs != sendval) || (newinputs != sendval))) {
             printf ("**MISMATCH** -- press enter\n");
-            haltedonmismatch = true;
+            stoppedonmismatch = true;
             do {
                 if (pthread_cond_wait (&hltcond, &iowmutex) != 0) abort ();
-            } while (haltedonmismatch);
+            } while (stoppedonmismatch);
         }
 
         if (pthread_mutex_unlock (&iowmutex) != 0) abort ();
@@ -581,7 +581,7 @@ static void *rdthread (void *dummy)
         goto readcmd;
 
     unlock:;
-        haltedonmismatch = false;
+        stoppedonmismatch = false;
         if (pthread_cond_broadcast (&hltcond) != 0) abort ();
         if (pthread_mutex_unlock (&iowmutex) != 0) abort ();
     }

@@ -39,8 +39,8 @@
 #include "rdcyc.h"
 #include "shadow.h"
 
-struct TTYHaltOn {
-    TTYHaltOn *next;
+struct TTYStopOn {
+    TTYStopOn *next;
     char *buff;
     int hits;
     char reas[1];
@@ -76,7 +76,7 @@ static uint64_t getnowus ()
     return nowtv.tv_sec * 1000000ULL + nowtv.tv_usec;
 }
 
-static bool haltoncheck (TTYHaltOn *const halton, char prchar);
+static bool stoponcheck (TTYStopOn *const stopon, char prchar);
 
 
 // iobase by default is 003
@@ -139,7 +139,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->intid    =  0;
     this->kbtid    =  0;
     this->prtid    =  0;
-    this->haltons  = NULL;
+    this->stopons  = NULL;
     this->injbuf   = NULL;
     this->injidx   = 0;
     this->eight    = false;
@@ -157,7 +157,7 @@ IODevTTY::~IODevTTY ()
         fclose (this->logfile);
         this->logfile = NULL;
     }
-    this->haltonsfree ();
+    this->stoponsfree ();
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -192,22 +192,22 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev %s eight [0/1]", iodevname);
     }
 
-    // halton              - return list of current haltons
-    // halton ""           - clear list of haltons
-    // halton <string> ... - set list of haltons
-    if (strcmp (argv[0], "halton") == 0) {
+    // stopon              - return list of current stopons
+    // stopon ""           - clear list of stopons
+    // stopon <string> ... - set list of stopons
+    if (strcmp (argv[0], "stopon") == 0) {
 
-        // no args, return list of existing halton strings
+        // no args, return list of existing stopon strings
         if (argc == 1) {
             pthread_mutex_lock (&this->lock);
             int i = 0;
-            for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
+            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
                 i ++;
             }
             SCRetList *scretlist = new SCRetList (i);
             i = 0;
-            for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
-                scretlist->elems[i++] = new SCRetStr ("%d:%s", halton->hits, halton->buff);
+            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
+                scretlist->elems[i++] = new SCRetStr ("%d:%s", stopon->hits, stopon->buff);
             }
             pthread_mutex_unlock (&this->lock);
             return scretlist;
@@ -215,26 +215,26 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
 
         // args, clear existing list, then make new list from non-null strings
         pthread_mutex_lock (&this->lock);
-        this->haltonsfree ();
-        TTYHaltOn **lasthalton = &this->haltons;
+        this->stoponsfree ();
+        TTYStopOn **laststopon = &this->stopons;
         for (int i = 1; i < argc; i ++) {
             int len = strlen (argv[i]);
             if (len > 0) {
                 int dnlen = strlen (this->iodevname);
-                TTYHaltOn *halton = (TTYHaltOn *) malloc (sizeof *halton + dnlen + 10 + len);
-                if (halton == NULL) ABORT ();
-                *lasthalton  = halton;
-                lasthalton   = &halton->next;
-                halton->hits = 0;
-                // set up halton->reas string: <iodevname> halton <haltonstring>
-                // then/and point halton->buff to the <haltonstring> at the end
-                memcpy (halton->reas, this->iodevname, dnlen);
-                memcpy (halton->reas + dnlen, " halton ", 8);
-                halton->buff = halton->reas + dnlen + 8;
-                memcpy (halton->buff, argv[i], len + 1);
+                TTYStopOn *stopon = (TTYStopOn *) malloc (sizeof *stopon + dnlen + 10 + len);
+                if (stopon == NULL) ABORT ();
+                *laststopon  = stopon;
+                laststopon   = &stopon->next;
+                stopon->hits = 0;
+                // set up stopon->reas string: <iodevname> stopon <stoponstring>
+                // then/and point stopon->buff to the <stoponstring> at the end
+                memcpy (stopon->reas, this->iodevname, dnlen);
+                memcpy (stopon->reas + dnlen, " stopon ", 8);
+                stopon->buff = stopon->reas + dnlen + 8;
+                memcpy (stopon->buff, argv[i], len + 1);
             }
         }
-        *lasthalton = NULL;
+        *laststopon = NULL;
         pthread_mutex_unlock (&this->lock);
 
         return NULL;
@@ -247,9 +247,9 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("  debug               - see if debug is enabled");
         puts ("  debug 0/1/2         - set debug printing");
         puts ("  eight [0/1]         - allow all 8 bits to pass through");
-        puts ("  halton              - return list of defined haltons");
-        puts ("  halton \"\"           - clear halton strings");
-        puts ("  halton <string> ... - set list of strings to halt on");
+        puts ("  stopon              - return list of defined stopons");
+        puts ("  stopon \"\"           - clear stopon strings");
+        puts ("  stopon <string> ... - set list of strings to stop on");
         puts ("  inject              - return remaining injection");
         puts ("  inject <string>     - set up keyboard injection");
         puts ("  lcucin [0/1]        - lowercase->uppercase on input");
@@ -867,11 +867,11 @@ void IODevTTY::prthread ()
 
         nextwriteus = getnowus () + this->usperchr;
 
-        // check any haltons, flag processor to halt if any triggered
+        // check any stopons, flag processor to stop if any triggered
         bool first = true;
-        for (TTYHaltOn *halton = this->haltons; halton != NULL; halton = halton->next) {
-            if (haltoncheck (halton, this->prbuff) && first) {
-                ctl_haltfor (halton->reas);
+        for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
+            if (stoponcheck (stopon, this->prbuff) && first) {
+                ctl_stopfor (stopon->reas);
                 first = false;
             }
         }
@@ -885,20 +885,20 @@ done:;
     pthread_mutex_unlock (&this->lock);
 }
 
-// have outgoing char, step halton state and see if complete match has occurred
-static bool haltoncheck (TTYHaltOn *const halton, char prchar)
+// have outgoing char, step stopon state and see if complete match has occurred
+static bool stoponcheck (TTYStopOn *const stopon, char prchar)
 {
     // null doesn't match anything so reset
     if (prchar == 0) {
-        halton->hits = 0;
+        stopon->hits = 0;
         return false;
     }
 
     // if char matches next coming up, increment number of matching chars
     // if reached the end, this one is completely matched
     // if previously completely matched, prchar will mismatch on the null
-    int i = halton->hits;
-    if (halton->buff[i] != prchar) {
+    int i = stopon->hits;
+    if (stopon->buff[i] != prchar) {
 
         // mismatch, but maybe an earlier part is still matched
         // eg, looking for "abcabcabd" but got "abcabcabc", we reset to 6
@@ -906,34 +906,34 @@ static bool haltoncheck (TTYHaltOn *const halton, char prchar)
         // also has to work for case where "aaa" was completely matched last time,
         //   if prchar is 'a', we say complete match this time, else reset to 0
         do {
-            char *p = (char *) memrchr (halton->buff, prchar, i);
+            char *p = (char *) memrchr (stopon->buff, prchar, i);
             if (p == NULL) {
                 i = -1;
                 break;
             }
-            i = p - halton->buff;
+            i = p - stopon->buff;
 
             // prchar = 'c'
             // hits = 8 in "abcabcabd"
             //                      ^hits
             //    i = 5 in "abcabcabd"
             //                   ^i
-        } while (memcmp (halton->buff, halton->buff + halton->hits - i, i) != 0);
+        } while (memcmp (stopon->buff, stopon->buff + stopon->hits - i, i) != 0);
     }
 
     // i = index where prchar matches (or -1 if not at all)
-    halton->hits = ++ i;
-    return halton->buff[i] == 0;
+    stopon->hits = ++ i;
+    return stopon->buff[i] == 0;
 }
 
-// free all the haltons
-void IODevTTY::haltonsfree ()
+// free all the stopons
+void IODevTTY::stoponsfree ()
 {
     bool sigint = ctl_lock ();
-    for (TTYHaltOn *halton; (halton = this->haltons) != NULL;) {
-        this->haltons = halton->next;
-        if (haltreason == halton->reas) haltreason = "";
-        free (halton);
+    for (TTYStopOn *stopon; (stopon = this->stopons) != NULL;) {
+        this->stopons = stopon->next;
+        if (stopreason == stopon->reas) stopreason = "";
+        free (stopon);
     }
     ctl_unlock (sigint);
 }

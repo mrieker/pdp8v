@@ -110,7 +110,7 @@ static void *pidpthread (void *dummy)
     while (running) {
         pidpmsg.seq ++;
 
-        if (! ctl_ishalted ()) membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
+        if (! ctl_isstopped ()) membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
 
         Shadow::State st = (Shadow::State) (shadow.r.state & 15);
         uint32_t ir  = (st == Shadow::State::FETCH2) ? (gpio->readgpio () & G_DATA) / G_DATA0 : shadow.r.ir;
@@ -128,7 +128,7 @@ static void *pidpthread (void *dummy)
             ((st == Shadow::State::INTAK1) ? (1 << COL2) : 0) |     // BREAK (we use it for INTAK1 cycle)
             (memext.intenabd ()  ? (1 << COL3) : 0) |               // ION
             (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
-            (ctl_ishalted ()     ? 0 : (1 << COL5)) |               // RUN
+            (ctl_isstopped ()     ? 0 : (1 << COL5)) |               // RUN
             ledscram (extarith.stepcount << 2);                     // SC
 
         uint32_t lr8 =
@@ -183,7 +183,7 @@ static void *pidpthread (void *dummy)
 
 static void startbutton (uint32_t buttons)
 {
-    if (ctl_ishalted ()) {
+    if (ctl_isstopped ()) {
         ctl_reset (memext.iframe | shadow.r.pc);
         contbutton (buttons);
     }
@@ -191,7 +191,7 @@ static void startbutton (uint32_t buttons)
 
 static void ldaddrbutton ()
 {
-    if (ctl_ishalted ()) {
+    if (ctl_isstopped ()) {
         shadow.r.ma = shadow.r.pc = switchregister;
         memext.dframe = (dfifswitches & 07000) << 3;
         memext.iframe = (dfifswitches & 00700) << 6;
@@ -201,7 +201,7 @@ static void ldaddrbutton ()
 
 static void deposbutton ()
 {
-    if (ctl_ishalted ()) {
+    if (ctl_isstopped ()) {
         shadow.r.ma = shadow.r.pc;
         memarray[memext.iframe|shadow.r.ma] = membuffer = switchregister;
         shadow.r.pc = (shadow.r.pc + 1) & 07777;
@@ -210,7 +210,7 @@ static void deposbutton ()
 
 static void exambutton ()
 {
-    if (ctl_ishalted ()) {
+    if (ctl_isstopped ()) {
         shadow.r.ma = shadow.r.pc;
         membuffer = memarray[memext.iframe|shadow.r.ma];
         shadow.r.pc = (shadow.r.pc + 1) & 07777;
@@ -219,7 +219,7 @@ static void exambutton ()
 
 static void contbutton (uint32_t buttons)
 {
-    if (ctl_ishalted ()) {
+    if (ctl_isstopped ()) {
         if (buttons & (1 << COL7)) {
             do ctl_stepcyc ();  // single step - step one major state
             while (! atendofmajorstate ());
@@ -236,8 +236,8 @@ static void contbutton (uint32_t buttons)
 
 static void stopbutton ()
 {
-    if (! ctl_ishalted ()) {
-        ctl_halt ();            // stops at end of any cycle
+    if (! ctl_isstopped ()) {
+        ctl_stop ();            // stops at end of any cycle
         while (! atendofmajorstate ()) {
             ctl_stepcyc ();     // cycle to end of major state
         }
@@ -245,7 +245,7 @@ static void stopbutton ()
     }
 }
 
-// halted at end of some cycle - see if it is the last cycle of a major state
+// stopped at end of some cycle - see if it is the last cycle of a major state
 static bool atendofmajorstate ()
 {
     Shadow::State st = shadow.r.state;

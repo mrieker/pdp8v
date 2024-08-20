@@ -13,5 +13,5 @@ if {([cpu get pc] != 00147)} {
 puts "starting..."
 run
 wait
-puts "halted: [haltreason] [cpu get]"
+puts "stopped: [stopreason] [cpu get]"
 exit

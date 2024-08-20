@@ -152,7 +152,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
         puts ("  link   - link bit");
         puts ("  ma     - memory address");
         puts ("  pc     - program counter");
-        puts ("  state  - current state as a string (if halted, processor is at end of this state)");
+        puts ("  state  - current state as a string (if stopped, processor is at end of this state)");
         puts ("  tsaver - cycle was a result of tubesaver mode");
         puts ("  disas  - disassembly of instruction register");
         puts ("");
@@ -164,7 +164,7 @@ SCRet *Shadow::scriptcmd (int argc, char const *const *argv)
 
     // print out previous cycles
     if (strcmp (argv[0], "history") == 0) {
-        if (! ctl_ishalted ()) return new SCRetErr ("processor not halted");
+        if (! ctl_isstopped ()) return new SCRetErr ("processor not stopped");
         puts ("");
         this->history (stdout, "  ", 1);
         puts ("");

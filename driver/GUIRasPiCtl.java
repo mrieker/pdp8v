@@ -25,8 +25,8 @@ public class GUIRasPiCtl {
     public native static long getcycs ();
     public native static int getsr ();
     public native static void setsr (int sr);
-    public native static boolean gethalt ();
-    public native static boolean sethalt (boolean halt);
+    public native static boolean getstop ();
+    public native static boolean setstop (boolean stop);
     public native static boolean stepcyc ();
     public native static boolean stepins ();
     public native static String disassemble (int ir, int pc);

@@ -19,7 +19,7 @@
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
 // processor control functions
-// - tell raspictl.cc main loop to halt, reset, run, step
+// - tell raspictl.cc main loop to stop, reset, run, step
 
 #include <pthread.h>
 #include <string.h>
@@ -30,15 +30,15 @@
 #include "miscdefs.h"
 #include "shadow.h"
 
-// halt processor if not already
+// stop processor if not already
 // - tells raspictl.cc main to suspend clocking the processor
-// - halts at the end of a cycle, shadow.clock() not called yet
-// returns true: was already halted
-//        false: was running, now halted
-bool ctl_halt ()
+// - stops at the end of a cycle, shadow.clock() not called yet
+// returns true: was already stopped
+//        false: was running, now stopped
+bool ctl_stop ()
 {
     bool sigint = ctl_lock ();
-    if (haltflags & HF_HALTED) {
+    if (stopflags & SF_STOPPED) {
 
         // must be at end of cycle (clock is low)
         uint32_t sample = gpio->readgpio ();
@@ -48,18 +48,18 @@ bool ctl_halt ()
         return true;
     }
 
-    // if nothing else has requested halt, request halt and say because of halt button
-    if (! (haltflags & HF_HALTIT)) {
-        haltreason = "HALTBUTTON";
-        haltflags |= HF_HALTIT;
+    // if nothing else has requested stop, request stop and say because of stop button
+    if (! (stopflags & SF_STOPIT)) {
+        stopreason = "STOPBUTTON";
+        stopflags |= SF_STOPIT;
     }
 
     // if raspictl.cc main sleeping in an HLT instruction, wake it up
     haltwake ();
 
     // wait for raspictl.cc main to stop cycling processor
-    while (! (haltflags & HF_HALTED)) {
-        pthread_cond_wait (&haltcond2, &haltmutex);
+    while (! (stopflags & SF_STOPPED)) {
+        pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
     // must be at end of cycle (clock is low)
@@ -70,19 +70,19 @@ bool ctl_halt ()
     return false;
 }
 
-// flag processor to halt for the given reason
-// does not wait for processor to halt
-bool ctl_haltfor (char const *reason)
+// flag processor to stop for the given reason
+// does not wait for processor to stop
+bool ctl_stopfor (char const *reason)
 {
     bool sigint = ctl_lock ();
-    if (haltflags & HF_HALTIT) {
+    if (stopflags & SF_STOPIT) {
         ctl_unlock (sigint);
         return true;
     }
 
-    // if nothing else has requested halt, request halt and say because of halt button
-    haltreason = reason;
-    haltflags |= HF_HALTIT;
+    // if nothing else has requested stop, request stop and say because of stop button
+    stopreason = reason;
+    stopflags |= SF_STOPIT;
 
     // if raspictl.cc main sleeping in an HLT instruction, wake it up
     haltwake ();
@@ -91,20 +91,20 @@ bool ctl_haltfor (char const *reason)
     return false;
 }
 
-bool ctl_ishalted ()
+bool ctl_isstopped ()
 {
-    return (haltflags & HF_HALTED) != 0;
+    return (stopflags & SF_STOPPED) != 0;
 }
 
 // reset processor
-// returns with processor halted at end of fetch1 with clock still low, shadow.clock() not called yet
+// returns with processor stopped at end of fetch1 with clock still low, shadow.clock() not called yet
 // ...and with DF,IF,PC set to the given 15-bit address
 bool ctl_reset (uint16_t addr)
 {
     bool sigint = ctl_lock ();
 
-    // processor must already be halted
-    if (! (haltflags & HF_HALTED)) {
+    // processor must already be stopped
+    if (! (stopflags & SF_STOPPED)) {
         ctl_unlock (sigint);
         return false;
     }
@@ -112,14 +112,14 @@ bool ctl_reset (uint16_t addr)
     // tell it what 15-bit address to reset to
     startpc = addr & 077777;
 
-    // tell main to reset but then halt immediately thereafter
-    haltreason = "RESETBUTTON";
-    haltflags  = HF_HALTIT | HF_RESETIT;
-    haltwake ();
+    // tell main to reset but then stop immediately thereafter
+    stopreason = "RESETBUTTON";
+    stopflags  = SF_STOPIT | SF_RESETIT;
+    stopwake ();
 
     // wait for raspictl.cc main to finish resetting
-    while (! (haltflags & HF_HALTED)) {
-        pthread_cond_wait (&haltcond2, &haltmutex);
+    while (! (stopflags & SF_STOPPED)) {
+        pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
     // raspictl.cc main has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
@@ -142,7 +142,7 @@ bool ctl_run ()
     bool sigint = ctl_lock ();
 
     // maybe already running
-    if (! (haltflags & HF_HALTED)) {
+    if (! (stopflags & SF_STOPPED)) {
         ctl_unlock (sigint);
         return false;
     }
@@ -153,22 +153,22 @@ bool ctl_run ()
     ASSERT (! (sample & G_CLOCK));
 
     // tell raspictl.cc main to resume cycling the processor
-    haltreason = "";
-    haltflags  = 0;
-    haltwake ();
+    stopreason = "";
+    stopflags  = 0;
+    stopwake ();
     ctl_unlock (sigint);
     return true;
 }
 
 // tell processor to step one cycle
 // - tells raspictl.cc main to clock the processor a single cycle
-// - halts at the end of the next cycle
+// - stops at the end of the next cycle
 bool ctl_stepcyc ()
 {
     bool sigint = ctl_lock ();
 
-    // processor must already be halted
-    if (! (haltflags & HF_HALTED)) {
+    // processor must already be stopped
+    if (! (stopflags & SF_STOPPED)) {
         ctl_unlock (sigint);
         return false;
     }
@@ -177,23 +177,23 @@ bool ctl_stepcyc ()
     uint32_t sample = gpio->readgpio ();
     ASSERT (! (sample & G_CLOCK));
 
-    // tell it to start, run one cycle, then halt
-    haltreason = "";
-    haltflags  = HF_HALTIT;
-    haltwake ();
+    // tell it to start, run one cycle, then stop
+    stopreason = "";
+    stopflags  = SF_STOPIT;
+    stopwake ();
 
-    // wait for it to halt again
-    while (! (haltflags & HF_HALTED)) {
-        pthread_cond_wait (&haltcond2, &haltmutex);
+    // wait for it to stop again
+    while (! (stopflags & SF_STOPPED)) {
+        pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
     // must be at end of cycle (clock is low)
     sample = gpio->readgpio ();
     ASSERT (! (sample & G_CLOCK));
 
-    // if normal halt, say it's because of stepping
-    if (haltreason[0] == 0) {
-        haltreason = "SINGLECYCLE";
+    // if normal stop, say it's because of stepping
+    if (stopreason[0] == 0) {
+        stopreason = "SINGLECYCLE";
     }
 
     ctl_unlock (sigint);
@@ -202,13 +202,13 @@ bool ctl_stepcyc ()
 
 // tell processor to step one instruction
 // - tells raspictl.cc main to clock the processor a single cycle
-// - halts at the end of the next FETCH2 or INTAK1 cycle
+// - stops at the end of the next FETCH2 or INTAK1 cycle
 bool ctl_stepins ()
 {
     bool sigint = ctl_lock ();
 
-    // processor must already be halted
-    if (! (haltflags & HF_HALTED)) {
+    // processor must already be stopped
+    if (! (stopflags & SF_STOPPED)) {
         ctl_unlock (sigint);
         return false;
     }
@@ -219,18 +219,18 @@ bool ctl_stepins ()
 
     do {
 
-        // tell it to start, run one cycle, then halt
-        haltreason = "";
-        haltflags  = HF_HALTIT;
-        haltwake ();
+        // tell it to start, run one cycle, then stop
+        stopreason = "";
+        stopflags  = SF_STOPIT;
+        stopwake ();
 
-        // wait for it to halt again
-        while (! (haltflags & HF_HALTED)) {
-            pthread_cond_wait (&haltcond2, &haltmutex);
+        // wait for it to stop again
+        while (! (stopflags & SF_STOPPED)) {
+            pthread_cond_wait (&stopcond2, &stopmutex);
         }
 
         // stop if some error
-        if (haltreason[0] != 0) break;
+        if (stopreason[0] != 0) break;
 
         // repeat until fetching next instruction
     } while ((shadow.r.state != Shadow::State::FETCH2) && (shadow.r.state != Shadow::State::INTAK1));
@@ -239,9 +239,9 @@ bool ctl_stepins ()
     sample = gpio->readgpio ();
     ASSERT (! (sample & G_CLOCK));
 
-    // if normal halt, say it's because of stepping
-    if (haltreason[0] == 0) {
-        haltreason = "SINGLEINSTR";
+    // if normal stop, say it's because of stepping
+    if (stopreason[0] == 0) {
+        stopreason = "SINGLEINSTR";
     }
 
     ctl_unlock (sigint);
@@ -249,13 +249,13 @@ bool ctl_stepins ()
     return true;
 }
 
-// wait for halted
+// wait for stopped
 void ctl_wait ()
 {
     bool sigint = ctl_lock ();
 
-    while (! (haltflags & HF_HALTED)) {
-        pthread_cond_wait (&haltcond2, &haltmutex);
+    while (! (stopflags & SF_STOPPED)) {
+        pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
     // must be at end of cycle (clock is low)
@@ -273,12 +273,12 @@ bool ctl_lock ()
     sigset_t oldsigs;
     sigaddset (&blocksigint, SIGINT);
     if (pthread_sigmask (SIG_BLOCK, &blocksigint, &oldsigs) != 0) ABORT ();
-    if (pthread_mutex_lock (&haltmutex) != 0) ABORT ();
+    if (pthread_mutex_lock (&stopmutex) != 0) ABORT ();
     return ! sigismember (&oldsigs, SIGINT);
 }
 
 void ctl_unlock (bool sigint)
 {
-    if (pthread_mutex_unlock (&haltmutex) != 0) ABORT ();
+    if (pthread_mutex_unlock (&stopmutex) != 0) ABORT ();
     if (sigint && (pthread_sigmask (SIG_UNBLOCK, &blocksigint, NULL) != 0)) ABORT ();
 }

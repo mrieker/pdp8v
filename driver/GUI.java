@@ -58,7 +58,7 @@ public class GUI extends JPanel {
     public final static int UPDMS = 100;
 
     public final static byte CB_RUN    = 1;
-    public final static byte CB_HALT   = 2;
+    public final static byte CB_STOP   = 2;
     public final static byte CB_CYCLE  = 3;
     public final static byte CB_SAMPLE = 4;
     public final static byte CB_SETSR  = 5;
@@ -100,10 +100,10 @@ public class GUI extends JPanel {
         public int     gpio;
         public int     sr;
         public long    cycs;
-        public boolean halt;
+        public boolean stop;
 
         public abstract void run ();
-        public abstract void halt ();
+        public abstract void stop ();
         public abstract void cycle (boolean ins);
         public abstract void sample ();
         public abstract void setsr (int sr);
@@ -231,8 +231,8 @@ public class GUI extends JPanel {
                     access.run ();
                     break;
                 }
-                case CB_HALT: {
-                    access.halt ();
+                case CB_STOP: {
+                    access.stop ();
                     break;
                 }
                 case CB_CYCLE: {
@@ -265,7 +265,7 @@ public class GUI extends JPanel {
                     sample[19] = (byte)(access.cycs >> 40);
                     sample[20] = (byte)(access.cycs >> 48);
                     sample[21] = (byte)(access.cycs >> 56);
-                    sample[22] = (byte)(access.halt ? 1 : 0);
+                    sample[22] = (byte)(access.stop ? 1 : 0);
                     sample[23] = (byte)(access.sr);
                     sample[24] = (byte)(access.sr >> 8);
 
@@ -380,10 +380,10 @@ public class GUI extends JPanel {
         }
 
         @Override
-        public void halt ()
+        public void stop ()
         {
             try {
-                ostream.write (CB_HALT);
+                ostream.write (CB_STOP);
             } catch (Exception e) {
                 e.printStackTrace ();
                 System.exit (1);
@@ -424,7 +424,7 @@ public class GUI extends JPanel {
             st   = ((samplebytes[9] & 0xFF) << 8) | (samplebytes[8] & 0xFF);
             gpio = ((samplebytes[13] & 0xFF) << 24) | ((samplebytes[12] & 0xFF) << 16) | ((samplebytes[11] & 0xFF) << 8) | (samplebytes[10] & 0xFF);
             cycs = ((samplebytes[21] & 0xFF) << 56) | ((samplebytes[20] & 0xFF) << 48) | ((samplebytes[19] & 0xFF) << 40) | ((samplebytes[18] & 0xFF) << 32) | ((samplebytes[17] & 0xFF) << 24) | ((samplebytes[16] & 0xFF) << 16) | ((samplebytes[15] & 0xFF) << 8) | (samplebytes[14] & 0xFF);
-            halt = samplebytes[22] != 0;
+            stop = samplebytes[22] != 0;
             sr   = ((samplebytes[24] & 0xFF) << 8) | (samplebytes[23] & 0xFF);
         }
 
@@ -509,25 +509,25 @@ public class GUI extends JPanel {
             raspictlthread.start ();
 
             // wait for raspictl to start up, including loading memory and initializing PC
-            GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.setstop (true);
         }
 
         @Override
         public void run ()
         {
-            GUIRasPiCtl.sethalt (false);
+            GUIRasPiCtl.setstop (false);
         }
 
         @Override
-        public void halt ()
+        public void stop ()
         {
-            GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.setstop (true);
         }
 
         @Override
         public void cycle (boolean ins)
         {
-            GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.setstop (true);
             if (ins) GUIRasPiCtl.stepins ();
                 else GUIRasPiCtl.stepcyc ();
         }
@@ -542,7 +542,7 @@ public class GUI extends JPanel {
             st   = GUIRasPiCtl.getst   ();
             gpio = GUIRasPiCtl.getgpio ();
             cycs = GUIRasPiCtl.getcycs ();
-            halt = GUIRasPiCtl.gethalt ();
+            stop = GUIRasPiCtl.getstop ();
             sr   = GUIRasPiCtl.getsr   ();
         }
 
@@ -567,7 +567,7 @@ public class GUI extends JPanel {
         @Override
         public void reset (int addr)
         {
-            GUIRasPiCtl.sethalt (true);
+            GUIRasPiCtl.setstop (true);
             if (! GUIRasPiCtl.reset (addr)) {
                 System.err.println ("GUI.DirectAccess.reset: processor failed to reset");
             }
@@ -622,7 +622,7 @@ public class GUI extends JPanel {
     public static LED[] stleds = new LED[9];
 
     public static JLabel cyclecntlabel;
-    public static HaltRunButton haltrunbutton;
+    public static StopRunButton stoprunbutton;
     public static StepCycleButton stepcyclebutton;
     public static StepInstrButton stepinstrbutton;
     public static JLabel disassemlabel;
@@ -646,7 +646,7 @@ public class GUI extends JPanel {
                 int     st   = access.st;
                 int     gpio = access.gpio;
                 long    cycs = access.cycs;
-                boolean halt = access.halt;
+                boolean stop = access.stop;
                 int     sr   = access.sr;
 
                 // update display LEDs
@@ -674,8 +674,8 @@ public class GUI extends JPanel {
                 }
 
                 writeswitches (sr);
-                runled.setOn (! halt);
-                haltrunbutton.setHalt (halt);
+                runled.setOn (! stop);
+                stoprunbutton.setStop (stop);
 
                 for (int i = 0; i < 3; i ++) {
                     irleds[i].setOn ((ir & (04000 >> i)) != 0);
@@ -872,7 +872,7 @@ public class GUI extends JPanel {
         cyclecntlabel.setFont (new Font (Font.MONOSPACED, Font.PLAIN, cyclecntlabel.getFont ().getSize ()));
         buttonbox1.add (cyclecntlabel);
 
-        buttonbox1.add (haltrunbutton = new HaltRunButton ());
+        buttonbox1.add (stoprunbutton = new StopRunButton ());
         buttonbox1.add (stepcyclebutton = new StepCycleButton ());
         buttonbox1.add (stepinstrbutton = new StepInstrButton ());
 
@@ -1011,23 +1011,23 @@ public class GUI extends JPanel {
         }
     }
 
-    private static class HaltRunButton extends JButton implements ActionListener {
-        private Timer updatetimer;      // null: processor is known to be halted
+    private static class StopRunButton extends JButton implements ActionListener {
+        private Timer updatetimer;      // null: processor is known to be stopped
                                         //       button says RUN to get it going
                                         // else: processor is known to be running
-                                        //       button says HALT to halt it
+                                        //       button says STOP to stop it
 
-        public HaltRunButton ()
+        public StopRunButton ()
         {
             super ("RUN");
             addActionListener (this);
         }
 
         // called by updatetimer
-        public void setHalt (boolean halt)
+        public void setStop (boolean stop)
         {
-            // processor may have halted on its own (like from a stopat address), so update button
-            if (halt && (updatetimer != null)) haltClicked ();
+            // processor may have stopped on its own (like from a stopat address), so update button
+            if (stop && (updatetimer != null)) stopClicked ();
         }
 
         @Override  // ActionListener
@@ -1036,13 +1036,13 @@ public class GUI extends JPanel {
             if (updatetimer == null) {
                 runClicked ();
             } else {
-                haltClicked ();
+                stopClicked ();
             }
         }
 
         private void runClicked ()
         {
-            setText ("HALT");
+            setText ("STOP");
 
             // gray out lots of buttons while running
             enableButtons (false);
@@ -1055,21 +1055,21 @@ public class GUI extends JPanel {
             updatetimer.start ();
         }
 
-        private void haltClicked ()
+        private void stopClicked ()
         {
             setText ("RUN");
 
             // tell raspictl main() thread to stop clocking tubes and wait for it to stop
-            access.halt ();
+            access.stop ();
 
-            // shut off timer while halted so it doesn't interfere with LDADDR/DEP/EXAM buttons
+            // shut off timer while stopped so it doesn't interfere with LDADDR/DEP/EXAM buttons
             updatetimer.stop ();
             updatetimer = null;
 
             // make sure we get a final display update
             updisplay.actionPerformed (null);
 
-            // enable lots of buttons now that we're halted
+            // enable lots of buttons now that we're stopped
             enableButtons (true);
         }
 

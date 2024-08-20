@@ -197,8 +197,8 @@ uint16_t ScnCall::docall (uint16_t data)
                 exit (data);
             }
             bool sigint = ctl_lock ();
-            haltreason  = hrbuff;
-            haltflags  |= HF_HALTIT;
+            stopreason  = hrbuff;
+            stopflags  |= SF_STOPIT;
             ctl_unlock (sigint);
             break;
         }
@@ -815,7 +815,7 @@ uint16_t ScnCall2::ioinstr (uint16_t opcode, uint16_t input)
                     fprintf (hcffile, ">\n");
                 }
             }
-            haltordie ("HCFINSTR");
+            stopordie ("HCFINSTR");
         }
     }
     return input;

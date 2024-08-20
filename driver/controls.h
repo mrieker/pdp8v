@@ -23,9 +23,9 @@
 
 #include <stdint.h>
 
-bool ctl_halt ();
-bool ctl_haltfor (char const *reason);
-bool ctl_ishalted ();
+bool ctl_stop ();
+bool ctl_stopfor (char const *reason);
+bool ctl_isstopped ();
 bool ctl_lock ();
 bool ctl_reset (uint16_t addr);
 bool ctl_run ();

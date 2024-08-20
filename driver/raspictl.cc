@@ -35,10 +35,10 @@
  *      -corefile    : specify persistent core file image
  *      -csrclib     : use C-source for circuitry simulation (see csrclib.cc)
  *      -cyclelimit  : specify maximum number of cycles to execute
- *      -guimode     : used by the GUI.java wrapper to start in halted mode
- *      -haltcont    : HALT instruction just continues
- *      -haltprint   : HALT instruction prints message
- *      -haltstop    : HALT instruction causes exit (else it is 'wait for interrupt')
+ *      -guimode     : used by the GUI.java wrapper to start in stopped mode
+ *      -haltcont    : HLT instruction just continues
+ *      -haltprint   : HLT instruction prints message
+ *      -haltstop    : HLT instruction causes stop (else it is 'wait for interrupt')
  *      -jmpdotstop  : infinite loop JMP causes exit
  *      -linc        : process linc instruction set
  *      -mintimes    : print cpu cycle info once a minute
@@ -129,13 +129,13 @@ __thread bool thisismainthread;
 static pthread_t mintimestid;
 static pthread_cond_t mintimescond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mintimeslock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t haltcond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t stopcond = PTHREAD_COND_INITIALIZER;
 
-pthread_cond_t haltcond = PTHREAD_COND_INITIALIZER;
-pthread_cond_t haltcond2 = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t haltmutex = PTHREAD_MUTEX_INITIALIZER;
-char const *haltreason = "";
-uint32_t haltflags;
-uint32_t haltsample;
+pthread_cond_t stopcond2 = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t stopmutex = PTHREAD_MUTEX_INITIALIZER;
+char const *stopreason = "";
+uint32_t stopflags;
 
 static bool guimode;
 static bool haltcont;
@@ -150,7 +150,7 @@ static uint32_t syncintreq;
 static void writestartpc ();
 static void clraccumlink ();
 static void *mintimesthread (void *dummy);
-static bool haltcheck ();
+static bool stopcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
 static uint16_t randuint16 (int nbits);
 static void dumpregs ();
@@ -189,9 +189,9 @@ int main (int argc, char **argv)
 
     for (int i = 0; ++ i < argc;) {
         if (strcasecmp (argv[i], "-binloader") == 0) {
-            binldr = true;
-            randmem = false;
-            rimldr = false;
+            binldr     = true;
+            randmem    = false;
+            rimldr     = false;
             scriptmode = false;
             continue;
         }
@@ -307,11 +307,11 @@ int main (int argc, char **argv)
             continue;
         }
         if ((strcasecmp (argv[i], "-randmem") == 0) && (loadname == NULL)) {
-            binldr = false;
-            randmem = true;
-            rimldr = false;
+            binldr     = false;
+            randmem    = true;
+            rimldr     = false;
             scriptmode = false;
-            quiet = true;
+            quiet      = true;
             continue;
         }
         if (strcasecmp (argv[i], "-resetonerr") == 0) {
@@ -517,14 +517,14 @@ int main (int argc, char **argv)
 
     shadow.open (gpio);
 
-    // if running from GUI or script, halt processor in next haltcheck() call
+    // if running from GUI or script, stop processor in next stopcheck() call
     bool sigint = ctl_lock ();
     if (guimode | scriptmode) {
-        haltreason = "RESET";
-        haltflags  = HF_HALTIT;
+        stopreason = "RESET";
+        stopflags  = SF_STOPIT;
     } else {
-        haltreason = "";
-        haltflags  = 0;
+        stopreason = "";
+        stopflags  = 0;
     }
     ctl_unlock (sigint);
 
@@ -543,7 +543,7 @@ reseteverything:;
     ioreset ();
 
     // do any initialization cycles
-    // ignore haltflags, GUI.java or script.cc is waiting for us to initialize
+    // ignore stopflags, GUI.java or script.cc is waiting for us to initialize
     try {
         if (startpc != 0xFFFFU) {
             writestartpc ();
@@ -551,8 +551,8 @@ reseteverything:;
             clraccumlink ();
         }
     } catch (Shadow::StateMismatchException& sme) {
-        haltreason = "STATEMISMATCH";
-        haltordie (haltreason);
+        stopreason = "STATEMISMATCH";
+        stopordie (stopreason);
     }
 
     uint16_t lastos8zap = 0;
@@ -560,8 +560,8 @@ reseteverything:;
     try {
         for ever {
 
-            // maybe GUI or script is requesting halt at end of cycle
-            haltcheck ();
+            // maybe GUI or script is requesting stop at end of cycle
+            stopcheck ();
 
             // invariant:
             //  clock has been low for half cycle
@@ -611,8 +611,7 @@ reseteverything:;
 
                 for (int i = 0; i < numstopats; i ++) {
                     if (addr == stopats[i]) {
-                        fprintf (stderr, "raspictl: stopat %05o\n", addr);
-                        haltordie ("STOPAT");
+                        stopordie ("STOPAT");
                         break;
                     }
                 }
@@ -646,8 +645,7 @@ reseteverything:;
                         if (jmpdotstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
                             uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
                             if (ea == addr) {
-                                fprintf (stderr, "raspictl: JMP . at PC=%05o\n", lastreadaddr);
-                                haltordie ("JMPDOT");
+                                stopordie ("JMPDOT");
                             }
                         }
 
@@ -663,11 +661,11 @@ reseteverything:;
                         syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
 
                         // send data to processor
-                        // fall through to re-read memory if halted by gui or script
+                        // fall through to re-read memory if stopped by gui or script
                         if (! senddata (lastreaddata, sendretry)) break;
 
-                        // gui/script halted in this cycle once,
-                        // don't check halt in retried senddata() in case of single-cycling
+                        // gui/script stopped in this cycle once,
+                        // don't check stop in retried senddata() in case of single-cycling
                         sendretry = true;
                     }
                 }
@@ -675,8 +673,7 @@ reseteverything:;
                 if (sample & G_WRITE) {
                     uint16_t data = recvdata () & 07777;
                     if (addr == (unsigned) watchwrite) {
-                        fprintf (stderr, "raspictl: watch write addr %05o data %04o\n", addr, data);
-                        haltordie ("WATCHWRITE");
+                        stopordie ("WATCHWRITE");
                     }
                     memarray[addr] = data;
                     if (dyndisena) dyndiswrite (addr);
@@ -752,14 +749,14 @@ reseteverything:;
             if (! guimode && ! pidpmode && ! scriptmode) exit (1);
             bool sigint = ctl_lock ();
 
-            // tell GUI.java or script.cc we are halting
-            haltreason = "STATEMISMATCH";
-            haltflags  = HF_HALTED;
-            pthread_cond_broadcast (&haltcond2);
+            // tell GUI.java or script.cc we are stopping
+            stopreason = "STATEMISMATCH";
+            stopflags  = SF_STOPPED;
+            pthread_cond_broadcast (&stopcond2);
 
             // wait for GUI.java or script.cc to resume us
-            while (haltflags & HF_HALTED) {
-                pthread_cond_wait (&haltcond, &haltmutex);
+            while (stopflags & SF_STOPPED) {
+                pthread_cond_wait (&stopcond, &stopmutex);
             }
 
             // allz we can do from here is reset everything
@@ -872,41 +869,42 @@ static void clraccumlink ()
     gpio->halfcycle (shadow.aluadd ());
 }
 
-// if using GUI or scripts, flag to halt the processor at the end of this cycle
+// if using GUI or scripts, flag to stop the processor at the end of this cycle
 // otherwise, print out registers and exit
-void haltordie (char const *reason)
+void stopordie (char const *reason)
 {
     if (guimode | pidpmode | scriptmode) {
         bool sigint = ctl_lock ();
-        if (haltreason[0] == 0) {
-            haltreason = reason;
+        if (stopreason[0] == 0) {
+            stopreason = reason;
         }
-        haltflags = HF_HALTIT;
+        stopflags = SF_STOPIT;
         ctl_unlock (sigint);
     } else {
+        fprintf (stderr, "stopordie: %s\n", reason);
         dumpregs ();
         exit (2);
     }
 }
 
-// check to see if script.cc or GUI.java is requesting halt
+// check to see if script.cc or GUI.java is requesting stop
 // call at end of cycle with clock still low
 // call just before taking gpio sample at end of cycle
-// ...in case of halt where GUI alters what the sample would get
+// ...in case of stop where GUI alters what the sample would get
 // returns with clock still low at the end of cycle
 // throws ResetProcessorException if script/GUI is requesting a reset
 //  output:
-//   returns true: did halt, now resumed
-//          false: did not halt
-static bool haltcheck ()
+//   returns true: did stop, now resumed
+//          false: did not stop
+static bool stopcheck ()
 {
-    bool didhalt = false;
-    if (haltflags & HF_HALTIT) {
+    bool didstop = false;
+    if (stopflags & SF_STOPIT) {
         bool resetit = false;
         bool sigint = ctl_lock ();
 
-        // re-check haltflags now that we have mutex
-        if (haltflags & HF_HALTIT) {
+        // re-check stopflags now that we have mutex
+        if (stopflags & SF_STOPIT) {
 
             // make sure clock is low
             uint32_t sample = gpio->readgpio ();
@@ -917,17 +915,17 @@ static bool haltcheck ()
                 shadow.r.ir = lastreaddata;
             }
 
-            // tell script.cc or GUI.java that we have halted
-            haltflags |= HF_HALTED;
-            pthread_cond_broadcast (&haltcond2);
+            // tell script.cc or GUI.java that we have stopped
+            stopflags |= SF_STOPPED;
+            pthread_cond_broadcast (&stopcond2);
 
             // wait for script.cc or GUI.java to tell us to resume
-            while (haltflags & HF_HALTED) {
-                pthread_cond_wait (&haltcond, &haltmutex);
+            while (stopflags & SF_STOPPED) {
+                pthread_cond_wait (&stopcond, &stopmutex);
             }
 
             // maybe script or GUI is resetting us
-            if (haltflags & HF_RESETIT) {
+            if (stopflags & SF_RESETIT) {
                 resetit = true;
             }
 
@@ -937,7 +935,7 @@ static bool haltcheck ()
                 ASSERT (! (sample & G_CLOCK));
             }
 
-            didhalt = true;
+            didstop = true;
         }
 
         ctl_unlock (sigint);
@@ -947,7 +945,7 @@ static bool haltcheck ()
             throw rpe;
         }
     }
-    return didhalt;
+    return didstop;
 }
 
 // group 2 with OSR and/or HLT gets passed to raspi like an i/o instruction
@@ -1010,13 +1008,13 @@ uint16_t readswitches (char const *swvar)
     return swreg;
 }
 
-// processor has encountered an HALT instruction
+// processor has encountered an HLT instruction
 // decide what to do
 // called and returns in middle of IOT2 with clock still high
 void haltinstr (char const *fmt, ...)
 {
     bool sigint = ctl_lock ();
-    if ((intreqmask == 0) && ! (haltflags & HF_HALTIT)) {
+    if ((intreqmask == 0) && ! (stopflags & SF_STOPIT)) {
 
         // -haltprint means print a message
         if (haltprint) {
@@ -1026,17 +1024,17 @@ void haltinstr (char const *fmt, ...)
             va_end (ap);
         }
 
-        // -haltstop means print a message and exit
+        // -haltstop means print a message and stop
         if (haltstop) {
             ctl_unlock (sigint);
-            haltordie ("HALTSTOP");
+            stopordie ("HALTSTOP");
             return;
         }
 
         // wait for an interrupt request
         if (! randmem && ! haltcont) {
             do haltwait ();
-            while ((intreqmask == 0) && ! (haltflags & HF_HALTIT));
+            while ((intreqmask == 0) && ! (stopflags & SF_STOPIT));
         }
     }
     ctl_unlock (sigint);
@@ -1084,7 +1082,7 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     pthread_mutex_unlock (lock);
 
     bool sigint = ctl_lock ();
-    if (! (haltflags & HF_HALTIT) && (! memext.intenabd () || (intreqmask == 0))) {
+    if (! (stopflags & SF_STOPIT) && (! memext.intenabd () || (intreqmask == 0))) {
         if (setintreqcalled) setintreqcalled = false;
         else haltwait ();
     }
@@ -1096,7 +1094,7 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 
 // called in main thread to wait to be woken with haltwake()
 // used as part of HLT instruction or IOSKIP/JMP.-1 combination
-// called and returns with haltmutex locked
+// called and returns with stopmutex locked
 // called and returns in middle of IOT2 with clock still high
 static void haltwait ()
 {
@@ -1107,10 +1105,12 @@ static void haltwait ()
     // if tubesaver not enabled, block until some device thread or script or gui wakes us
     waitingforinterrupt = true;
     if (! tubesaver) {
-        int rc = pthread_cond_wait (&haltcond, &haltmutex);
-        if (rc != 0) ABORT ();
+        while (! wakefromhalt) {
+            int rc = pthread_cond_wait (&haltcond, &stopmutex);
+            if (rc != 0) ABORT ();
+        }
     } else if (! wakefromhalt) {
-        pthread_mutex_unlock (&haltmutex);
+        pthread_mutex_unlock (&stopmutex);
 
         // tubesaver enabled, feed random instructions and data to tubes
         // ...until some device thread or script or gui wakes us
@@ -1210,7 +1210,7 @@ static void haltwait ()
 
         // caller will write IOS/LINK/AC as the result of original HLT/IOT processing
 
-        pthread_mutex_lock (&haltmutex);
+        pthread_mutex_lock (&stopmutex);
     }
     waitingforinterrupt = false;
     wakefromhalt = false;
@@ -1222,7 +1222,7 @@ static uint32_t ts_senddata (uint32_t intrq, uint16_t data)
 {
     gpio->writegpio (true, data * G_DATA0 | intrq);
     gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);    // compensate for haltwait loop simpler than main loop
+    gpio->halfcycle (false);    // compensate for haltwait tubesaver loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
     gpio->writegpio (true, data * G_DATA0 | intrq | G_CLOCK);
@@ -1236,7 +1236,7 @@ static uint32_t ts_recvdata (uint32_t intrq)
 {
     gpio->writegpio (false, intrq);
     gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);    // compensate for haltwait loop simpler than main loop
+    gpio->halfcycle (false);    // compensate for haltwait tubesaver loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
     gpio->writegpio (false, intrq | G_CLOCK);
@@ -1256,7 +1256,7 @@ void setintreqmask (uint16_t mask)
 }
 
 // clear the interrupt request bits
-// optionally wake from HLT or optimized IOSKIP/JMP.-1
+// optionally wake from optimized IOSKIP/JMP.-1
 void clrintreqmask (uint16_t mask, bool wake)
 {
     bool sigint = ctl_lock ();
@@ -1278,6 +1278,13 @@ void haltwake ()
 {
     wakefromhalt = true;
     int rc = pthread_cond_broadcast (&haltcond);
+    if (rc != 0) ABORT ();
+}
+
+// wake from stop state - caller has already cleared SF_STOPPED
+void stopwake ()
+{
+    int rc = pthread_cond_broadcast (&stopcond);
     if (rc != 0) ABORT ();
 }
 
@@ -1381,8 +1388,8 @@ static void *mintimesthread (void *dummy)
 //  retry = true: this is a retry call for the cycle
 //         false: this is the first call for the cycle
 // output:
-//  returns true: did halt, retry cycle
-//         false: did not halt, cycle complete
+//  returns true: did stop, retry cycle
+//         false: did not stop, cycle complete
 static bool senddata (uint16_t data, bool retry)
 {
     ASSERT (IO_DATA == 007777);
@@ -1398,9 +1405,9 @@ static bool senddata (uint16_t data, bool retry)
     // let data soak into cpu (giving it a setup time)
     gpio->halfcycle (shadow.aluadd ());
 
-    // maybe GUI or script is requesting halt at end of cycle
+    // maybe GUI or script is requesting stop at end of cycle
     // don't complete cycle, maybe gui/script modified memory so we have something different to send
-    if (! retry && haltcheck ()) return true;
+    if (! retry && stopcheck ()) return true;
 
     // tell cpu data is ready to be read by raising the clock
     // hold data steady and keep sending data to cpu so it will be clocked in correctly
@@ -1437,8 +1444,8 @@ static uint16_t recvdata (void)
     gpio->writegpio (false, syncintreq);
     gpio->halfcycle (shadow.aluadd ());
 
-    // maybe GUI or script is requesting halt at end of cycle
-    haltcheck ();
+    // maybe GUI or script is requesting stop at end of cycle
+    stopcheck ();
 
     // read data being sent by cpu just before raising clock
     // then raise clock and wait a half cycle to be at same timing as when called
@@ -1461,19 +1468,19 @@ static void nullsighand (int signum)
 // signal that terminates process, do exit() so exithandler() gets called
 static void sighandler (int signum)
 {
-    // if control-C with -script, halt the processor getting clocked
+    // if control-C with -script, stop the processor getting clocked
     // this will eventually wake script out of 'wait' command if it is in one
-    // ...when it sees HF_HALTED set
+    // ...when it sees SF_STOPPED set
     // also set a flag for scripts to test and don't allow unacknowleged control-C
     if ((signum == SIGINT) && scriptmode && ! ctrlcflag) {
         int ignored __attribute__ ((unused)) = write (0, "\n", 1); // after the "^C"
         ctrlcflag = true;
         bool sigint = ctl_lock ();
-        if (haltreason[0] == 0) {
-            haltreason = "CONTROL_C";
+        if (stopreason[0] == 0) {
+            stopreason = "CONTROL_C";
         }
-        haltflags |= HF_HALTIT;
-        haltwake ();
+        stopflags |= SF_STOPIT;
+        stopwake ();
         ctl_unlock (sigint);
         return;
     }
