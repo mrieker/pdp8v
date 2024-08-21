@@ -1171,21 +1171,26 @@ static void haltwait ()
             // maybe stop requesting interrupt
             if (sample & G_IAK) intrq = 0;
 
-            // keep feeding random stuff until woken at FETCH2
-        } while (! wakefromhalt || (shadow.r.state != Shadow::FETCH2));
+            // keep feeding random stuff until woken
+        } while (! wakefromhalt);
 
         // woken from wait, restore state
-        // in middle of FETCH2 with clock still high
 
-        // restore program counter with JMP to point to beginning of original halting HLT or IOT instruction
-        if (shadow.r.pc != savedpc) {
+        if (shadow.r.state != Shadow::FETCH2) {
+            shadow.reset ();                        // we don't clock at end of current state
+            gpio->writegpio (false, G_RESET);       // send RESET (and drop CLOCK)
+            gpio->halfcycle (shadow.aluadd ());     // let the reset soak into the tubes
+                                                    // now halfway through FETCH1 cycle
+            ts_recvdata (0);                        // now halfway through FETCH2 cycle with clock still high
+            ASSERT (shadow.r.state == Shadow::FETCH2);
+        }
+
+        // restore program counter with JMP to point to beginning of original HLT or IOT instruction
+        {
             uint16_t jmpop;
             if ((savedpc & 07600) == 0) {
                 // JMP page 0
                 jmpop = 05000 + savedpc;
-            } else if (((shadow.r.pc ^ savedpc) & 07600) == 0) {
-                // JMP same page
-                jmpop = 05200 + (savedpc & 00177);
             } else {
                 // JMPI 0/savedpc
                 ts_senddata (false, 05400);     // mid FETCH2 -> mid DEFER1

@@ -78,7 +78,6 @@ static uint64_t getnowus ()
 
 static bool stoponcheck (TTYStopOn *const stopon, char prchar);
 
-
 // iobase by default is 003
 // typical alternates are 040, 042, 044, 046
 IODevTTY::IODevTTY (uint16_t iobase)
@@ -192,54 +191,6 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         return new SCRetErr ("iodev %s eight [0/1]", iodevname);
     }
 
-    // stopon              - return list of current stopons
-    // stopon ""           - clear list of stopons
-    // stopon <string> ... - set list of stopons
-    if (strcmp (argv[0], "stopon") == 0) {
-
-        // no args, return list of existing stopon strings
-        if (argc == 1) {
-            pthread_mutex_lock (&this->lock);
-            int i = 0;
-            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
-                i ++;
-            }
-            SCRetList *scretlist = new SCRetList (i);
-            i = 0;
-            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
-                scretlist->elems[i++] = new SCRetStr ("%d:%s", stopon->hits, stopon->buff);
-            }
-            pthread_mutex_unlock (&this->lock);
-            return scretlist;
-        }
-
-        // args, clear existing list, then make new list from non-null strings
-        pthread_mutex_lock (&this->lock);
-        this->stoponsfree ();
-        TTYStopOn **laststopon = &this->stopons;
-        for (int i = 1; i < argc; i ++) {
-            int len = strlen (argv[i]);
-            if (len > 0) {
-                int dnlen = strlen (this->iodevname);
-                TTYStopOn *stopon = (TTYStopOn *) malloc (sizeof *stopon + dnlen + 10 + len);
-                if (stopon == NULL) ABORT ();
-                *laststopon  = stopon;
-                laststopon   = &stopon->next;
-                stopon->hits = 0;
-                // set up stopon->reas string: <iodevname> stopon <stoponstring>
-                // then/and point stopon->buff to the <stoponstring> at the end
-                memcpy (stopon->reas, this->iodevname, dnlen);
-                memcpy (stopon->reas + dnlen, " stopon ", 8);
-                stopon->buff = stopon->reas + dnlen + 8;
-                memcpy (stopon->buff, argv[i], len + 1);
-            }
-        }
-        *laststopon = NULL;
-        pthread_mutex_unlock (&this->lock);
-
-        return NULL;
-    }
-
     if (strcmp (argv[0], "help") == 0) {
         puts ("");
         puts ("valid sub-commands:");
@@ -247,9 +198,6 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("  debug               - see if debug is enabled");
         puts ("  debug 0/1/2         - set debug printing");
         puts ("  eight [0/1]         - allow all 8 bits to pass through");
-        puts ("  stopon              - return list of defined stopons");
-        puts ("  stopon \"\"           - clear stopon strings");
-        puts ("  stopon <string> ... - set list of strings to stop on");
         puts ("  inject              - return remaining injection");
         puts ("  inject <string>     - set up keyboard injection");
         puts ("  lcucin [0/1]        - lowercase->uppercase on input");
@@ -262,6 +210,9 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("  speed               - see what simulated chars-per-second rate is");
         puts ("  speed <charspersec> - set simulated chars-per-second rate");
         puts ("                        allowed range 1..1000000");
+        puts ("  stopon              - return list of defined stopons");
+        puts ("  stopon \"\"           - clear stopon strings");
+        puts ("  stopon <string> ... - set list of strings to stop on");
         puts ("  telnet <tcpport>    - start listening for inbound telnet connection");
         puts ("                        allowed range 1..65535");
         puts ("");
@@ -368,6 +319,54 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         }
 
         return new SCRetErr ("iodev %s speed [<charpersec>]", iodevname);
+    }
+
+    // stopon              - return list of current stopons
+    // stopon ""           - clear list of stopons
+    // stopon <string> ... - set list of stopons
+    if (strcmp (argv[0], "stopon") == 0) {
+
+        // no args, return list of existing stopon strings
+        if (argc == 1) {
+            pthread_mutex_lock (&this->lock);
+            int i = 0;
+            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
+                i ++;
+            }
+            SCRetList *scretlist = new SCRetList (i);
+            i = 0;
+            for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
+                scretlist->elems[i++] = new SCRetStr ("%d:%s", stopon->hits, stopon->buff);
+            }
+            pthread_mutex_unlock (&this->lock);
+            return scretlist;
+        }
+
+        // args, clear existing list, then make new list from non-null strings
+        pthread_mutex_lock (&this->lock);
+        this->stoponsfree ();
+        TTYStopOn **laststopon = &this->stopons;
+        for (int i = 1; i < argc; i ++) {
+            int len = strlen (argv[i]);
+            if (len > 0) {
+                int dnlen = strlen (this->iodevname);
+                TTYStopOn *stopon = (TTYStopOn *) malloc (sizeof *stopon + dnlen + 10 + len);
+                if (stopon == NULL) ABORT ();
+                *laststopon  = stopon;
+                laststopon   = &stopon->next;
+                stopon->hits = 0;
+                // set up stopon->reas string: <iodevname> stopon <stoponstring>
+                // then/and point stopon->buff to the <stoponstring> at the end
+                memcpy (stopon->reas, this->iodevname, dnlen);
+                memcpy (stopon->reas + dnlen, " stopon ", 8);
+                stopon->buff = stopon->reas + dnlen + 8;
+                memcpy (stopon->buff, argv[i], len + 1);
+            }
+        }
+        *laststopon = NULL;
+        pthread_mutex_unlock (&this->lock);
+
+        return NULL;
     }
 
     // telnet <tcpport>

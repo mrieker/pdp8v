@@ -128,7 +128,7 @@ static void *pidpthread (void *dummy)
             ((st == Shadow::State::INTAK1) ? (1 << COL2) : 0) |     // BREAK (we use it for INTAK1 cycle)
             (memext.intenabd ()  ? (1 << COL3) : 0) |               // ION
             (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
-            (ctl_isstopped ()     ? 0 : (1 << COL5)) |               // RUN
+            (ctl_isstopped ()    ? 0 : (1 << COL5)) |               // RUN
             ledscram (extarith.stepcount << 2);                     // SC
 
         uint32_t lr8 =
