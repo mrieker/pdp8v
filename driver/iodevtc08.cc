@@ -987,13 +987,13 @@ bool IODevTC08::stepxfer (IODevTC08Drive *drive)
 // dump block buffer
 void IODevTC08::dumpbuf (IODevTC08Drive *drive, char const *label, uint16_t const *buff, int nwords)
 {
-    printf ("IODevTC08::dumpbuf: %o  %5s %s  block %04o\n", (int) (drive - shm->drives), label, (REVERS ? "REV" : "FWD"), drive->tapepos / 4);
+    fprintf (stderr, "IODevTC08::dumpbuf: %o  %5s %s  block %04o\n", (int) (drive - shm->drives), label, (REVERS ? "REV" : "FWD"), drive->tapepos / 4);
     for (int i = 0; i < nwords; i += 16) {
-        printf ("  %04o:", i);
+        fprintf (stderr, "  %04o:", i);
         for (int j = 0; (j < 16) && (i + j < nwords); j ++) {
-            printf (" %04o", buff[i+j]);
+            fprintf (stderr, " %04o", buff[i+j]);
         }
-        printf ("\n");
+        fprintf (stderr, "\n");
     }
 }
 

@@ -57,6 +57,7 @@ private:
     char ttydevname[8];
     FILE *logfile;
     int debug;
+    int injeko;         // number of injected chars that have been echoed
     int injidx;         // keyboard injection string index
     int kbfd;           // -1: kb shut down or being shut down; else: fd for keyboard i/o
     int prfd;           // -1: pr shut down or being shut down; else: fd for printer i/o
@@ -76,6 +77,7 @@ private:
     uint8_t prbuff;
     uint8_t mask8;
 
+    pthread_cond_t kbcond;
     pthread_cond_t prcond;
     pthread_mutex_t lock;
 

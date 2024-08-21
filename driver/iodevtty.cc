@@ -120,6 +120,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     }
 
     // initialize struct elements
+    pthread_cond_init (&this->kbcond, NULL);
     pthread_cond_init (&this->prcond, NULL);
     pthread_mutex_init (&this->lock, NULL);
     this->intenab  = false;
@@ -140,6 +141,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
     this->prtid    =  0;
     this->stopons  = NULL;
     this->injbuf   = NULL;
+    this->injeko   = 0;
     this->injidx   = 0;
     this->eight    = false;
     this->lcucin   = false;
@@ -150,6 +152,7 @@ IODevTTY::IODevTTY (uint16_t iobase)
 
 IODevTTY::~IODevTTY ()
 {
+
     pthread_mutex_lock (&this->lock);
     stopthreads ();
     if (this->logfile != NULL) {
@@ -195,26 +198,27 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("valid sub-commands:");
         puts ("");
-        puts ("  debug               - see if debug is enabled");
-        puts ("  debug 0/1/2         - set debug printing");
-        puts ("  eight [0/1]         - allow all 8 bits to pass through");
-        puts ("  inject              - return remaining injection");
-        puts ("  inject <string>     - set up keyboard injection");
-        puts ("  lcucin [0/1]        - lowercase->uppercase on input");
-        puts ("  logfile             - get name of current logfile or null");
-        puts ("  logfile -           - turn logging off");
-        puts ("  logfile <filename>  - log output to the file");
-        puts ("  pipes <kb> [<pr>]   - use named pipes or /dev/pty/... for i/o");
-        puts ("                        <pr> defaults to same as <kb>");
-        puts ("                        dash (-) or dash dash (- -) means stdin and stdout");
-        puts ("  speed               - see what simulated chars-per-second rate is");
-        puts ("  speed <charspersec> - set simulated chars-per-second rate");
-        puts ("                        allowed range 1..1000000");
-        puts ("  stopon              - return list of defined stopons");
-        puts ("  stopon \"\"           - clear stopon strings");
-        puts ("  stopon <string> ... - set list of strings to stop on");
-        puts ("  telnet <tcpport>    - start listening for inbound telnet connection");
-        puts ("                        allowed range 1..65535");
+        puts ("  debug                   - see if debug is enabled");
+        puts ("  debug 0/1/2             - set debug printing");
+        puts ("  eight [0/1]             - allow all 8 bits to pass through");
+        puts ("  inject                  - return remaining injection");
+        puts ("  inject [-echo] <string> - set up keyboard injection");
+        puts ("                            -echo: wait for each char echoed");
+        puts ("  lcucin [0/1]            - lowercase->uppercase on input");
+        puts ("  logfile                 - get name of current logfile or null");
+        puts ("  logfile -               - turn logging off");
+        puts ("  logfile <filename>      - log output to the file");
+        puts ("  pipes <kb> [<pr>]       - use named pipes or /dev/pty/... for i/o");
+        puts ("                            <pr> defaults to same as <kb>");
+        puts ("                            dash (-) or dash dash (- -) means stdin and stdout");
+        puts ("  speed                   - see what simulated chars-per-second rate is");
+        puts ("  speed <charspersec>     - set simulated chars-per-second rate");
+        puts ("                            allowed range 1..1000000");
+        puts ("  stopon                  - return list of defined stopons");
+        puts ("  stopon \"\"               - clear stopon strings");
+        puts ("  stopon <string> ...     - set list of strings to stop on");
+        puts ("  telnet <tcpport>        - start listening for inbound telnet connection");
+        puts ("                            allowed range 1..65535");
         puts ("");
         return NULL;
     }
@@ -225,20 +229,68 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         if (argc == 1) {
             SCRet *scret = NULL;
             pthread_mutex_lock (&this->lock);
-            if (this->injbuf != NULL) scret = new SCRetStr ("%s", this->injbuf + this->injidx);
+            if (this->injbuf != NULL) {
+                int done = (this->injeko < this->injidx) ? this->injeko : this->injidx;
+                scret = new SCRetStr ("%s", this->injbuf + done);
+            }
             pthread_mutex_unlock (&this->lock);
             return scret;
         }
 
-        if (argc == 2) {
+        if (argc >= 2) {
+            bool echo = false;
+            char const *str = NULL;
+            for (int i = 0; ++ i < argc;) {
+                if (strcmp (argv[i], "-echo") == 0) {
+                    echo = true;
+                    continue;
+                }
+                if (argv[i][0] == '-') return new SCRetErr ("bad option %s", argv[i]);
+                if (str != NULL) return new SCRetErr ("extra arg %s", argv[i]);
+                str = argv[i];
+            }
+            if (str == NULL) return new SCRetErr ("missing string");
+
             pthread_mutex_lock (&this->lock);
+
+            // maybe injection thread is running and still outputting an old injection
             bool wasrunning = (this->injbuf != NULL);
+
+            // if so, free off the old injection
             if (wasrunning) free (this->injbuf);
+
+            // in any case, set up new injection
+            this->injeko = echo ? 0 : strlen (str);
             this->injidx = 0;
-            this->injbuf = strdup (argv[1]);
+            this->injbuf = strdup (str);
             if (this->injbuf == NULL) ABORT ();
-            pthread_mutex_unlock (&this->lock);
+
+            // if it wasn't running, make sure no other thread is waiting for old injection thread to finish exiting
+            // ... then tell other threads we are waiting for old injection thread to finish exiting
             if (! wasrunning) {
+                while (this->stopping) {
+                    pthread_cond_wait (&this->prcond, &this->lock);
+                }
+                this->stopping = true;
+            }
+            pthread_mutex_unlock (&this->lock);
+
+            // if it wasn't running,
+            if (! wasrunning) {
+
+                // wait for old thread to finish exiting
+                if (this->intid != 0) {
+                    pthread_join (this->intid, NULL);
+                    this->intid = 0;
+                }
+
+                // wake other threads waiting for us to finish off old injection thread
+                pthread_mutex_lock (&this->lock);
+                this->stopping = false;
+                pthread_cond_broadcast (&this->prcond);
+                pthread_mutex_unlock (&this->lock);
+
+                // start up a new injection thread
                 int rc = createthread (&this->intid, inthreadwrap, this);
                 if (rc != 0) ABORT ();
             }
@@ -474,7 +526,7 @@ SCRetErr *IODevTTY::openpipes (char const *kbname, char const *prname)
     return NULL;
 }
 
-// stop the keyboard and printer threads and close fds
+// stop the injection, keyboard and printer threads and close fds
 // call with mutex locked, returns with mutex locked
 void IODevTTY::stopthreads ()
 {
@@ -490,6 +542,8 @@ void IODevTTY::stopthreads ()
         if (this->injbuf != NULL) {
             free (this->injbuf);
             this->injbuf = NULL;
+            this->injeko = 0;
+            this->injidx = 0;
         }
 
         // if we had a keyboard set up, restore its attributes
@@ -519,6 +573,9 @@ void IODevTTY::stopthreads ()
         if ((tlfd >= 0) && (dup2 (nullfd, tlfd) < 0)) ABORT ();
 
         close (nullfd);
+
+        // in case inthread() or kbthread() is waiting for kbflag to clear
+        pthread_cond_broadcast (&this->kbcond);
 
         // in case prthread() is blocked waiting for processor to print something
         pthread_cond_broadcast (&this->prcond);
@@ -719,6 +776,14 @@ void IODevTTY::kbthreadlk ()
             if ((rc < 0) && (en != EINTR)) ABORT ();
         }
 
+        // if not reading from a tty, make sure processor is ready to accept char
+        if (isatty (this->kbfd) <= 0) {
+            while (this->kbflag) {
+                if (this->kbfd < 0) return;
+                pthread_cond_wait (&this->kbcond, &this->lock);
+            }
+        }
+
         // we know a char is available (or eof), read it
         {
             int rc = read (this->kbfd, &this->kbbuff, 1);
@@ -758,11 +823,18 @@ void IODevTTY::inthread ()
 
         // pass next char to processor, but stop if none
         pthread_mutex_lock (&this->lock);
-        if (this->injbuf == NULL) break;
+        while (true) {
+            if (this->injbuf == NULL) goto done;
+            // kbbuff must be empty and echoing must be all caught up
+            if (! this->kbflag && (this->injeko >= this->injidx)) break;
+            pthread_cond_wait (&this->kbcond, &this->lock);
+        }
         this->kbbuff = this->injbuf[this->injidx++];
         if (this->kbbuff == 0) {
             free (this->injbuf);
             this->injbuf = NULL;
+            this->injeko = 0;
+            this->injidx = 0;
             break;
         }
         this->gotkbchar ();
@@ -771,7 +843,7 @@ void IODevTTY::inthread ()
         // don't inject another until CPS delay
         usleep (this->usperchr * 2);
     }
-
+done:;
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -786,7 +858,7 @@ void IODevTTY::gotkbchar ()
 
     if (this->debug > 0) {
         uint8_t kbchar = ((this->kbbuff < 0240) | (this->kbbuff > 0376)) ? '.' : (this->kbbuff & 0177);
-        printf ("IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
+        fprintf (stderr, "IODevTTY::kbthread: kbbuff=%03o <%c>\n", this->kbbuff, kbchar);
     }
 
     // we have a character now, maybe request interrupt
@@ -845,17 +917,19 @@ void IODevTTY::prthread ()
             if ((rc == 0) || (en != EINTR)) ABORT ();
         }
 
+        uint8_t prbyte = this->prbuff;
         if (this->debug > 0) {
-            uint8_t prchar = ((this->prbuff < 0240) | (this->prbuff > 0376)) ? '.' : (this->prbuff & 0177);
-            printf ("IODevTTY::prthread: prbuff=%03o <%c>\n", this->prbuff, prchar);
+            uint8_t prchar = prbyte & 0177;
+            if ((prchar < 0040) | (prchar > 0176)) prchar = '.';
+            fprintf (stderr, "IODevTTY::prthread: prbuff=%03o <%c>\n", prbyte, prchar);
         }
 
         // strip top bit off for printing
-        if (! this->eight) this->prbuff &= 0177;
+        if (! this->eight) prbyte &= 0177;
 
         // we know there is room, write it
-        if (this->logfile != NULL) fputc (this->prbuff, this->logfile);
-        int rc = write (this->prfd, &this->prbuff, 1);
+        if (this->logfile != NULL) fputc (prbyte, this->logfile);
+        int rc = write (this->prfd, &prbyte, 1);
         if (rc <= 0) {
             if (rc == 0) fprintf (stderr, "IODevTTY::prthread: %02o eof writing to link\n", iobasem3 + 3);
               else fprintf (stderr, "IODevTTY::prthread: %02o error writing to link: %m\n", iobasem3 + 3);
@@ -866,10 +940,16 @@ void IODevTTY::prthread ()
 
         nextwriteus = getnowus () + this->usperchr;
 
+        // check for echo of keyboard injection
+        if ((this->injeko < this->injidx) && (this->injbuf[this->injeko] == prbyte)) {
+            this->injeko ++;
+            pthread_cond_broadcast (&this->kbcond);
+        }
+
         // check any stopons, flag processor to stop if any triggered
         bool first = true;
         for (TTYStopOn *stopon = this->stopons; stopon != NULL; stopon = stopon->next) {
-            if (stoponcheck (stopon, this->prbuff) && first) {
+            if (stoponcheck (stopon, prbyte) && first) {
                 ctl_stopfor (stopon->reas);
                 first = false;
             }
@@ -987,6 +1067,7 @@ void IODevTTY::ioreset ()
     this->prflag  = false;
     this->prfull  = false;
     this->updintreqlk ();
+    pthread_cond_broadcast (&this->kbcond);
     pthread_mutex_unlock (&this->lock);
 }
 
@@ -1016,6 +1097,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
         case 06030: {
             this->kbflag = false;
             this->updintreqlk ();
+            pthread_cond_broadcast (&this->kbcond);
             break;
         }
 
@@ -1035,6 +1117,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
         case 06032: {
             this->kbflag = false;
             this->updintreqlk ();
+            pthread_cond_broadcast (&this->kbcond);
             input &= IO_LINK;
             break;
         }
@@ -1059,6 +1142,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
             input |= this->kbbuff;
             this->kbflag = false;
             this->updintreqlk ();
+            pthread_cond_broadcast (&this->kbcond);
             break;
         }
 
@@ -1133,8 +1217,8 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
                 }
             }
 
-            if (desc != NULL) printf ("IODevTTY::ioinstr: %05o  %05o -> %05o  %s\n", pc, oldinput, input, desc);
-                     else printf ("IODevTTY::ioinstr: %05o  %05o -> %05o  %04o\n", pc, oldinput, input, opcode);
+            if (desc != NULL) fprintf (stderr, "IODevTTY::ioinstr: %05o  %05o -> %05o  %s\n", pc, oldinput, input, desc);
+                     else fprintf (stderr, "IODevTTY::ioinstr: %05o  %05o -> %05o  %04o\n", pc, oldinput, input, opcode);
         }
     }
 
