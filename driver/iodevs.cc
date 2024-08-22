@@ -42,8 +42,8 @@
 //  67      card reader / synchronous modem
 //  70..74  automatic mag tape
 //  74      rk8-je
-//  75      unused << 73,74,75 = RK8 (pdp-8 p 365 v 7-143)
-//  76..77  dectape
+//  75      unused
+//  76..77  dectape tc08
 
 #include <stdio.h>
 
@@ -51,7 +51,6 @@
 #include "iodevs.h"
 #include "iodevtc08.h"
 #include "iodevptape.h"
-#include "iodevrk8.h"
 #include "iodevrk8je.h"
 #include "iodevrtc.h"
 #include "iodevtty.h"
@@ -160,9 +159,6 @@ static void initiodevs ()
             iodevs[046] = &iodevtty46;
             iodevs[047] = &iodevtty46;
             iodevs[074] = &iodevrk8je;
-            //iodevs[073] = &iodevrk8;
-            //iodevs[074] = &iodevrk8;
-            //iodevs[075] = &iodevrk8;
             iodevs[076] = &iodevtc08;
             iodevs[077] = &iodevtc08;
         }

@@ -39,7 +39,6 @@ lib.$(MACH).a: \
 		gpiolib.$(MACH).o \
 		iodevs.$(MACH).o \
 		iodevptape.$(MACH).o \
-		iodevrk8.$(MACH).o \
 		iodevrk8je.$(MACH).o \
 		iodevrtc.$(MACH).o \
 		iodevtc08.$(MACH).o \
