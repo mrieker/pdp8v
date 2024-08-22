@@ -1,15 +1,11 @@
-loadbin bins/8E-D0AB.bin
+loadbin bins/MAINDEC-08-DHMCA-b-pb.bin
 reset 0200
-swreg 07777
+swreg 00007
 iodev tty pipes /dev/null -
 iodev tty debug 1
 option set haltstop 1
 option set mintimes 1
-run ; wait
-if {([cpu get pc] != 00147)} {
-    puts "bad pc [cpu get]"
-    exit
-}
+option set jmpdotstop 1
 puts "starting..."
 run
 wait

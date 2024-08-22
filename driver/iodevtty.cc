@@ -199,7 +199,7 @@ SCRet *IODevTTY::scriptcmd (int argc, char const *const *argv)
         puts ("valid sub-commands:");
         puts ("");
         puts ("  debug                   - see if debug is enabled");
-        puts ("  debug 0/1/2             - set debug printing");
+        puts ("  debug 0..3              - set debug printing");
         puts ("  eight [0/1]             - allow all 8 bits to pass through");
         puts ("  inject                  - return remaining injection");
         puts ("  inject [-echo] <string> - set up keyboard injection");
@@ -540,6 +540,7 @@ void IODevTTY::stopthreads ()
 
         // if injection thread running, tell it to stop
         if (this->injbuf != NULL) {
+            if (this->debug > 2) fprintf (stderr, "IODevTTY::stopthreads: stopping injection\n");
             free (this->injbuf);
             this->injbuf = NULL;
             this->injeko = 0;
@@ -819,6 +820,7 @@ void *IODevTTY::inthreadwrap (void *zhis)
 
 void IODevTTY::inthread ()
 {
+    if (this->debug > 2) fprintf (stderr, "IODevTTY::inthread: starting\n");
     while (true) {
 
         // pass next char to processor, but stop if none
@@ -826,10 +828,12 @@ void IODevTTY::inthread ()
         while (true) {
             if (this->injbuf == NULL) goto done;
             // kbbuff must be empty and echoing must be all caught up
+            if (this->debug > 2) fprintf (stderr, "IODevTTY::inthread: kbflag=%d injeko=%d injidx=%d\n", this->kbflag, this->injeko, this->injidx);
             if (! this->kbflag && (this->injeko >= this->injidx)) break;
             pthread_cond_wait (&this->kbcond, &this->lock);
         }
         this->kbbuff = this->injbuf[this->injidx++];
+        if (this->debug > 2) fprintf (stderr, "IODevTTY::inthread: kbbuff=%02X\n", this->kbbuff);
         if (this->kbbuff == 0) {
             free (this->injbuf);
             this->injbuf = NULL;
@@ -845,6 +849,7 @@ void IODevTTY::inthread ()
     }
 done:;
     pthread_mutex_unlock (&this->lock);
+    if (this->debug > 2) fprintf (stderr, "IODevTTY::inthread: finished\n");
 }
 
 // got kb char in kbbuff, tell processor to get it
@@ -918,14 +923,15 @@ void IODevTTY::prthread ()
         }
 
         uint8_t prbyte = this->prbuff;
-        if (this->debug > 0) {
-            uint8_t prchar = prbyte & 0177;
-            if ((prchar < 0040) | (prchar > 0176)) prchar = '.';
-            fprintf (stderr, "IODevTTY::prthread: prbuff=%03o <%c>\n", prbyte, prchar);
-        }
 
         // strip top bit off for printing
         if (! this->eight) prbyte &= 0177;
+
+        if (this->debug > 0) {
+            uint8_t prchar = prbyte & 0177;
+            if ((prchar < 0040) | (prchar > 0176)) prchar = '.';
+            fprintf (stderr, "IODevTTY::prthread: prbyte=%03o <%c>\n", prbyte, prchar);
+        }
 
         // we know there is room, write it
         if (this->logfile != NULL) fputc (prbyte, this->logfile);
@@ -941,9 +947,12 @@ void IODevTTY::prthread ()
         nextwriteus = getnowus () + this->usperchr;
 
         // check for echo of keyboard injection
-        if ((this->injeko < this->injidx) && (this->injbuf[this->injeko] == prbyte)) {
-            this->injeko ++;
-            pthread_cond_broadcast (&this->kbcond);
+        if (this->injeko < this->injidx) {
+            if (this->debug > 2) fprintf (stderr, "IODevTTY::prthread: injbuf[%d]=%03o\n", this->injeko, this->injbuf[this->injeko]);
+            if (this->injbuf[this->injeko] == prbyte) {
+                this->injeko ++;
+                pthread_cond_broadcast (&this->kbcond);
+            }
         }
 
         // check any stopons, flag processor to stop if any triggered
