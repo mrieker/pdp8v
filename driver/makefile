@@ -153,11 +153,11 @@ zynqtest.$(MACH): zynqtest.$(MACH).o $(LIBS)
 csrcmod_proc.cc: ../modules/whole.mod ../netgen/classes/NetGen.class FixCSrcModProc.class
 	rm -f csrcmod_proc.xx
 	../netgen/netgen.sh ../modules/whole.mod -gen proc -csource csrcmod_proc.xx
-	java FixCSrcModProc < csrcmod_proc.xx > csrcmod_proc.cc
+	CLASSPATH=. java FixCSrcModProc < csrcmod_proc.xx > csrcmod_proc.cc
 	rm -f csrcmod_proc.xx
 
 FixCSrcModProc.class: FixCSrcModProc.java
-	javac FixCSrcModProc.java
+	CLASSPATH=. javac FixCSrcModProc.java
 
 ../netgen/classes/NetGen.class:
 	cd ../netgen ; make
