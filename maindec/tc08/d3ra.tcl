@@ -1,8 +1,8 @@
 loadbin d3ra-pb
 option set haltstop 1
-iodev tc08 loadrw 1 tape1.dtp
-iodev tc08 loadrw 2 tape2.dtp
-iodev tc08 loadrw 3 tape3.dtp
+iodev tc08 loadrw 1 tape1.tu56
+iodev tc08 loadrw 2 tape2.tu56
+iodev tc08 loadrw 3 tape3.tu56
 iodev tc08 debug [getenv debug 0]
 iodev tty pipes /dev/null -
 iodev tty stopon "ADDRS INC\r\n"
@@ -20,3 +20,4 @@ run
 wait
 puts "d3ra: [stopreason]"
 puts "d3ra: [cpu get]"
+exit

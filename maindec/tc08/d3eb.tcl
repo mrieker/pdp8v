@@ -1,6 +1,6 @@
 loadbin d3eb-pb
 iodev tty pipes /dev/null -
-iodev tc08 loadrw 1 tape1.dtp
+iodev tc08 loadrw 1 tape1.tu56
 iodev tc08 debug [getenv debug 0]
 swreg 01074
 option set haltstop 1
@@ -11,4 +11,4 @@ if {[cpu get pc] != 00224} {
     exit
 }
 puts "starting..."
-run ; wait
+run ; wait ; exit
