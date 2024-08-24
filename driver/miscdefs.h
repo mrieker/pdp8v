@@ -54,6 +54,7 @@ extern bool lincenab;
 extern bool os8zap;
 extern bool quiet;
 extern bool randmem;
+extern bool resetio;
 extern bool scriptmode;
 extern bool skipopt;
 extern bool tubesaver;

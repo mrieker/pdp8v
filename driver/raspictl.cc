@@ -106,6 +106,7 @@ bool lincenab;
 bool os8zap;
 bool quiet;
 bool randmem;
+bool resetio;
 bool scriptmode;
 bool skipopt;
 bool tubesaver;
@@ -181,6 +182,7 @@ int main (int argc, char **argv)
     setlinebuf (stdout);
     thisismainthread = true;
 
+    resetio = true;
     startpc = 0xFFFFU;
     watchwrite = -1;
 
@@ -540,7 +542,7 @@ reseteverything:;
     gpio->doareset ();
 
     // reset things we keep state of
-    ioreset ();
+    if (resetio) ioreset ();
 
     // do any initialization cycles
     // ignore stopflags, GUI.java or script.cc is waiting for us to initialize
@@ -763,7 +765,7 @@ reseteverything:;
             ctl_unlock (sigint);
         }
     }
-    fprintf (stderr, "\nraspictl: resetting everything...\n");
+    if (resetio) fprintf (stderr, "\nraspictl: resetting everything...\n");
     goto reseteverything;
 }
 

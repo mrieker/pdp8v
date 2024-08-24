@@ -59,6 +59,7 @@
 
 #define COLMASK 0xFFF0
 
+static bool lastdepos;
 static bool running;
 static pthread_t threadid;
 static uint16_t dfifswitches;
@@ -71,6 +72,7 @@ static void deposbutton ();
 static void exambutton ();
 static void contbutton (uint32_t buttons);
 static void stopbutton ();
+static void loadpcma (uint16_t newpc, uint16_t newma);
 static bool atendofmajorstate ();
 
 static uint32_t ledscram (uint32_t data);
@@ -179,44 +181,58 @@ static void *pidpthread (void *dummy)
     return NULL;
 }
 
-// small computer handbook 1970 v12/p27
-
+// reset I/O then start at address in IF/PC
 static void startbutton (uint32_t buttons)
 {
     if (ctl_isstopped ()) {
-        ctl_reset (memext.iframe | shadow.r.pc);
+        ctl_reset (memext.iframe | shadow.r.pc, true);
         contbutton (buttons);
     }
 }
 
+// load switch register into MA and PC, then show contents of that location
 static void ldaddrbutton ()
 {
     if (ctl_isstopped ()) {
-        shadow.r.ma = shadow.r.pc = switchregister;
+        loadpcma (switchregister, switchregister);
         memext.dframe = (dfifswitches & 07000) << 3;
         memext.iframe = (dfifswitches & 00700) << 6;
         membuffer = memarray[memext.iframe|shadow.r.ma];
+        lastdepos = false;
     }
 }
 
+// if last button was deposit, increment MA
+// then in any case, deposit switch register into MA location
 static void deposbutton ()
 {
     if (ctl_isstopped ()) {
-        shadow.r.ma = shadow.r.pc;
-        memarray[memext.iframe|shadow.r.ma] = membuffer = switchregister;
-        shadow.r.pc = (shadow.r.pc + 1) & 07777;
+        uint16_t ma = shadow.r.ma;
+        if (lastdepos) {
+            ma = (ma + 1) & 07777;
+            loadpcma (shadow.r.pc, ma);
+        }
+        memarray[memext.iframe|ma] = membuffer = switchregister;
+        lastdepos = true;
     }
 }
 
+// if last button wasn't deposit, increment MA
+// then in any case, show memory contents
 static void exambutton ()
 {
     if (ctl_isstopped ()) {
-        shadow.r.ma = shadow.r.pc;
-        membuffer = memarray[memext.iframe|shadow.r.ma];
-        shadow.r.pc = (shadow.r.pc + 1) & 07777;
+        uint16_t ma = shadow.r.ma;
+        if (! lastdepos) {
+            ma = (ma + 1) & 07777;
+            loadpcma (shadow.r.pc, ma);
+        }
+        membuffer = memarray[memext.iframe|ma];
+        lastdepos = false;
     }
 }
 
+// resume execution at program counter location, subject to step switches
 static void contbutton (uint32_t buttons)
 {
     if (ctl_isstopped ()) {
@@ -231,9 +247,11 @@ static void contbutton (uint32_t buttons)
         } else {
             ctl_run ();         // neither - continuous run
         }
+        lastdepos = false;
     }
 }
 
+// stop executing instructions
 static void stopbutton ()
 {
     if (! ctl_isstopped ()) {
@@ -242,7 +260,17 @@ static void stopbutton ()
             ctl_stepcyc ();     // cycle to end of major state
         }
         membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
+        lastdepos = false;
     }
+}
+
+// load tubes' program counter and memory address register with given values
+// returns with tubes at end of FETCH1 with clock still low and shadow.clock() not called
+static void loadpcma (uint16_t newpc, uint16_t newma)
+{
+    uint16_t saveac = shadow.r.ac;
+    bool savelink = shadow.r.link;
+    if (! ctl_ldregs (savelink, saveac, newma, newpc)) ABORT ();
 }
 
 // stopped at end of some cycle - see if it is the last cycle of a major state

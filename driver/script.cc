@@ -1185,7 +1185,7 @@ static int cmd_reset (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     }
 
     ctl_stop ();
-    if (! ctl_reset (addr)) {
+    if (! ctl_reset (addr, true)) {
         Tcl_SetResult (interp, (char *) "failed to reset", TCL_STATIC);
         return TCL_ERROR;
     }

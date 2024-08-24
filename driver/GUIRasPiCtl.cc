@@ -178,9 +178,18 @@ JNIEXPORT jint JNICALL Java_GUIRasPiCtl_wrmem (JNIEnv *env, jclass klass, jint a
 }
 
 // returns:
-//   true = was stopped, reset, now stopped again
+//   true = was stopped, reset, now stopped again at end of FETCH1
 //  false = failed
-JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, jint addr)
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, jint addr, jboolean resio)
 {
-    return ctl_reset (addr);
+    return ctl_reset (addr, resio);
+}
+
+// load registers
+// returns:
+//   true = was stopped, reset, now stopped again at end of FETCH1
+//  false = failed
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_ldregs (JNIEnv *env, jclass klass, jboolean link, jint ac, jint ma, jint pc)
+{
+    return ctl_ldregs (link, ac, ma, pc);
 }

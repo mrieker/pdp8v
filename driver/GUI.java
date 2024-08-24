@@ -568,7 +568,7 @@ public class GUI extends JPanel {
         public void reset (int addr)
         {
             GUIRasPiCtl.setstop (true);
-            if (! GUIRasPiCtl.reset (addr)) {
+            if (! GUIRasPiCtl.reset (addr, true)) {
                 System.err.println ("GUI.DirectAccess.reset: processor failed to reset");
             }
         }

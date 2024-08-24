@@ -27,10 +27,11 @@ bool ctl_stop ();
 bool ctl_stopfor (char const *reason);
 bool ctl_isstopped ();
 bool ctl_lock ();
-bool ctl_reset (uint16_t addr);
+bool ctl_reset (uint16_t addr, bool resio);
 bool ctl_run ();
 bool ctl_stepcyc ();
 bool ctl_stepins ();
+bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc);
 void ctl_unlock (bool sigint);
 void ctl_wait ();
 
