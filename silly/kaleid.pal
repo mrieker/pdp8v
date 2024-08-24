@@ -12,6 +12,9 @@
 / Based on suggestions from page 6-19 of the Small Computer
 / Handbook, 1973.
 
+/   SR<MSB> = ON : show the big circle
+/            OFF : normal kaleidoscope
+
 	DISD = 6052
 	DILX = 6053
 	DILY = 6054
@@ -33,6 +36,8 @@ MUNGES,	0
 SCOUNT, .-.
 FOUR,	4
 _2631,	2631
+_0012,	0012
+_NOPOP,	7000
 
 *0200
 
@@ -94,11 +99,11 @@ STEPPT,
 	/ PLOT THE POINT
 	DIXY		/ previous ppint should be ready to plot by now
 	TAD	X	/ send new point X to display
-	// RTR		/ - uncomment to see the BIG CIRCLE
+RTRX,	NOP		/ maybe see the BIG CIRCLE
 	DILX
 	CLA2
 	TAD	Y	/ send new point Y to display
-	// RTR		/ - uncomment to see the BIG CIRCLE
+RTRY,	NOP		/ maybe see the BIG CIRCLE
 	DILY
 
 	/ MAYBE CHANGE SCALE FACTOR
@@ -126,6 +131,15 @@ STEPPT,
 	TAD	SCOUNT
 	TAD	_SCNEG1
 	DCA	SCNEG
+
+	OSR		/ SELECT NORMAL/BIGCIRCLE DISPLAY
+	SPA CLA
+	TAD	_0012	/ SR<MSB> SET, USE RTR FOR BIGCIRCLE DISPLAY
+	TAD	_NOPOP	/ SR<MSB> CLEAR, USE NOP FOR NORMAL DISPLAY
+	DCA	RTRX
+	TAD	RTRX
+	DCA	RTRY
+
 	JMP	START2
 
 / Divide AC (signed) by 2**(2 or 3)
