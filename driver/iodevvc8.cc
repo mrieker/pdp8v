@@ -418,6 +418,7 @@ void IODevVC8::thread ()
     if (envsize != NULL) {
         this->winsize = atoi (envsize);
         if (this->winsize < MINWINSIZE) this->winsize = MINWINSIZE;
+        if (this->winsize > MAXWINSIZE) this->winsize = MAXWINSIZE;
     }
 
     // open connection to XServer
@@ -510,6 +511,8 @@ void IODevVC8::thread ()
     persisbutton.setpms (this->pms);
 
     // repeat until ioreset() is called
+    char wsizbuf[12] = { 0 };
+    uint16_t wsiztim = 0;
     uint32_t lastsec = 0;
     uint32_t counter = 0;
     int allins = 0;
@@ -574,15 +577,14 @@ void IODevVC8::thread ()
         // get window size
         XWindowAttributes winattrs;
         if (XGetWindowAttributes (this->xdis, this->xwin, &winattrs) == 0) ABORT ();
-        uint32_t newwinxsize = winattrs.width;
-        uint32_t newwinysize = winattrs.height;
-        uint32_t newwinsize  = (newwinxsize < newwinysize) ? newwinxsize : newwinysize;
-        if (newwinsize < MINWINSIZE + BORDERWIDTH * 2) newwinsize = MINWINSIZE + BORDERWIDTH * 2;
-        newwinsize -= BORDERWIDTH * 2;
+        int newwinxsize = winattrs.width  - BORDERWIDTH * 2;
+        int newwinysize = winattrs.height - BORDERWIDTH * 2;
+        int newwinsize  = (newwinxsize < newwinysize) ? newwinxsize : newwinysize;
+        if (newwinsize < MINWINSIZE) newwinsize = MINWINSIZE;
+        if (newwinsize > MAXWINSIZE) newwinsize = MAXWINSIZE;
 
         // if window size changed, clear window then re-draw old points at new scaling
         if (this->winsize != newwinsize) {
-            fprintf (stderr, "IODevVC8::thread: window size %u\n", newwinsize);
             this->winsize = newwinsize;
             XClearWindow (this->xdis, this->xwin);
 
@@ -602,6 +604,10 @@ void IODevVC8::thread ()
             clearbutton.position ();
             persisbutton.upbutton.position ();
             persisbutton.dnbutton.position ();
+
+            // set up to display new window size
+            sprintf (wsizbuf, "%d", this->winsize);
+            wsiztim = timems;
         }
 
         // ephemeral mode: erase old points what have timed out
@@ -649,6 +655,14 @@ void IODevVC8::thread ()
                 clearbutton.draw (this->blackpixel);
             }
             persisbutton.draw (magenpix);
+        }
+
+        // maybe show new window size
+        if (wsizbuf[0] != 0) {
+            bool dead = (timems - wsiztim > 1000);
+            this->setfg (dead ? this->blackpixel : magenpix);
+            XDrawString (this->xdis, this->xwin, this->xgc, BORDERWIDTH * 2, BORDERWIDTH * 2 + 10, wsizbuf, strlen (wsizbuf));
+            if (dead) wsizbuf[0] = 0;
         }
 
         XFlush (this->xdis);

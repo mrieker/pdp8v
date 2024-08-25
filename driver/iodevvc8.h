@@ -39,7 +39,7 @@ struct _XDisplay;
 struct _XGC;
 
 struct IODevVC8 : IODev {
-    uint32_t winsize;
+    int winsize;
     unsigned long xwin;
     _XDisplay *xdis;
     _XGC *xgc;
