@@ -162,6 +162,7 @@ static bool senddata (uint16_t data, bool retry);
 static uint16_t recvdata (void);
 static void nullsighand (int signum);
 static void sighandler (int signum);
+static void *sigthread (void *dummy);
 static void exithandler ();
 
 int main (int argc, char **argv)
@@ -1493,20 +1494,41 @@ static void sighandler (int signum)
     }
 
     // something else, die
+    signal (SIGABRT, SIG_DFL);
+    signal (SIGHUP,  SIG_DFL);
+    signal (SIGINT,  SIG_DFL);
+    signal (SIGTERM, SIG_DFL);
     fprintf (stderr, "raspictl: terminated for signal %d\n", signum);
+    pthread_t sigtid;
+    if (pthread_create (&sigtid, NULL, sigthread, NULL) != 0) ABORT ();
+}
+
+// being requested to terminate, exit
+// do this in a separate thread from main() because it is likely that sighandler() was called in main thread with a mutex locked
+// calling exit() in a separate thread will allow main thread's mutex to be unlocked
+static void *sigthread (void *dummy)
+{
+    pthread_detach (pthread_self ());
     exit (1);
 }
 
-// exiting
+// exiting, close everything down
 static void exithandler ()
 {
+    if (! thisismainthread) {
+        fprintf (stderr, "raspictl: stopping processor\n");
+        ctl_stop ();
+    }
+
     uint64_t cycles = shadow.getcycles ();
-    fprintf (stderr, "raspictl: exiting, %llu cycle%s\n", (LLU) cycles, ((cycles == 1) ? "" : "s"));
+    fprintf (stderr, "raspictl: %llu cycle%s\n", (LLU) cycles, ((cycles == 1) ? "" : "s"));
 
     pidp_stop ();
     ioreset ();
     scncall.exithandler ();
+    fprintf (stderr, "raspictl: closing gpio\n");
     gpio->close ();
+    fprintf (stderr, "raspictl: exiting\n");
 }
 
 char const *ResetProcessorException::what ()
