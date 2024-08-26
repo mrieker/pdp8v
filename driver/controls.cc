@@ -148,6 +148,13 @@ bool ctl_run ()
         return false;
     }
 
+    // maybe control-C was just pressed
+    if (ctrlcflag) {
+        stopreason = "CONTROL_C";
+        ctl_unlock (sigint);
+        return true;
+    }
+
     // clock must be low (assumed by raspictl.cc main)
     // ...and we haven't called shadow.clock() yet
     uint32_t sample = gpio->readgpio ();
@@ -257,6 +264,10 @@ void ctl_wait ()
 
     while (! (stopflags & SF_STOPPED)) {
         pthread_cond_wait (&stopcond2, &stopmutex);
+    }
+
+    if (strcmp (stopreason, "CONTROL_C") == 0) {
+        ctrlcflag = false;
     }
 
     // must be at end of cycle (clock is low)

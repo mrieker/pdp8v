@@ -161,6 +161,7 @@ static uint32_t ts_recvdata (uint32_t intrq);
 static bool senddata (uint16_t data, bool retry);
 static uint16_t recvdata (void);
 static void nullsighand (int signum);
+static void scriptsigint (int signum);
 static void sighandler (int signum);
 static void *sigthread (void *dummy);
 static void exithandler ();
@@ -475,9 +476,8 @@ int main (int argc, char **argv)
     signal (SIGCHLD, nullsighand);
 
     // catch normal termination signals to clean up
-    signal (SIGABRT, sighandler);
     signal (SIGHUP,  sighandler);
-    signal (SIGINT,  sighandler);
+    signal (SIGINT,  scriptmode ? scriptsigint : sighandler);
     signal (SIGTERM, sighandler);
 
     // access cpu circuitry
@@ -1473,17 +1473,16 @@ static uint16_t recvdata (void)
 static void nullsighand (int signum)
 { }
 
-// signal that terminates process, do exit() so exithandler() gets called
-static void sighandler (int signum)
+// if control-C with -script, stop the processor getting clocked
+// this will eventually wake script out of 'wait' command if it is in one
+// ...when it sees SF_STOPPED set
+// also set a flag for scripts to test and don't allow unacknowleged control-C
+static void scriptsigint (int signum)
 {
-    // if control-C with -script, stop the processor getting clocked
-    // this will eventually wake script out of 'wait' command if it is in one
-    // ...when it sees SF_STOPPED set
-    // also set a flag for scripts to test and don't allow unacknowleged control-C
-    if ((signum == SIGINT) && scriptmode && ! ctrlcflag) {
-        int ignored __attribute__ ((unused)) = write (0, "\n", 1); // after the "^C"
+    if ((isatty (0) > 0) && (write (0, "\n", 1) > 0)) { } // after the "^C"
+    bool sigint = ctl_lock ();
+    if (! ctrlcflag) {
         ctrlcflag = true;
-        bool sigint = ctl_lock ();
         if (stopreason[0] == 0) {
             stopreason = "CONTROL_C";
         }
@@ -1492,13 +1491,19 @@ static void sighandler (int signum)
         ctl_unlock (sigint);
         return;
     }
+    ctl_unlock (sigint);
 
-    // something else, die
-    signal (SIGABRT, SIG_DFL);
+    // something is hung, die
+    sighandler (signum);
+}
+
+// signal that terminates process, do exit() so exithandler() gets called
+static void sighandler (int signum)
+{
     signal (SIGHUP,  SIG_DFL);
     signal (SIGINT,  SIG_DFL);
     signal (SIGTERM, SIG_DFL);
-    fprintf (stderr, "raspictl: terminated for signal %d\n", signum);
+    fprintf (stderr, "\nraspictl: terminated for signal %d\n", signum);
     pthread_t sigtid;
     if (pthread_create (&sigtid, NULL, sigthread, NULL) != 0) ABORT ();
 }
@@ -1526,7 +1531,7 @@ static void exithandler ()
     pidp_stop ();
     ioreset ();
     scncall.exithandler ();
-    fprintf (stderr, "raspictl: closing gpio\n");
+    fprintf (stderr, "raspictl: closing %s\n", gpio->libname);
     gpio->close ();
     fprintf (stderr, "raspictl: exiting\n");
 }

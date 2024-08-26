@@ -58,6 +58,7 @@ void runscript (char const *argv0, char const *filename)
 
 static Tcl_ObjCmdProc cmd_alliodevs;
 static Tcl_ObjCmdProc cmd_cpu;
+static Tcl_ObjCmdProc cmd_ctrlcflag;
 static Tcl_ObjCmdProc cmd_disasop;
 static Tcl_ObjCmdProc cmd_dyndis;
 static Tcl_ObjCmdProc cmd_end;
@@ -89,6 +90,7 @@ struct FunDef {
 static FunDef fundefs[] = {
     { cmd_alliodevs,  "alliodevs",  "list all i/o devices for iodev command" },
     { cmd_cpu,        "cpu",        "access shadow state" },
+    { cmd_ctrlcflag,  "ctrlcflag",  "read and clear control-C flag" },
     { cmd_disasop,    "disasop",    "disassemble opcode" },
     { cmd_dyndis,     "dyndis",     "dynamic disassembly" },
     { cmd_end,        "end",        "exit script thread" },
@@ -242,6 +244,17 @@ static int cmd_cpu (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj
 
     // process return value
     return procscret (interp, scret);
+}
+
+// read and clear control-C flag
+static int cmd_ctrlcflag (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    bool sigint = ctl_lock ();
+    bool ccf = ctrlcflag;
+    ctrlcflag = false;
+    ctl_unlock (sigint);
+    Tcl_SetObjResult (interp, Tcl_NewBooleanObj ((int) ccf));
+    return TCL_OK;
 }
 
 // disassemble opcode
@@ -929,7 +942,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
     if (strcmp (subcmd, "get") == 0) {
         int retint;
         if (objc == 3) {
-            if (strcmp (opname, "ctrlc")      == 0) { retint = ctrlcflag;         goto ret; }
             if (strcmp (opname, "haltstop")   == 0) { retint = haltstop;          goto ret; }
             if (strcmp (opname, "jmpdotstop") == 0) { retint = jmpdotstop;        goto ret; }
             if (strcmp (opname, "mintimes")   == 0) { retint = getmintimes ();    goto ret; }
@@ -989,7 +1001,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("valid options:");
         puts ("");
         puts ("  cmdargs    - raspictl command line args after script filename");
-        puts ("  ctrlc      - control-C has been pressed; must be reset or raspictl will abort");
         puts ("  haltstop   - stop on HLT (else wait for interrupt)");
         puts ("  jmpdotstop - stop on JMP .");
         puts ("  mintimes   - print cycle count every minute");
@@ -1056,7 +1067,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
 
         bool *boolptr;
         if (objc == 4) {
-            if (strcmp (opname, "ctrlc")      == 0) { boolptr = &ctrlcflag;  goto setbool; }
             if (strcmp (opname, "haltstop")   == 0) { boolptr = &haltstop;   goto setbool; }
             if (strcmp (opname, "jmpdotstop") == 0) { boolptr = &jmpdotstop; goto setbool; }
             if (strcmp (opname, "os8zap")     == 0) { boolptr = &os8zap;     goto setbool; }
