@@ -15,9 +15,15 @@ if {[cpu get pc] != 00210} {
     exit
 }
 swreg 00000
-puts "d3ra: starting..."
+;# patch test to do DTSF/JMP.-1 while waiting instead of instruction tests
+;# don't use HLT cuz it is used to indicate errors
+writemem 03001 06001    ;# ION
+writemem 03002 06771    ;# DTSF skip on flag
+writemem 03003 05202    ;# JMP .-1
+writemem 03004 05204    ;# JMP .
+writemem 03051 05600    ;# JMPI WATINT
+puts "d3ra: running..."
 run
 wait
 puts "d3ra: [stopreason]"
 puts "d3ra: [cpu get]"
-exit
