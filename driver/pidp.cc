@@ -57,13 +57,16 @@
 #define COL11   12  //   .   .   .   .   .  def          .
 #define COL12   13  //   .   .   .   .   .  wct          .              [LSB]
 
+#define COLMIN 4
 #define COLMASK 0xFFF0
 
+static bool inlimbo;
 static bool lastdepos;
 static bool running;
 static pthread_t threadid;
 static uint16_t dfifswitches;
-static uint16_t membuffer;
+static uint16_t ledscrams[4096];
+static uint16_t swunscrams[65536>>COLMIN];
 
 static void *pidpthread (void *dummy);
 static void startbutton (uint32_t buttons);
@@ -74,9 +77,6 @@ static void contbutton (uint32_t buttons);
 static void stopbutton ();
 static void loadpcma (uint16_t newpc, uint16_t newma);
 static bool atendofmajorstate ();
-
-static uint32_t ledscram (uint32_t data);
-static uint32_t swunscram (uint32_t gpio);
 
 void pidp_start ()
 {
@@ -99,8 +99,65 @@ static void *pidpthread (void *dummy)
 {
     uint32_t buttonring[8];
     uint32_t lastbuttons = 0;
+    uint32_t opcodeleds[8];
+    uint32_t stateleds[16];
     int buttonindex = 0;
+
     memset (buttonring, 0, sizeof buttonring);
+    memset (opcodeleds, 0, sizeof opcodeleds);
+    memset (stateleds, 0, sizeof stateleds);
+
+    opcodeleds[0] = 1 << COL1;
+    opcodeleds[1] = 1 << COL2;
+    opcodeleds[2] = 1 << COL3;
+    opcodeleds[3] = 1 << COL4;
+    opcodeleds[4] = 1 << COL5;
+    opcodeleds[5] = 1 << COL6;
+    opcodeleds[6] = 1 << COL7;
+    opcodeleds[7] = 1 << COL8;
+
+    stateleds[(int)Shadow::State::FETCH1] = 1 << COL9;
+    stateleds[(int)Shadow::State::FETCH2] = 1 << COL9;
+    stateleds[(int)Shadow::State::DEFER1] = 1 << COL11;
+    stateleds[(int)Shadow::State::DEFER2] = 1 << COL11;
+    stateleds[(int)Shadow::State::DEFER3] = 1 << COL11;
+    stateleds[(int)Shadow::State::EXEC1]  = 1 << COL10;
+    stateleds[(int)Shadow::State::EXEC2]  = 1 << COL10;
+    stateleds[(int)Shadow::State::EXEC3]  = 1 << COL10;
+
+    for (uint16_t data = 0; data <= 07777; data ++) {
+        uint16_t gpio = 0;
+        if (data & 04000) gpio |= 1 << COL1;
+        if (data & 02000) gpio |= 1 << COL2;
+        if (data & 01000) gpio |= 1 << COL3;
+        if (data & 00400) gpio |= 1 << COL4;
+        if (data & 00200) gpio |= 1 << COL5;
+        if (data & 00100) gpio |= 1 << COL6;
+        if (data & 00040) gpio |= 1 << COL7;
+        if (data & 00020) gpio |= 1 << COL8;
+        if (data & 00010) gpio |= 1 << COL9;
+        if (data & 00004) gpio |= 1 << COL10;
+        if (data & 00002) gpio |= 1 << COL11;
+        if (data & 00001) gpio |= 1 << COL12;
+        ledscrams[data] = gpio;
+    }
+
+    for (uint32_t gpio = 0; gpio <= 0xFFFFU; gpio += 1 << COLMIN) {
+        uint16_t data = 0;
+        if (gpio & (1 << COL1))  data |= 04000;
+        if (gpio & (1 << COL2))  data |= 02000;
+        if (gpio & (1 << COL3))  data |= 01000;
+        if (gpio & (1 << COL4))  data |= 00400;
+        if (gpio & (1 << COL5))  data |= 00200;
+        if (gpio & (1 << COL6))  data |= 00100;
+        if (gpio & (1 << COL7))  data |= 00040;
+        if (gpio & (1 << COL8))  data |= 00020;
+        if (gpio & (1 << COL9))  data |= 00010;
+        if (gpio & (1 << COL10)) data |= 00004;
+        if (gpio & (1 << COL11)) data |= 00002;
+        if (gpio & (1 << COL12)) data |= 00001;
+        swunscrams[gpio>>COLMIN] = data;
+    }
 
     // set up sequence number gt anything previously used
     PiDPMsg pidpmsg;
@@ -112,48 +169,55 @@ static void *pidpthread (void *dummy)
     while (running) {
         pidpmsg.seq ++;
 
-        if (! ctl_isstopped ()) membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
-
-        Shadow::State st = (Shadow::State) (shadow.r.state & 15);
-        uint32_t ir  = (st == Shadow::State::FETCH2) ? (gpio->readgpio () & G_DATA) / G_DATA0 : shadow.r.ir;
-        uint32_t lr6 = ((st == Shadow::State::FETCH1) || (st == Shadow::State::INTAK1)) ? 0 : ledscram (04000 >> ((ir >> 9) & 7));
-        if (st == Shadow::State::FETCH1) lr6 |= 1 << COL9;
-        if (st == Shadow::State::FETCH2) lr6 |= 1 << COL9;
-        if (st == Shadow::State::DEFER1) lr6 |= 1 << COL11;
-        if (st == Shadow::State::DEFER2) lr6 |= 1 << COL11;
-        if (st == Shadow::State::DEFER3) lr6 |= 1 << COL11;
-        if (st == Shadow::State::EXEC1)  lr6 |= 1 << COL10;
-        if (st == Shadow::State::EXEC2)  lr6 |= 1 << COL10;
-        if (st == Shadow::State::EXEC3)  lr6 |= 1 << COL10;
-
         uint32_t lr7 =
-            ((st == Shadow::State::INTAK1) ? (1 << COL2) : 0) |     // BREAK (we use it for INTAK1 cycle)
             (memext.intenabd ()  ? (1 << COL3) : 0) |               // ION
             (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
             (ctl_isstopped ()    ? 0 : (1 << COL5)) |               // RUN
-            ledscram (extarith.stepcount << 2);                     // SC
+            ledscrams[extarith.stepcount<<2];                       // SC
+
+        uint16_t membuffer;
+        uint32_t lr6 = 0;
+        if (inlimbo) {
+
+            // ldaddr/exam/depos, show mem contents
+            membuffer = memarray[memext.iframe|shadow.r.ma];
+        } else {
+
+            // not doing ldaddr/exam/depos, show processor state
+            Shadow::State st = (Shadow::State) (shadow.r.state & 15);
+            lr6 = stateleds[(int)st];
+            if ((st != Shadow::State::FETCH1) && (st != Shadow::State::INTAK1)) {
+                uint32_t ir = (st == Shadow::State::FETCH2) ? (gpio->readgpio () & G_DATA) / G_DATA0 : shadow.r.ir;
+                lr6 |= opcodeleds[(ir>>9)&7];
+            }
+
+            if (st == Shadow::State::INTAK1) lr7 |= 1 << COL2;      // BREAK (we use it for INTAK1 cycle)
+
+            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;     // show what is on gpio bus
+        }
 
         uint32_t lr8 =
-            ledscram ((memext.dframe >> 3) | (memext.iframe >> 6)) |
+            ledscrams[(memext.dframe>>3)|(memext.iframe>>6)] |
             (shadow.r.link ? (1 << COL7) : 0);
 
         // output LED rows
-        pidpmsg.ledrows[0] = ledscram (shadow.r.pc);
-        pidpmsg.ledrows[1] = ledscram (shadow.r.ma);
-        pidpmsg.ledrows[2] = ledscram (membuffer);
-        pidpmsg.ledrows[3] = ledscram (shadow.r.ac);
-        pidpmsg.ledrows[4] = ledscram (extarith.multquot);
+        pidpmsg.ledrows[0] = ledscrams[shadow.r.pc];
+        pidpmsg.ledrows[1] = ledscrams[shadow.r.ma];
+        pidpmsg.ledrows[2] = ledscrams[membuffer];
+        pidpmsg.ledrows[3] = ledscrams[shadow.r.ac];
+        pidpmsg.ledrows[4] = ledscrams[extarith.multquot];
         pidpmsg.ledrows[5] = lr6;
         pidpmsg.ledrows[6] = lr7;
         pidpmsg.ledrows[7] = lr8;
 
+        // ... also read switches
         if (! pidp_proc (&pidpmsg)) continue;
 
         // row 1 - switch register switches
-        switchregister = swunscram (~ pidpmsg.swrows[0]);
+        switchregister = swunscrams[(~pidpmsg.swrows[0]&COLMASK)>>COLMIN];
 
         // row 2 - data field, instr field switches
-        dfifswitches = swunscram (~ pidpmsg.swrows[1]);
+        dfifswitches   = swunscrams[(~pidpmsg.swrows[1]&COLMASK)>>COLMIN];
 
         // row 3 - control buttons
         uint32_t buttons = ~ pidpmsg.swrows[2] & COLMASK;
@@ -197,7 +261,7 @@ static void ldaddrbutton ()
         loadpcma (switchregister, switchregister);
         memext.dframe = (dfifswitches & 07000) << 3;
         memext.iframe = (dfifswitches & 00700) << 6;
-        membuffer = memarray[memext.iframe|shadow.r.ma];
+        inlimbo   = true;
         lastdepos = false;
     }
 }
@@ -212,7 +276,8 @@ static void deposbutton ()
             ma = (ma + 1) & 07777;
             loadpcma (shadow.r.pc, ma);
         }
-        memarray[memext.iframe|ma] = membuffer = switchregister;
+        memarray[memext.iframe|ma] = switchregister;
+        inlimbo   = true;
         lastdepos = true;
     }
 }
@@ -227,7 +292,7 @@ static void exambutton ()
             ma = (ma + 1) & 07777;
             loadpcma (shadow.r.pc, ma);
         }
-        membuffer = memarray[memext.iframe|ma];
+        inlimbo   = true;
         lastdepos = false;
     }
 }
@@ -239,14 +304,13 @@ static void contbutton (uint32_t buttons)
         if (buttons & (1 << COL7)) {
             do ctl_stepcyc ();  // single step - step one major state
             while (! atendofmajorstate ());
-            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else if (buttons & (1 << COL8)) {
             ctl_stepins ();     // single instr - step one instruction
                                 // stops in middle of FETCH2 or middle of INTAK1
-            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else {
             ctl_run ();         // neither - continuous run
         }
+        inlimbo   = false;
         lastdepos = false;
     }
 }
@@ -259,7 +323,7 @@ static void stopbutton ()
         while (! atendofmajorstate ()) {
             ctl_stepcyc ();     // cycle to end of major state
         }
-        membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
+        inlimbo   = false;
         lastdepos = false;
     }
 }
@@ -303,42 +367,4 @@ static bool atendofmajorstate ()
         case Shadow::State::INTAK1: return true;
         default: ABORT ();
     }
-}
-
-// scramble the given 12-bit data word to gpio pins
-static uint32_t ledscram (uint32_t data)
-{
-    uint32_t gpio = 0;
-    if (data & 04000) gpio |= 1 << COL1;
-    if (data & 02000) gpio |= 1 << COL2;
-    if (data & 01000) gpio |= 1 << COL3;
-    if (data & 00400) gpio |= 1 << COL4;
-    if (data & 00200) gpio |= 1 << COL5;
-    if (data & 00100) gpio |= 1 << COL6;
-    if (data & 00040) gpio |= 1 << COL7;
-    if (data & 00020) gpio |= 1 << COL8;
-    if (data & 00010) gpio |= 1 << COL9;
-    if (data & 00004) gpio |= 1 << COL10;
-    if (data & 00002) gpio |= 1 << COL11;
-    if (data & 00001) gpio |= 1 << COL12;
-    return gpio;
-}
-
-// unscramble the given gpio pins to 12-bit data word
-static uint32_t swunscram (uint32_t gpio)
-{
-    uint32_t data = 0;
-    if (gpio & (1 << COL1))  data |= 04000;
-    if (gpio & (1 << COL2))  data |= 02000;
-    if (gpio & (1 << COL3))  data |= 01000;
-    if (gpio & (1 << COL4))  data |= 00400;
-    if (gpio & (1 << COL5))  data |= 00200;
-    if (gpio & (1 << COL6))  data |= 00100;
-    if (gpio & (1 << COL7))  data |= 00040;
-    if (gpio & (1 << COL8))  data |= 00020;
-    if (gpio & (1 << COL9))  data |= 00010;
-    if (gpio & (1 << COL10)) data |= 00004;
-    if (gpio & (1 << COL11)) data |= 00002;
-    if (gpio & (1 << COL12)) data |= 00001;
-    return data;
 }
