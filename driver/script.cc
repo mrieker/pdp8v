@@ -978,11 +978,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 Tcl_SetObjResult (interp, stopatlist);
                 return TCL_OK;
             }
-
-            if (strcmp (opname, "watchwrite") == 0) {
-                Tcl_SetObjResult (interp, Tcl_NewIntObj (watchwrite));
-                return TCL_OK;
-            }
         }
 
         Tcl_SetResult (interp, (char *) "option get <optionname>", TCL_STATIC);
@@ -1014,7 +1009,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("  skipopt    - optimize ioskip/jmp.-1 to blocking");
         puts ("  stopats    - stop when accessing any of the memory addresses");
         puts ("  tubesaver  - run random opcodes during halt/skipopt time");
-        puts ("  watchwrite - stop when writing to the memory address (-1 to disable)");
         puts ("");
         return (subcmd[0] == 0) ? TCL_ERROR : TCL_OK;
     }
@@ -1114,20 +1108,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
                 shadow.printname = name;
                 shadow.printfile = file;
                 return TCL_OK;
-            }
-
-
-            if (strcmp (opname, "watchwrite") == 0) {
-                int val;
-                int rc = Tcl_GetIntFromObj (interp, objv[3], &val);
-                if (rc == TCL_OK) {
-                    if ((val < -1) || (val > 077777)) {
-                        Tcl_SetResultF (interp, "watchwrite address 0%o not in range -1..077777", val);
-                        return TCL_ERROR;
-                    }
-                    watchwrite = val;
-                }
-                return rc;
             }
         }
 

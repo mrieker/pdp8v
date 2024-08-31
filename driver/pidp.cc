@@ -242,7 +242,7 @@ static void contbutton (uint32_t buttons)
             membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else if (buttons & (1 << COL8)) {
             ctl_stepins ();     // single instr - step one instruction
-                                // stops at end of FETCH2 or end of INTAK1
+                                // stops in middle of FETCH2 or middle of INTAK1
             membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;
         } else {
             ctl_run ();         // neither - continuous run
@@ -255,7 +255,7 @@ static void contbutton (uint32_t buttons)
 static void stopbutton ()
 {
     if (! ctl_isstopped ()) {
-        ctl_stop ();            // stops at end of any cycle
+        ctl_stop ();            // stops in middle of any cycle
         while (! atendofmajorstate ()) {
             ctl_stepcyc ();     // cycle to end of major state
         }
@@ -265,7 +265,7 @@ static void stopbutton ()
 }
 
 // load tubes' program counter and memory address register with given values
-// returns with tubes at end of FETCH1 with clock still low and shadow.clock() not called
+// returns with tubes in middle of FETCH2 with clock still high
 static void loadpcma (uint16_t newpc, uint16_t newma)
 {
     uint16_t saveac = shadow.r.ac;
@@ -273,7 +273,7 @@ static void loadpcma (uint16_t newpc, uint16_t newma)
     if (! ctl_ldregs (savelink, saveac, newma, newpc)) ABORT ();
 }
 
-// stopped at end of some cycle - see if it is the last cycle of a major state
+// stopped in middle of some cycle - see if it is the last cycle of a major state
 static bool atendofmajorstate ()
 {
     Shadow::State st = shadow.r.state;

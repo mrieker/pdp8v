@@ -26,7 +26,7 @@
  *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
  *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pidp] [-pipelib]
  *          [-printfile <filename>] [-printinstr] [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt]
- *          [-startpc <address>] [-stopat <address>] [-tubesaver] [-watchwrite <address>] [-zynqlib] <loadfile>
+ *          [-startpc <address>] [-stopat <address>] [-tubesaver] [-zynqlib] <loadfile>
  *
  *       <addhz> : specify cpu frequency for add cycles (default cpuhz Hz)
  *       <cpuhz> : specify cpu frequency for all other cycles (default DEFCPUHZ Hz)
@@ -59,7 +59,6 @@
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
  *      -tubesaver   : do random instructions during halt/skipopt time
- *      -watchwrite  : print message if the given address is written to
  *      -zynqlib     : running on Zynq with circuit loaded
  */
 
@@ -116,7 +115,6 @@ ExtArith extarith;
 GpioLib *gpio;
 int cmdargc;
 int numstopats;
-int watchwrite;
 MemExt memext;
 Shadow shadow;
 uint16_t lastreadaddr;
@@ -150,16 +148,16 @@ static uint32_t syncintreq;
 
 static void writestartpc ();
 static void clraccumlink ();
+static void stopped (bool sigint);
 static void *mintimesthread (void *dummy);
-static bool stopcheck ();
 static uint16_t group2io (uint32_t opcode, uint16_t input);
 static uint16_t randuint16 (int nbits);
 static void dumpregs ();
 static void haltwait ();
 static uint32_t ts_senddata (uint32_t intrq, uint16_t data);
 static uint32_t ts_recvdata (uint32_t intrq);
-static bool senddata (uint16_t data, bool retry);
-static uint16_t recvdata (void);
+static void senddata (uint16_t data);
+static uint16_t recvdata ();
 static void nullsighand (int signum);
 static void scriptsigint (int signum);
 static void sighandler (int signum);
@@ -186,7 +184,6 @@ int main (int argc, char **argv)
 
     resetio = true;
     startpc = 0xFFFFU;
-    watchwrite = -1;
 
     shadow.printname = "-";
     shadow.printfile = stdout;
@@ -353,8 +350,12 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: missing address after -stopat\n");
                 return 1;
             }
-            uint32_t stopat = strtoul (argv[i], &p, 8);
-            if ((*p != 0) || (stopat < 0) || (stopat > 077777)) {
+            p = argv[i];
+            bool stopatwrite = (*p == '~');
+            if (stopatwrite) p ++;
+            int32_t stopat = strtol (p, &p, 8);
+            if (stopatwrite) stopat = ~ stopat;
+            if ((*p != 0) || (stopat < ~ 077777) || (stopat > 077777)) {
                 fprintf (stderr, "raspictl: bad -stopat address '%s'\n", argv[i]);
                 return 1;
             }
@@ -362,19 +363,12 @@ int main (int argc, char **argv)
                 fprintf (stderr, "raspictl: too many -stopats\n");
                 return 1;
             }
+            if (stopat < 0) stopat = (~ stopat) | STOPATWRITE;
             stopats[numstopats++] = stopat;
             continue;
         }
         if (strcasecmp (argv[i], "-tubesaver") == 0) {
             tubesaver = true;
-            continue;
-        }
-        if (strcasecmp (argv[i], "-watchwrite") == 0) {
-            if ((++ i >= argc) || (argv[i][0] == '-')) {
-                fprintf (stderr, "raspictl: missing address after -watchwrite\n");
-                return 1;
-            }
-            watchwrite = strtol (argv[i], NULL, 8);
             continue;
         }
         if (strcasecmp (argv[i], "-zynqlib") == 0) {
@@ -563,9 +557,6 @@ reseteverything:;
     try {
         for ever {
 
-            // maybe GUI or script is requesting stop at end of cycle
-            stopcheck ();
-
             // invariant:
             //  clock has been low for half cycle
             //  G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
@@ -585,6 +576,9 @@ reseteverything:;
             gpio->halfcycle (shadow.aluadd ());
 
             // we are now halfway through the cycle with the clock still high
+
+            // maybe GUI or script is requesting stop in middle of cycle
+            stopcheck ();
 
             // process the signal sample from just before raising clock
 
@@ -612,74 +606,73 @@ reseteverything:;
                 uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
                 ASSERT (addr < MEMSIZE);
 
-                for (int i = 0; i < numstopats; i ++) {
-                    if (addr == stopats[i]) {
-                        stopordie ("STOPAT");
-                        break;
+                if (numstopats > 0) {
+                    uint16_t waddr = (((sample / G_WRITE) & 1) * STOPATWRITE) | addr;
+                    for (int i = 0; i < numstopats; i ++) {
+                        uint16_t sa = stopats[i];
+                        if ((addr == sa) || (waddr == sa)) {
+                            stopordie ("STOPAT");
+                            break;
+                        }
                     }
                 }
 
                 if (sample & G_READ) {
-                    bool sendretry = false;
-                    while (true) {
 
-                        // read memory contents
-                        if (randmem) {
-                            lastreaddata = randuint16 (12);
-                        } else if (os8zap &&
-                                ((lastreaddata & 07600) == 02200) &&                            // page+x+0: ISZ page+y
-                                (addr == (lastreadaddr & 07600) + (lastreaddata & 00177)) &&    // reading from page+y
-                                ((lastreadaddr & 00177) != 00177) &&                            // not at end of page
-                                (memarray[lastreadaddr+1] == 05200 + (lastreadaddr & 00177))) { // page+x+1: JMP page+x+0
-                            if (! quiet && (lastos8zap != lastreadaddr)) {
-                                lastos8zap = lastreadaddr;
-                                fprintf (stderr, "raspictl: os8zap at %05o\n", lastreadaddr);
-                            }
-                            lastreaddata = 07777;   // patch to read value 07777
-                        } else {
-                            lastreaddata = memarray[addr];
+                    // read memory contents
+                    if (randmem) {
+                        lastreaddata = randuint16 (12);
+                    } else if (os8zap &&
+                            ((lastreaddata & 07600) == 02200) &&                            // page+x+0: ISZ page+y
+                            (addr == (lastreadaddr & 07600) + (lastreaddata & 00177)) &&    // reading from page+y
+                            ((lastreadaddr & 00177) != 00177) &&                            // not at end of page
+                            (memarray[lastreadaddr+1] == 05200 + (lastreadaddr & 00177))) { // page+x+1: JMP page+x+0
+                        if (! quiet && (lastos8zap != lastreadaddr)) {
+                            lastos8zap = lastreadaddr;
+                            fprintf (stderr, "raspictl: os8zap at %05o\n", lastreadaddr);
                         }
-                        if (dyndisena) dyndisread (addr);
-
-                        // save last address being read from
-                        lastreadaddr = addr;
-
-                        // maybe stop if a 'JMP .' instruction
-                        if (jmpdotstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
-                            uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
-                            if (ea == addr) {
-                                stopordie ("JMPDOT");
-                            }
-                        }
-
-                        // interrupts might have been turned on by the previous instruction
-                        // but the enable gets blocked until the fetch of the next instruction
-                        // so this read might be such a fetch
-                        memext.doingread (lastreaddata);
-
-                        // if interrupts were just turned on by memext.doingread(),
-                        // recompute syncintreq before dropping clock so processor
-                        // will see the new interrupt request before deciding if it
-                        // will take the interrupt by the end of the instruciton
-                        syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
-
-                        // send data to processor
-                        // fall through to re-read memory if stopped by gui or script
-                        if (! senddata (lastreaddata, sendretry)) break;
-
-                        // gui/script stopped in this cycle once,
-                        // don't check stop in retried senddata() in case of single-cycling
-                        sendretry = true;
+                        lastreaddata = 07777;   // patch to read value 07777
+                    } else {
+                        lastreaddata = memarray[addr];
                     }
+                    if (dyndisena) dyndisread (addr);
+
+                    // save last address being read from
+                    lastreadaddr = addr;
+
+                    // maybe stop if a 'JMP .' instruction
+                    if (jmpdotstop && (shadow.r.state == Shadow::FETCH2) && ((lastreaddata & 07400) == 05000)) {
+                        uint16_t ea = memext.iframe | ((lastreaddata & 00200) ? (addr & 07600) : 0) | (lastreaddata & 00177);
+                        if (ea == addr) {
+                            stopordie ("JMPDOT");
+                        }
+                    }
+
+                    // interrupts might have been turned on by the previous instruction
+                    // but the enable gets blocked until the fetch of the next instruction
+                    // so this read might be such a fetch
+                    memext.doingread (lastreaddata);
+
+                    // if interrupts were just turned on by memext.doingread(),
+                    // recompute syncintreq before dropping clock so processor
+                    // will see the new interrupt request before deciding if it
+                    // will take the interrupt by the end of the instruciton
+                    syncintreq = (intreqmask && memext.intenabd ()) ? G_IRQ : 0;
+
+                    // send data to processor
+                    // eg in middle of FETCH2 or ISZ2
+                    senddata (lastreaddata);
+                    // eg in middle of EXEC1 or ISZ3
+                    stopcheck ();
                 }
 
                 if (sample & G_WRITE) {
+                    // eg in middle of DCA2
                     uint16_t data = recvdata () & 07777;
-                    if (addr == (unsigned) watchwrite) {
-                        stopordie ("WATCHWRITE");
-                    }
+                    // eg in middle of FETCH1
                     memarray[addr] = data;
                     if (dyndisena) dyndiswrite (addr);
+                    stopcheck ();
                     if (randmem) {
                         uint16_t r = randuint16 (4);
                         intreqmask = (r & 1) * IRQ_RANDMEM;
@@ -724,8 +717,9 @@ reseteverything:;
                                                                 // ...to decide FETCH1 or INTAK1 state next
                 // - in middle of IOT2 with clock still high
                 //   for LINC, we are in DEFER2 and so are sending updated PC
-                if (senddata (skplac, false)) senddata (skplac, true); // we send SKIP,LINK,AC in final cycle
+                senddata (skplac);
                 // - in middle of FETCH1/INTAK1 with clock still high
+                stopcheck ();
             }
 
             // update irq pin in middle of cycle so it has time to soak in by the next clock up time
@@ -872,8 +866,9 @@ static void clraccumlink ()
     gpio->halfcycle (shadow.aluadd ());
 }
 
-// if using GUI or scripts, flag to stop the processor at the end of this cycle
+// if using GUI or scripts, stop the processor
 // otherwise, print out registers and exit
+// called in middle of cycle with clock still high
 void stopordie (char const *reason)
 {
     if (guimode | pidpmode | scriptmode) {
@@ -882,7 +877,7 @@ void stopordie (char const *reason)
             stopreason = reason;
         }
         stopflags = SF_STOPIT;
-        ctl_unlock (sigint);
+        stopped (sigint);
     } else {
         fprintf (stderr, "stopordie: %s\n", reason);
         dumpregs ();
@@ -891,64 +886,55 @@ void stopordie (char const *reason)
 }
 
 // check to see if script.cc or GUI.java is requesting stop
-// call at end of cycle with clock still low
-// call just before taking gpio sample at end of cycle
-// ...in case of stop where GUI alters what the sample would get
-// returns with clock still low at the end of cycle
+// call in middle of cycle with clock still high
+// returns in middle of cycle with clock still high
 // throws ResetProcessorException if script/GUI is requesting a reset
-//  output:
-//   returns true: did stop, now resumed
-//          false: did not stop
-static bool stopcheck ()
+void stopcheck ()
 {
-    bool didstop = false;
     if (stopflags & SF_STOPIT) {
-        bool resetit = false;
         bool sigint = ctl_lock ();
 
         // re-check stopflags now that we have mutex
         if (stopflags & SF_STOPIT) {
-
-            // make sure clock is low
-            uint32_t sample = gpio->readgpio ();
-            ASSERT (! (sample & G_CLOCK));
-
-            // IR is a latch so should now have memory contents
-            if (shadow.r.state == Shadow::FETCH2) {
-                shadow.r.ir = lastreaddata;
-            }
-
-            // tell script.cc or GUI.java that we have stopped
-            stopflags |= SF_STOPPED;
-            pthread_cond_broadcast (&stopcond2);
-
-            // wait for script.cc or GUI.java to tell us to resume
-            while (stopflags & SF_STOPPED) {
-                pthread_cond_wait (&stopcond, &stopmutex);
-            }
-
-            // maybe script or GUI is resetting us
-            if (stopflags & SF_RESETIT) {
-                resetit = true;
-            }
-
-            // not a reset, make sure clock is low
-            else {
-                uint32_t sample = gpio->readgpio ();
-                ASSERT (! (sample & G_CLOCK));
-            }
-
-            didstop = true;
-        }
-
-        ctl_unlock (sigint);
-
-        if (resetit) {
-            ResetProcessorException rpe;
-            throw rpe;
+            stopped (sigint);
+        } else {
+            ctl_unlock (sigint);
         }
     }
-    return didstop;
+}
+
+static void stopped (bool sigint)
+{
+    // make sure clock is high
+    uint32_t sample = gpio->readgpio ();
+    ASSERT (sample & G_CLOCK);
+
+    // IR is a latch so should now have memory contents
+    if (shadow.r.state == Shadow::FETCH2) {
+        shadow.r.ir = lastreaddata;
+    }
+
+    // tell script.cc or GUI.java that we have stopped
+    stopflags |= SF_STOPPED;
+    pthread_cond_broadcast (&stopcond2);
+
+    // wait for script.cc or GUI.java to tell us to resume
+    while (stopflags & SF_STOPPED) {
+        pthread_cond_wait (&stopcond, &stopmutex);
+    }
+
+    // maybe script or GUI is resetting us
+    if (stopflags & SF_RESETIT) {
+        ctl_unlock (true);  // make sure to unblock SIGINT before throwing exception
+        ResetProcessorException rpe;
+        throw rpe;
+    }
+
+    // not a reset, make sure clock is high as expected by caller
+    sample = gpio->readgpio ();
+    ASSERT (sample & G_CLOCK);
+
+    ctl_unlock (sigint);
 }
 
 // group 2 with OSR and/or HLT gets passed to raspi like an i/o instruction
@@ -1392,13 +1378,7 @@ static void *mintimesthread (void *dummy)
 //  we wait a half cycle whilst the data soaks into the instruction register latch and instruction decoding circuitry
 //  we raise the clock leaving the data going to the cpu so it will get clocked in correctly
 //  we wait a half cycle whilst cpu is closing the instruction register latch and transitioning to first state of the instruction
-// input:
-//  retry = true: this is a retry call for the cycle
-//         false: this is the first call for the cycle
-// output:
-//  returns true: did stop, retry cycle
-//         false: did not stop, cycle complete
-static bool senddata (uint16_t data, bool retry)
+static void senddata (uint16_t data)
 {
     ASSERT (IO_DATA == 007777);
     ASSERT (IO_LINK == 010000);
@@ -1413,10 +1393,6 @@ static bool senddata (uint16_t data, bool retry)
     // let data soak into cpu (giving it a setup time)
     gpio->halfcycle (shadow.aluadd ());
 
-    // maybe GUI or script is requesting stop at end of cycle
-    // don't complete cycle, maybe gui/script modified memory so we have something different to send
-    if (! retry && stopcheck ()) return true;
-
     // tell cpu data is ready to be read by raising the clock
     // hold data steady and keep sending data to cpu so it will be clocked in correctly
     shadow.clock (gpio->readgpio ());
@@ -1424,8 +1400,6 @@ static bool senddata (uint16_t data, bool retry)
 
     // wait for cpu to clock data in (giving it a hold time)
     gpio->halfcycle (shadow.aluadd ());
-
-    return false;
 }
 
 // recv data word from CPU as part of a MEM_WRITE cycle
@@ -1446,14 +1420,11 @@ static bool senddata (uint16_t data, bool retry)
 //  we wait a half cycle for the cpu to finish sending the data
 //  it is now the very end of the DCA2 cycle
 //  we read the data from the gpio pins
-static uint16_t recvdata (void)
+static uint16_t recvdata ()
 {
     // drop clock and wait for cpu to finish sending the data
     gpio->writegpio (false, syncintreq);
     gpio->halfcycle (shadow.aluadd ());
-
-    // maybe GUI or script is requesting stop at end of cycle
-    stopcheck ();
 
     // read data being sent by cpu just before raising clock
     // then raise clock and wait a half cycle to be at same timing as when called

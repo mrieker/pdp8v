@@ -40,6 +40,7 @@
 #define IRQ_VC8       01000
 
 #define MAXSTOPATS 16
+#define STOPATWRITE 0x8000
 
 #define UNSUPIO 0177777  // returned by ioinstr() for unsupported i/o instruction
 
@@ -64,7 +65,6 @@ extern char const *stopreason;
 extern GpioLib *gpio;
 extern int cmdargc;
 extern int numstopats;
-extern int watchwrite;
 extern uint16_t lastreadaddr;
 extern uint16_t startpc;
 extern uint16_t switchregister;
@@ -72,6 +72,7 @@ extern uint16_t stopats[MAXSTOPATS];
 
 uint16_t readswitches (char const *swvar);
 void haltinstr (char const *fmt, ...);
+void stopcheck ();
 void stopordie (char const *reason);
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag);
 void clrintreqmask (uint16_t mask, bool wake = false);

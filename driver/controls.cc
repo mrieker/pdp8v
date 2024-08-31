@@ -32,7 +32,7 @@
 
 // stop processor if not already
 // - tells raspictl.cc main to suspend clocking the processor
-// - stops at the end of a cycle, shadow.clock() not called yet
+// - stops in middle of a cycle with clock still high
 // returns true: was already stopped
 //        false: was running, now stopped
 bool ctl_stop ()
@@ -40,9 +40,9 @@ bool ctl_stop ()
     bool sigint = ctl_lock ();
     if (stopflags & SF_STOPPED) {
 
-        // must be at end of cycle (clock is low)
+        // must be in middle of cycle with clock still high
         uint32_t sample = gpio->readgpio ();
-        ASSERT (! (sample & G_CLOCK));
+        ASSERT (sample & G_CLOCK);
 
         ctl_unlock (sigint);
         return true;
@@ -62,9 +62,9 @@ bool ctl_stop ()
         pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
-    // must be at end of cycle (clock is low)
+    // must be in middle of cycle with clock still high
     uint32_t sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
     ctl_unlock (sigint);
     return false;
@@ -97,8 +97,10 @@ bool ctl_isstopped ()
 }
 
 // reset processor
-// returns with processor stopped at end of fetch1 with clock still low, shadow.clock() not called yet
+// returns with processor stopped in middle of FETCH2 with clock still high
 // ...and with DF,IF,PC set to the given 15-bit address
+// returns false: processor running on entry, still running
+//          true: processor was stopped on entry, now stopped in FETCH2
 bool ctl_reset (uint16_t addr, bool resio)
 {
     bool sigint = ctl_lock ();
@@ -123,13 +125,11 @@ bool ctl_reset (uint16_t addr, bool resio)
         pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
-    // raspictl.cc main has reset the processor and the tubes are waiting at the end of FETCH1 with the clock still low
-    // when resumed, raspictl.cc main will sample the GPIO lines, call shadow.clock() and resume processing from there
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
+    // raspictl.cc main has reset the processor and the tubes are waiting in the middle of FETCH2 with the clock still high
+    // when resumed, raspictl.cc main will drive the clock low and resume processing from there
+    ASSERT (shadow.r.state == Shadow::State::FETCH2);
     ASSERT (memext.iframe == (addr & 070000));
     ASSERT (memext.dframe == (addr & 070000));
-    uint32_t sample = gpio->readgpio ();
-    ASSERT ((sample & (G_READ | G_WRITE | G_DATA | G_CLOCK)) == (G_READ | (addr & 07777U) * G_DATA0));
 
     ctl_unlock (sigint);
 
@@ -155,12 +155,11 @@ bool ctl_run ()
         return true;
     }
 
-    // clock must be low (assumed by raspictl.cc main)
-    // ...and we haven't called shadow.clock() yet
+    // clock must be high (assumed by raspictl.cc stopped())
     uint32_t sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
-    // tell raspictl.cc main to resume cycling the processor
+    // tell raspictl.cc stopped() to resume cycling the processor
     stopreason = "";
     stopflags  = 0;
     stopwake ();
@@ -170,7 +169,7 @@ bool ctl_run ()
 
 // tell processor to step one cycle
 // - tells raspictl.cc main to clock the processor a single cycle
-// - stops at the end of the next cycle
+// - stops in middle of next cycle with clock still high
 bool ctl_stepcyc ()
 {
     bool sigint = ctl_lock ();
@@ -181,9 +180,9 @@ bool ctl_stepcyc ()
         return false;
     }
 
-    // clock must be low (assumed by raspictl.cc main)
+    // clock must be high (assumed by raspictl.cc stopped())
     uint32_t sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
     // tell it to start, run one cycle, then stop
     stopreason = "";
@@ -195,9 +194,9 @@ bool ctl_stepcyc ()
         pthread_cond_wait (&stopcond2, &stopmutex);
     }
 
-    // must be at end of cycle (clock is low)
+    // clock should be high
     sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
     // if normal stop, say it's because of stepping
     if (stopreason[0] == 0) {
@@ -221,9 +220,9 @@ bool ctl_stepins ()
         return false;
     }
 
-    // must be at end of cycle (clock is low)
+    // clock must be high (assumed by raspictl.cc stopped())
     uint32_t sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
     do {
 
@@ -237,15 +236,15 @@ bool ctl_stepins ()
             pthread_cond_wait (&stopcond2, &stopmutex);
         }
 
+        // clock should be high
+        sample = gpio->readgpio ();
+        ASSERT (sample & G_CLOCK);
+
         // stop if some error
         if (stopreason[0] != 0) break;
 
         // repeat until fetching next instruction
     } while ((shadow.r.state != Shadow::State::FETCH2) && (shadow.r.state != Shadow::State::INTAK1));
-
-    // must be at end of cycle (clock is low)
-    sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
 
     // if normal stop, say it's because of stepping
     if (stopreason[0] == 0) {
@@ -270,123 +269,123 @@ void ctl_wait ()
         ctrlcflag = false;
     }
 
-    // must be at end of cycle (clock is low)
+    // must be in middle of cycle (clock is high)
     // assumed when we start it back up
     uint32_t sample = gpio->readgpio ();
-    ASSERT (! (sample & G_CLOCK));
+    ASSERT (sample & G_CLOCK);
 
     ctl_unlock (sigint);
 }
 
 // load the given values into the tube's registers
-// leaves the tubes stopped at the end of FETCH1 with clock still low and shadow.clock() not yet called
+// leaves the tubes stopped in the middle of FETCH2 with clock still high
 // returns true: registers loaded
 //        false: processor was not stopped
 bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc)
 {
     // reset processor and load newpc-2
-    // this puts raspictl main() at wherever it would be for stopped at end of FETCH1
+    // this puts raspictl main() at wherever it would be for stopped in middle of FETCH2 with clock still high
     uint16_t savedframe = memext.dframe;
     uint16_t newpcm2 = (newpc - 2) & 07777;
     if (! ctl_reset (memext.iframe | newpcm2, false)) return false;
     memext.dframe = savedframe;
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
 
     // FETCH2 - send CLA CLL CMA [CML] opcode to tubes
     // also increments PC to newpc-1
-    shadow.clock (gpio->readgpio ());
+    ASSERT (shadow.r.state == Shadow::State::FETCH2);
     uint32_t clacll = (newlink ? 07360 : 07340) * G_DATA0;
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
     gpio->writegpio (true, clacll);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::FETCH2);
-
-    // GRPA1 - tubes are writing AC and LIMK
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (true, clacll | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // GRPA1 - tubes are writing AC and LIMK
+    ASSERT (shadow.r.state == Shadow::State::GRPA1);
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::GRPA1);
-
-    // FETCH1 - tubes are sending us newpc-1
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (false, G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // FETCH1 - tubes are sending us newpc-1
+    ASSERT (shadow.r.state == Shadow::State::FETCH1);
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+    gpio->halfcycle (false);
 
     // FETCH2 - send ANDI 0000 opcode to tubes
     // also increments PC to newpc
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
+    ASSERT (shadow.r.state == Shadow::State::FETCH2);
     gpio->writegpio (true, 00400 * G_DATA0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::FETCH2);
-
-    // DEFER1 - tubes are sending us the 0000 address
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (true, 00400 * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // DEFER1 - tubes are sending us the 0000 address
+    ASSERT (shadow.r.state == Shadow::State::DEFER1);
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::DEFER1);
-
-    // DEFER2 - send tubes newma so it gets loaded in MA
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (false, G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // DEFER2 - send tubes newma so it gets loaded in MA
+    ASSERT (shadow.r.state == Shadow::State::DEFER2);
     uint32_t data = newma * G_DATA0;
     gpio->writegpio (true, data);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::DEFER2);
-
-    // ARITH1 - tubes are sending us the MA to read from
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (true, data | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // ARITH1 - tubes are sending us the MA to read from
+    ASSERT (shadow.r.state == Shadow::State::ARITH1);
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::ARITH1);
-
-    // AND2 - send tubes new AC contents
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (false, G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // AND2 - send tubes new AC contents
+    ASSERT (shadow.r.state == Shadow::State::AND2);
     gpio->writegpio (true, newac * G_DATA0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::AND2);
-
-    // FETCH1 - tubes are sending us the new PC
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (true, newac * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
+
+    // FETCH1 - tubes are sending us the new PC
+    ASSERT (shadow.r.state == Shadow::State::FETCH1);
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
     gpio->halfcycle (false);
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+    gpio->halfcycle (false);
 
-    // raspictl main() is still at wherever it would be for stopped at end of FETCH1
+    // raspictl main() is still wherever it would be for stopped in middle of FETCH2 with clock still high
+    ASSERT (shadow.r.state == Shadow::State::FETCH2);
 
     // verify results
     ASSERT (shadow.r.link == newlink);

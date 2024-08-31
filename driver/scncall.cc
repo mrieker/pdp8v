@@ -78,7 +78,6 @@
 #define SCN_PRINTINSTR 37
 #define SCN_NEG_DD 38
 #define SCN_NEG_FF 39
-#define SCN_WATCHWRITE 40
 #define SCN_GETENV6 41
 #define SCN_GETENV8 42
 #define SCN_GETENV12 43
@@ -501,12 +500,6 @@ uint16_t ScnCall::docall (uint16_t data)
         case SCN_NEG_FF: {
             float op = readmemflt (readmemword (data + 4));
             writememflt (readmemword (data + 2), - op);
-            data = 0;
-            break;
-        }
-
-        case SCN_WATCHWRITE: {
-            watchwrite = readmemword (data + 1) | ((readmemword (data + 2) & 7) << 12);
             data = 0;
             break;
         }
