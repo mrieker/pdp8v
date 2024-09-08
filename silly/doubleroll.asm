@@ -19,55 +19,46 @@
 	clba = 06136	; (RTC) read buffer register
 	clca = 06137	; (RTC) read counter into buffer and read buffer
 
-	. = 00000
-	.word	.-.
-	jmp	intserv
-
 	. = 00002
-h0003:	hlt
+h0003:	clsk
+	jmp	.-1
 	jmp	finish3
 
 	. = 00005
-h0006:	hlt
+h0006:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0006; AC=3000
 	.word	h0014,01400	; up -> 0014; 1400
 	.word	h0003,06000	; dn -> 0003; 6000
 	.word	h0006,03000	; hold
 
 	. = 00013
-h0014:	hlt
+h0014:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0014; AC=1400
 	.word	h0030,00600
 	.word	h0006,03000
 	.word	h0014,01400
 
 	. = 00027
-h0030:	hlt
+h0030:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0030; AC=0600
 	.word	h0060,00300
 	.word	h0014,01400
 	.word	h0030,00600
 
 	. = 00057
-h0060:	hlt
+h0060:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0060; AC=0300
 	.word	h0140,00140
 	.word	h0030,00600
 	.word	h0060,00300
 
-; reset counter for next interrupt
-intserv:			; interrupt service...
-	dca	saveac		; save accumulator
-	clsa			; clear clock interrupt request
-	cla
-	tad	saveac		; restore accumulator
-	ion			; return after the hlt
-	jmpi	0
-
-saveac:	.word	.-.
-
 	. = 00137
-h0140:	hlt
+h0140:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0140; AC=0140
 	.word	h0300,00060
 	.word	h0060,00300
@@ -82,41 +73,48 @@ finish3:
 _step:	.word	step
 
 	. = 00277
-h0300:	hlt
+h0300:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=0300; AC=0060
 	.word	h0600,00030
 	.word	h0140,00140
 	.word	h0300,00060
 
 	. = 00577
-h0600:	hlt
+h0600:	clsk
+	jmpi	_h0600
 	jmsi	_step		; PC=0600; AC=0030
 	.word	h1400,00014
 	.word	h0300,00060
-	.word	h0600,00030
+_h0600:	.word	h0600,00030
 
 	. = 01377
-h1400:	hlt
+h1400:	clsk
+	jmpi	_h1400
 	jmsi	_step		; PC=1400; AC=0014
 	.word	h3000,00006
 	.word	h0600,00030
+_h1400:	.word	h1400,00014
 
 	. = 02777
-h3000:	hlt
+h3000:	clsk
+	jmpi	_h3000
 	jmsi	_step		; PC=3000; AC=0006
 	.word	h6000,00003
 	.word	h1400,00014
-	.word	h3000,00006
+_h3000:	.word	h3000,00006
 
 	. = 05777
-h6000:	hlt
+h6000:	clsk
+	jmpi	_h6000
 	jmsi	_step		; PC=6000; AC=0003
 	.word	h4001,04001
 	.word	h3000,00006
-	.word	h6000,00003
+_h6000:	.word	h6000,00003
 
 	. = 04000
-h4001:	hlt
+h4001:	clsk
+	jmp	.-1
 	jmsi	_step		; PC=4001; AC=4001
 	.word	h0003,06000
 	.word	h6000,00003
@@ -133,7 +131,6 @@ __boot:
 	cla
 	tad	intena		; set RTC enable bits
 	clde
-	ion
 	cla cll
 	tad	_4001		; put 4001 in AC
 	jmpi	_4001		; put 4001 in PC
@@ -151,6 +148,7 @@ period:	.word	-667		; interrupt every 66700uS
 ;  .word  pcdn,acdn
 ;  .word  pchl,achl
 step:	.word	.-.
+	clsa			; clear clock interrupt request
 	cla osr			; read switches
 	cll cma iac		; ...negative
 	sna

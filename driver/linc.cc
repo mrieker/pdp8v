@@ -568,7 +568,7 @@ bool Linc::execgamma (uint16_t lastfetchaddr, uint16_t op)
         // HLT
         // p 56 v 3-21
         case 0000: {
-            haltinstr ("Linc::execute: LINC HALT PC=%05o L=%o AC=%04o\n", lastfetchaddr, this->link, this->lincac);
+            stopordie ("HALTSTOP");
             break;
         }
 

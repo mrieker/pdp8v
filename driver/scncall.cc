@@ -751,6 +751,7 @@ static IODevOps const iodevops[] = {
     { 06310, "PIOFF (SYS) turn printinstr off" },
     { 06311, "PION (SYS) turn printinstr on" },
     { 06312, "HCF (SYS) dump everything and exit" },
+    { 06313, "WFI (SYS) wait for interrupt" },
 };
 
 ScnCall2::ScnCall2 ()
@@ -809,6 +810,18 @@ uint16_t ScnCall2::ioinstr (uint16_t opcode, uint16_t input)
                 }
             }
             stopordie ("HCFINSTR");
+            break;
+        }
+
+        // WFI - wait for interrupt
+        case 06313: {
+            waitforinterrupt ();
+            break;
+        }
+
+        default: {
+            input = UNSUPIO;
+            break;
         }
     }
     return input;

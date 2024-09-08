@@ -4,7 +4,6 @@ iodev tc08 loadrw 1 tape1.tu56
 iodev tc08 debug 0
 swreg 02000                 ;# use drive 1
 reset 0204                  ;# select read/write test
-option set haltstop 1
 run ; wait
 if {([cpu get ac] != [swreg]) || ([cpu get pc] != 00224)} {
     puts "bad ac/pc [cpu get]"

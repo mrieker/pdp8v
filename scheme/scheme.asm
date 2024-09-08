@@ -68,6 +68,7 @@
 	pioff = 06310	; printinstr off
 	pion  = 06311	; printinstr on
 	hcf   = 06312	; dump registers and memory then exit
+	wfi   = 06313	; wait for interrupt
 
 	SCN_EXIT        = 0
 	SCN_PRINTLN6    = 1
@@ -5563,7 +5564,7 @@ wfidir:	cll ral			; step light position
 	dca	wfilight	; save new light position
 	tad	wfilight
 	ion			; wait for interrupt, rtc or otherwise
-	hlt
+	wfi
 	cla cma			; clear all rtc enables
 	clze
 	cla

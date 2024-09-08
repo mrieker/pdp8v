@@ -3,7 +3,6 @@ iodev tty pipes /dev/null -
 iodev tc08 loadrw 1 tape1.tu56
 iodev tc08 debug 0
 swreg 02000
-option set haltstop 1
 reset 0202
 run ; wait
 if {([cpu get ac] != [swreg]) || ([cpu get pc] != 00224)} {

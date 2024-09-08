@@ -49,7 +49,6 @@ typedef unsigned long long LLU; // for printf %llu format
 #include "gpiolib.h"
 
 extern bool ctrlcflag;
-extern bool haltstop;
 extern bool jmpdotstop;
 extern bool lincenab;
 extern bool os8zap;
@@ -71,12 +70,12 @@ extern uint16_t switchregister;
 extern uint16_t stopats[MAXSTOPATS];
 
 uint16_t readswitches (char const *swvar);
-void haltinstr (char const *fmt, ...);
 void stopcheck ();
 void stopordie (char const *reason);
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag);
 void clrintreqmask (uint16_t mask, bool wake = false);
 void setintreqmask (uint16_t mask);
+void waitforinterrupt ();
 void haltwake ();
 void stopwake ();
 uint16_t getintreqmask ();

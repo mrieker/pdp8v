@@ -942,7 +942,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
     if (strcmp (subcmd, "get") == 0) {
         int retint;
         if (objc == 3) {
-            if (strcmp (opname, "haltstop")   == 0) { retint = haltstop;          goto ret; }
             if (strcmp (opname, "jmpdotstop") == 0) { retint = jmpdotstop;        goto ret; }
             if (strcmp (opname, "mintimes")   == 0) { retint = getmintimes ();    goto ret; }
             if (strcmp (opname, "os8zap")     == 0) { retint = os8zap;            goto ret; }
@@ -996,7 +995,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("valid options:");
         puts ("");
         puts ("  cmdargs    - raspictl command line args after script filename");
-        puts ("  haltstop   - stop on HLT (else wait for interrupt)");
         puts ("  jmpdotstop - stop on JMP .");
         puts ("  mintimes   - print cycle count every minute");
         puts ("  os8zap     - zap the os8 delay loop");
@@ -1061,7 +1059,6 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
 
         bool *boolptr;
         if (objc == 4) {
-            if (strcmp (opname, "haltstop")   == 0) { boolptr = &haltstop;   goto setbool; }
             if (strcmp (opname, "jmpdotstop") == 0) { boolptr = &jmpdotstop; goto setbool; }
             if (strcmp (opname, "os8zap")     == 0) { boolptr = &os8zap;     goto setbool; }
             if (strcmp (opname, "printinstr") == 0) { boolptr = &shadow.printinstr; goto setbool; }
@@ -1266,7 +1263,7 @@ static int cmd_swreg (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_O
     }
 }
 
-// wait for stop (control-C, haltstop, stopat, etc)
+// wait for stop (control-C, HLT, stopat, etc)
 // returns immediately if already stopped
 static int cmd_wait (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
 {

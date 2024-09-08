@@ -23,8 +23,8 @@
  *
  *  export addhz=<addhz>
  *  export cpuhz=<cpuhz>
- *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode] [-haltcont]
- *          [-haltprint] [-haltstop] [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pidp] [-pipelib]
+ *  ./raspictl [-binloader] [-corefile <filename>] [-cpuhz <freq>] [-csrclib] [-cyclelimit <cycles>] [-guimode]
+ *          [-jmpdotstop] [-linc] [-mintimes] [-nohwlib] [-os8zap] [-paddles] [-pidp] [-pipelib]
  *          [-printfile <filename>] [-printinstr] [-printstate] [-quiet] [-randmem] [-resetonerr] [-rimloader] [-script] [-skipopt]
  *          [-startpc <address>] [-stopat <address>] [-tubesaver] [-zynqlib] <loadfile>
  *
@@ -36,9 +36,6 @@
  *      -csrclib     : use C-source for circuitry simulation (see csrclib.cc)
  *      -cyclelimit  : specify maximum number of cycles to execute
  *      -guimode     : used by the GUI.java wrapper to start in stopped mode
- *      -haltcont    : HLT instruction just continues
- *      -haltprint   : HLT instruction prints message
- *      -haltstop    : HLT instruction causes stop (else it is 'wait for interrupt')
  *      -jmpdotstop  : infinite loop JMP causes exit
  *      -linc        : process linc instruction set
  *      -mintimes    : print cpu cycle info once a minute
@@ -58,7 +55,7 @@
  *      -skipopt     : optimize ioskip/jmp.-1 loops
  *      -startpc     : starting program counter
  *      -stopat      : stop simulating when accessing the address
- *      -tubesaver   : do random instructions during halt/skipopt time
+ *      -tubesaver   : do random instructions during skipopt/waitforint time
  *      -zynqlib     : running on Zynq with circuit loaded
  */
 
@@ -99,7 +96,6 @@
 #define ever (;;)
 
 bool ctrlcflag;
-bool haltstop;
 bool jmpdotstop;
 bool lincenab;
 bool os8zap;
@@ -137,8 +133,6 @@ char const *stopreason = "";
 uint32_t stopflags;
 
 static bool guimode;
-static bool haltcont;
-static bool haltprint;
 static bool pidpmode;
 static bool setintreqcalled;
 static bool volatile wakefromhalt;
@@ -221,18 +215,6 @@ int main (int argc, char **argv)
         }
         if (strcasecmp (argv[i], "-guimode") == 0) {
             guimode = true;
-            continue;
-        }
-        if (strcasecmp (argv[i], "-haltcont") == 0) {
-            haltcont = true;
-            continue;
-        }
-        if (strcasecmp (argv[i], "-haltprint") == 0) {
-            haltprint = true;
-            continue;
-        }
-        if (strcasecmp (argv[i], "-haltstop") == 0) {
-            haltstop = true;
             continue;
         }
         if (strcasecmp (argv[i], "-jmpdotstop") == 0) {
@@ -957,7 +939,7 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
             input |= switchregister & 07777;
         }
         if (opcode & 0002) {                                    // HLT
-            haltinstr ("raspictl: HALT PC=%05o L=%o AC=%04o\n", lastreadaddr, (input >> 12) & 1, input & 07777);
+            stopordie ("HALTSTOP");
         }
     }
     return input;
@@ -995,38 +977,6 @@ uint16_t readswitches (char const *swvar)
         }
     }
     return swreg;
-}
-
-// processor has encountered an HLT instruction
-// decide what to do
-// called and returns in middle of IOT2 with clock still high
-void haltinstr (char const *fmt, ...)
-{
-    bool sigint = ctl_lock ();
-    if ((intreqmask == 0) && ! (stopflags & SF_STOPIT)) {
-
-        // -haltprint means print a message
-        if (haltprint) {
-            va_list ap;
-            va_start (ap, fmt);
-            vfprintf (stderr, fmt, ap);
-            va_end (ap);
-        }
-
-        // -haltstop means print a message and stop
-        if (haltstop) {
-            ctl_unlock (sigint);
-            stopordie ("HALTSTOP");
-            return;
-        }
-
-        // wait for an interrupt request
-        if (! randmem && ! haltcont) {
-            do haltwait ();
-            while ((intreqmask == 0) && ! (stopflags & SF_STOPIT));
-        }
-    }
-    ctl_unlock (sigint);
 }
 
 // generate a random number
@@ -1070,15 +1020,22 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     *flag = true;
     pthread_mutex_unlock (lock);
 
+    waitforinterrupt ();
+
+    pthread_mutex_lock (lock);
+    *flag = false;
+}
+
+// wait for interrupt
+// - blocks until interrupt request, whether interrupts are enabled or not
+void waitforinterrupt ()
+{
     bool sigint = ctl_lock ();
-    if (! (stopflags & SF_STOPIT) && (! memext.intenabd () || (intreqmask == 0))) {
+    if (! (stopflags & SF_STOPIT) && (intreqmask == 0)) {
         if (setintreqcalled) setintreqcalled = false;
         else haltwait ();
     }
     ctl_unlock (sigint);
-
-    pthread_mutex_lock (lock);
-    *flag = false;
 }
 
 // called in main thread to wait to be woken with haltwake()
