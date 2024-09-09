@@ -1006,7 +1006,7 @@ static int cmd_option (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_
         puts ("  randmem    - provide random memory contents");
         puts ("  skipopt    - optimize ioskip/jmp.-1 to blocking");
         puts ("  stopats    - stop when accessing any of the memory addresses");
-        puts ("  tubesaver  - run random opcodes during halt/skipopt time");
+        puts ("  tubesaver  - run random opcodes during WFI/skipopt time");
         puts ("");
         return (subcmd[0] == 0) ? TCL_ERROR : TCL_OK;
     }

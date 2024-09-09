@@ -54,8 +54,8 @@ bool ctl_stop ()
         stopflags |= SF_STOPIT;
     }
 
-    // if raspictl.cc main sleeping in an HLT instruction, wake it up
-    haltwake ();
+    // if raspictl.cc main sleeping in an WFI instruction, wake it up
+    wfiwake ();
 
     // wait for raspictl.cc main to stop cycling processor
     while (! (stopflags & SF_STOPPED)) {
@@ -84,8 +84,8 @@ bool ctl_stopfor (char const *reason)
     stopreason = reason;
     stopflags |= SF_STOPIT;
 
-    // if raspictl.cc main sleeping in an HLT instruction, wake it up
-    haltwake ();
+    // if raspictl.cc main sleeping in an WFI instruction, wake it up
+    wfiwake ();
 
     ctl_unlock (sigint);
     return false;

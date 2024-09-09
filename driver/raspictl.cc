@@ -124,8 +124,8 @@ __thread bool thisismainthread;
 static pthread_t mintimestid;
 static pthread_cond_t mintimescond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mintimeslock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t haltcond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t stopcond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t wficond = PTHREAD_COND_INITIALIZER;
 
 pthread_cond_t stopcond2 = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t stopmutex = PTHREAD_MUTEX_INITIALIZER;
@@ -135,7 +135,7 @@ uint32_t stopflags;
 static bool guimode;
 static bool pidpmode;
 static bool setintreqcalled;
-static bool volatile wakefromhalt;
+static bool volatile wakefromwfi;
 static uint16_t intreqmask;
 static uint16_t lastreaddata;
 static uint32_t syncintreq;
@@ -147,7 +147,7 @@ static void *mintimesthread (void *dummy);
 static uint16_t group2io (uint32_t opcode, uint16_t input);
 static uint16_t randuint16 (int nbits);
 static void dumpregs ();
-static void haltwait ();
+static void wfiwait ();
 static uint32_t ts_senddata (uint32_t intrq, uint16_t data);
 static uint32_t ts_recvdata (uint32_t intrq);
 static void senddata (uint16_t data);
@@ -1033,35 +1033,35 @@ void waitforinterrupt ()
     bool sigint = ctl_lock ();
     if (! (stopflags & SF_STOPIT) && (intreqmask == 0)) {
         if (setintreqcalled) setintreqcalled = false;
-        else haltwait ();
+        else wfiwait ();
     }
     ctl_unlock (sigint);
 }
 
-// called in main thread to wait to be woken with haltwake()
-// used as part of HLT instruction or IOSKIP/JMP.-1 combination
+// called in main thread to wait to be woken with wfiwake()
+// used as part of WFI instruction or IOSKIP/JMP.-1 combination
 // called and returns with stopmutex locked
 // called and returns in middle of IOT2 with clock still high
-static void haltwait ()
+static void wfiwait ()
 {
-    // we can do tube saving only from the main thread and we are doing an HLT or an I/O instruction
-    // depends on the caller to send the real updated IOS/LINK/AC from the halting I/O instruction on return
+    // we can do tube saving only from the main thread and we are doing an WFI or an I/O instruction
+    // depends on the caller to send the real updated IOS/LINK/AC from the blocking I/O instruction on return
     ASSERT (thisismainthread && (shadow.r.state == Shadow::IOT2));
 
     // if tubesaver not enabled, block until some device thread or script or gui wakes us
     waitingforinterrupt = true;
     if (! tubesaver) {
-        while (! wakefromhalt) {
-            int rc = pthread_cond_wait (&haltcond, &stopmutex);
+        while (! wakefromwfi) {
+            int rc = pthread_cond_wait (&wficond, &stopmutex);
             if (rc != 0) ABORT ();
         }
-    } else if (! wakefromhalt) {
+    } else if (! wakefromwfi) {
         pthread_mutex_unlock (&stopmutex);
 
         // tubesaver enabled, feed random instructions and data to tubes
         // ...until some device thread or script or gui wakes us
 
-        // save PC of the HLT/IOT instruction
+        // save PC of the IOT instruction
         // any skip has not been applied yet
         uint16_t savedpc = (shadow.r.pc - 1) & 07777;
 
@@ -1118,7 +1118,7 @@ static void haltwait ()
             if (sample & G_IAK) intrq = 0;
 
             // keep feeding random stuff until woken
-        } while (! wakefromhalt);
+        } while (! wakefromwfi);
 
         // woken from wait, restore state
 
@@ -1131,7 +1131,7 @@ static void haltwait ()
             ASSERT (shadow.r.state == Shadow::FETCH2);
         }
 
-        // restore program counter with JMP to point to beginning of original HLT or IOT instruction
+        // restore program counter with JMP to point to beginning of original IOT instruction
         {
             uint16_t jmpop;
             if ((savedpc & 07600) == 0) {
@@ -1149,7 +1149,7 @@ static void haltwait ()
         }
 
         // get back to middle of IOT2 with clock still high, as expected by caller
-        // doesn't have to be same HLT/IOT opcode cuz the original has already been processed
+        // doesn't have to be same IOT opcode cuz the original has already been processed
         // ...so just use generic 6000 opcode
         ts_senddata (false, 06000);             // mid FETCH2 -> mid EXEC1/IOT
         ts_recvdata (false);                    // mid EXEC1/IOT -> mid EXEC2/IOT
@@ -1159,12 +1159,12 @@ static void haltwait ()
         // now we're back to normal cycles
         shadow.r.tsaver = false;
 
-        // caller will write IOS/LINK/AC as the result of original HLT/IOT processing
+        // caller will write IOS/LINK/AC as the result of original IOT processing
 
         pthread_mutex_lock (&stopmutex);
     }
     waitingforinterrupt = false;
-    wakefromhalt = false;
+    wakefromwfi = false;
 }
 
 // in middle of cycle with clock still high looking for data
@@ -1173,7 +1173,7 @@ static uint32_t ts_senddata (uint32_t intrq, uint16_t data)
 {
     gpio->writegpio (true, data * G_DATA0 | intrq);
     gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);    // compensate for haltwait tubesaver loop simpler than main loop
+    gpio->halfcycle (false);    // compensate for wfiwait tubesaver loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
     gpio->writegpio (true, data * G_DATA0 | intrq | G_CLOCK);
@@ -1187,7 +1187,7 @@ static uint32_t ts_recvdata (uint32_t intrq)
 {
     gpio->writegpio (false, intrq);
     gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);    // compensate for haltwait tubesaver loop simpler than main loop
+    gpio->halfcycle (false);    // compensate for wfiwait tubesaver loop simpler than main loop
     uint32_t sample = gpio->readgpio ();
     shadow.clock (sample);
     gpio->writegpio (false, intrq | G_CLOCK);
@@ -1196,13 +1196,13 @@ static uint32_t ts_recvdata (uint32_t intrq)
 }
 
 // set the interrupt request bits
-// wake from HLT or optimized ioskip
+// wake from WFI or optimized ioskip
 void setintreqmask (uint16_t mask)
 {
     bool sigint = ctl_lock ();
     intreqmask |= mask;
     setintreqcalled = true;
-    haltwake ();
+    wfiwake ();
     ctl_unlock (sigint);
 }
 
@@ -1214,7 +1214,7 @@ void clrintreqmask (uint16_t mask, bool wake)
     intreqmask &= ~ mask;
     if (wake) {
         setintreqcalled = true;
-        haltwake ();
+        wfiwake ();
     }
     ctl_unlock (sigint);
 }
@@ -1224,11 +1224,11 @@ uint16_t getintreqmask ()
     return intreqmask;
 }
 
-// wake from HLT instruction or IOSKIP/JMP.-1 combination
-void haltwake ()
+// wake from WFI instruction or IOSKIP/JMP.-1 combination
+void wfiwake ()
 {
-    wakefromhalt = true;
-    int rc = pthread_cond_broadcast (&haltcond);
+    wakefromwfi = true;
+    int rc = pthread_cond_broadcast (&wficond);
     if (rc != 0) ABORT ();
 }
 

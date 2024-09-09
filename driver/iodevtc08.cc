@@ -1061,8 +1061,8 @@ bool IODevTC08::delayloop (int usec)
         if (shm->iopend || (shm-> status_a != savesta) || shm->resetting) return true;
 
         // the TC08 diagnostics do the I/O instruction to start the I/O THEN write IDCA and IDWC,
-        // so make sure CPU has exeucted at least 100 cycles (20..30 instructions) or is doing an HLT
-        if (waitingforinterrupt) return false;                  // HLT is ok (processor won't cycle), assume IDCA,IDWC set up
+        // so make sure CPU has executed at least 100 cycles (20..30 instructions) or is doing an WFI
+        if (waitingforinterrupt) return false;                  // WFI is ok (processor won't cycle), assume IDCA,IDWC set up
         uint64_t ncycles = shadow.getcycles () - shm->cycles;   // see how many cycles since I/O started
         if (ncycles >= 100) return false;                       // if 100 cycles, assume IDCA,IDWC set up
 

@@ -1116,7 +1116,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
 
             // kbflag clear, check for KSF ; JMP.-1
             // block while waiting for keyboard input
-            // unblocks if another interrupt is posted or GUI/script halts
+            // unblocks if another interrupt is posted or stopped by GUI/script
             else skipoptwait (opcode, &this->lock, &this->ksfwait);
 
             break;
@@ -1169,7 +1169,7 @@ uint16_t IODevTTY::ioinstr (uint16_t opcode, uint16_t input)
 
             // prflag clear, check for TSF ; JMP.-1
             // block while waiting for printer ready
-            // unblocks if another interrupt is posted or GUI/script halts
+            // unblocks if another interrupt is posted or stopped by GUI/script
             else skipoptwait (opcode, &this->lock, &this->tsfwait);
 
             break;

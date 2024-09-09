@@ -76,7 +76,7 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag);
 void clrintreqmask (uint16_t mask, bool wake = false);
 void setintreqmask (uint16_t mask);
 void waitforinterrupt ();
-void haltwake ();
+void wfiwake ();
 void stopwake ();
 uint16_t getintreqmask ();
 char *getexedir (char *buf, int buflen);
