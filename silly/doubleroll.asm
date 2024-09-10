@@ -162,8 +162,6 @@ step:	.word	.-.
 	dca	count		; reset count
 stepinc:
 	isz	count		; count < SR, increment
-	tad	count		; display count in pidp's MQ leds
-	mql			; AC -> MQ; 0 -> AC
 	tad	direc
 	and	_0021
 	iac
@@ -178,7 +176,17 @@ stepinc:
 stepdn:
 	isz	step		; neg - pc goes down
 	isz	step
+	tad	count		; display count in pidp's MQ leds
+	jmp	stepnext
 stepup:
+	cla osr			; read switches
+	cll cma iac		; ...negative
+	sna
+	jmp	stephold	; - zero: hold in place
+	tad	count		; compute count-switches
+	cma iac			; now switches-count
+stepnext:
+	mql			; AC -> MQ; 0 -> AC
 	tadi	step
 	dca	steppc
 	isz	step
