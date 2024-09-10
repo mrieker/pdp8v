@@ -27,6 +27,7 @@ default: autoboardtest.$(MACH) gpioudpserver.$(MACH) pidpudpserver.$(MACH) \
 
 lib.$(MACH).a: \
 		abcd.$(MACH).o \
+		assemble.$(MACH).o \
 		binloader.$(MACH).o \
 		controls.$(MACH).o \
 		csrclib.$(MACH).o \

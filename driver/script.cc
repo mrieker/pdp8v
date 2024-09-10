@@ -23,6 +23,7 @@
 #include <tcl.h>
 
 #include "abcd.h"
+#include "assemble.h"
 #include "binloader.h"
 #include "controls.h"
 #include "disassemble.h"
@@ -57,6 +58,7 @@ void runscript (char const *argv0, char const *filename)
 }
 
 static Tcl_ObjCmdProc cmd_alliodevs;
+static Tcl_ObjCmdProc cmd_assemop;
 static Tcl_ObjCmdProc cmd_cpu;
 static Tcl_ObjCmdProc cmd_ctrlcflag;
 static Tcl_ObjCmdProc cmd_disasop;
@@ -89,6 +91,7 @@ struct FunDef {
 
 static FunDef fundefs[] = {
     { cmd_alliodevs,  "alliodevs",  "list all i/o devices for iodev command" },
+    { cmd_assemop,    "assemop",    "assemble opcode" },
     { cmd_cpu,        "cpu",        "access shadow state" },
     { cmd_ctrlcflag,  "ctrlcflag",  "read and clear control-C flag" },
     { cmd_disasop,    "disasop",    "disassemble opcode" },
@@ -220,6 +223,49 @@ static int cmd_alliodevs (ClientData clientdata, Tcl_Interp *interp, int objc, T
     Tcl_SetObjResult (interp, devnamelist);
 
     return TCL_OK;
+}
+
+// assemble opcode
+//  assemop [address] opcode
+static int cmd_assemop (ClientData clientdata, Tcl_Interp *interp, int objc, Tcl_Obj *const objv[])
+{
+    if (objc > 1) {
+        int i = 1;
+        char const *stri = Tcl_GetString (objv[i]);
+        if (strcasecmp (stri, "help") == 0) {
+            puts ("");
+            puts ("  assemop [<address>] <opcode>...");
+            puts ("   address = integer address of the opcode (for page-relative addresses)");
+            puts ("    opcode = opcode string(s)");
+            puts ("");
+            return TCL_OK;
+        }
+
+        char *p;
+        uint16_t address = strtoul (stri, &p, 0);
+        if ((objc == 2) || (p == stri) || (*p != 0)) address = 0200;
+                              else stri = Tcl_GetString (objv[++i]);
+
+        std::string opstr;
+        while (true) {
+            opstr.append (stri);
+            if (++ i >= objc) break;
+            opstr.push_back (' ');
+            stri = Tcl_GetString (objv[i]);
+        }
+
+        uint16_t opcode;
+        char *err = assemble (opstr.c_str (), address, &opcode);
+        if (err != NULL) {
+            Tcl_SetResult (interp, err, (void (*) (char *)) free);
+            return TCL_ERROR;
+        }
+        Tcl_SetObjResult (interp, Tcl_NewIntObj (opcode));
+        return TCL_OK;
+    }
+
+    Tcl_SetResult (interp, (char *) "bad number of arguments", TCL_STATIC);
+    return TCL_ERROR;
 }
 
 // get cpu state (really the shadow state)

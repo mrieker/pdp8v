@@ -46,6 +46,7 @@
 //  76..77  dectape tc08
 
 #include <stdio.h>
+#include <string.h>
 
 #include "extarith.h"
 #include "iodevs.h"
@@ -124,6 +125,30 @@ char const *iodisas (uint16_t opcode)
         }
     }
     return NULL;
+}
+
+// assemble the given opcode string
+//  input:
+//   asmop = assembly lsnguage opcode
+//  output:
+//   returns 0: not found
+//        else: binary opcode
+uint16_t ioassem (char const *asmop)
+{
+    int oplen = strlen (asmop);
+    initiodevs ();
+    for (uint16_t idx = 0; idx < 64; idx ++) {
+        IODev *iodev = iodevs[idx];
+        if (iodev != NULL) {
+            for (uint16_t i = 0; i < iodev->opscount; i ++) {
+                char const *desc = iodev->opsarray[i].desc;
+                if ((strncasecmp (desc, asmop, oplen) == 0) && (desc[oplen] <= ' ')) {
+                    return iodev->opsarray[i].opcd;
+                }
+            }
+        }
+    }
+    return 0;
 }
 
 // initialize iodevs[] array if not already

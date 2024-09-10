@@ -22,6 +22,13 @@
 ##  can be overridden with envar scriptini:
 ##  export scriptini=somethingelse.tcl
 
+# assemble instruction and write to memory
+# - assem 0200 tadi 0376
+# - assem 0201 sna cla
+proc assem {addr opcd args} {
+    writemem $addr [assemop $addr $opcd $args]
+}
+
 # disassemble block of memory
 # - disas               ;# disassemble in vacinity of current 15-bit pc
 # - disass addr         ;# disassemble in vacinity of given 15-bit address
@@ -82,6 +89,11 @@ proc getenv {varname {defvalu ""}} {
     return [expr {[info exists ::env($varname)] ? $::env($varname) : $defvalu}]
 }
 
+# convert integer to 4-digit octal string
+proc octal {n} {
+    return [format "%04o" $n]
+}
+
 # step one instruction then disassemble surrounding instructions
 proc stepdis {} {
     stepins
@@ -91,7 +103,9 @@ proc stepdis {} {
 # print help for commands defined herein
 proc helpini {} {
     puts ""
+    puts "  assem <addr> <opcd> ...    - assemble instruciton and write to memory"
     puts "  disas <start> <stop>       - disassemble instructions in given range"
+    puts "  octal <number>             - convert integer to 4-digit octal string"
     puts "  getenv <varname> <defvalu> - get environment variable"
     puts "  stepdis                    - step one instruction then disassemble"
     puts ""

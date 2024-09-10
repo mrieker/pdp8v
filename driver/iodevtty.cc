@@ -53,18 +53,18 @@ IODevTTY iodevtty44(044);
 IODevTTY iodevtty46(046);
 
 static IODevOps const iodevopsdef[] = {
-    { 06030, "03 KCF (TTY) clear kb flag so we will know when another char gets read in" },
-    { 06031, "03 KSF (TTY) skip if there is a kb character to be read" },
-    { 06032, "03 KCC (TTY) clear kb flag, clear accumulator" },
-    { 06034, "03 KRS (TTY) read kb char but don't clear flag" },
-    { 06035, "03 KIE (TTY) set/clear interrupt enable for both kb and pr" },
-    { 06036, "03 KRB (TTY) read kb character and clear flag" },
-    { 06040, "03 TFL (TTY) pretend the printer is ready to accept a character" },
-    { 06041, "03 TSF (TTY) skip if printer is ready to accept a character" },
-    { 06042, "03 TCF (TTY) pretend the printer is busy printing a character" },
-    { 06044, "03 TPC (TTY) start printing a character" },
-    { 06045, "03 TSK (TTY) skip if currently requesting either keyboard or printer interrupt" },
-    { 06046, "03 TLS (TTY) turn off interrupt request for previous char and start printing new char" },
+    { 06030, "KCF   (TTY) clear kb flag so we will know when another char gets read in" },
+    { 06031, "KSF   (TTY) skip if there is a kb character to be read" },
+    { 06032, "KCC   (TTY) clear kb flag, clear accumulator" },
+    { 06034, "KRS   (TTY) read kb char but don't clear flag" },
+    { 06035, "KIE   (TTY) set/clear interrupt enable for both kb and pr" },
+    { 06036, "KRB   (TTY) read kb character and clear flag" },
+    { 06040, "TFL   (TTY) pretend the printer is ready to accept a character" },
+    { 06041, "TSF   (TTY) skip if printer is ready to accept a character" },
+    { 06042, "TCF   (TTY) pretend the printer is busy printing a character" },
+    { 06044, "TPC   (TTY) start printing a character" },
+    { 06045, "TSK   (TTY) skip if currently requesting either keyboard or printer interrupt" },
+    { 06046, "TLS   (TTY) turn off interrupt request for previous char and start printing new char" },
 };
 
 static uint64_t intreqbits;
@@ -109,12 +109,8 @@ IODevTTY::IODevTTY (uint16_t iobase)
         for (uint16_t i = 0; i < opscount; i ++) {
             iodevopsall[i].opcd = iodevopsdef[i].opcd + iobasem3 * 010;
             char *desc = strdup (iodevopsdef[i].desc);
-            desc[0] += iobasem3 / 010;
-            desc[1] += iobasem3 & 007;
-            if (desc[1] == '8') {
-                desc[0] ++;
-                desc[1] = '0';
-            }
+            desc[3] = ((iobasem3 + 3) / 010) + '0';
+            desc[4] = ((iobasem3 + 3) & 007) + '0';
             iodevopsall[i].desc = desc;
         }
     }
