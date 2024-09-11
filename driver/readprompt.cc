@@ -22,6 +22,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include <readline/history.h>
@@ -33,6 +34,9 @@ char const *readprompt (char const *prompt)
 {
     static char *lastline = NULL;
     static int initted = 0;
+
+    fflush (stdout);
+    fflush (stderr);
 
     // if stdin not a tty, just read next line from stdin and echo to stdout
     if (!isatty (STDIN_FILENO)) {
@@ -86,6 +90,13 @@ char const *readprompt (char const *prompt)
         }
     }
 
+    // suppress control-C while reading
+    struct termios oldattrs;
+    if (tcgetattr (STDIN_FILENO, &oldattrs) < 0) abort ();
+    struct termios newattrs = oldattrs;
+    newattrs.c_cc[VINTR] = 0;
+    if (tcsetattr (STDIN_FILENO, TCSANOW, &newattrs) < 0) abort ();
+
 readit:
     if (initted < 0) usleep (333333);  // hopefully enough time for tee to catch up displaying everything sent to it
     line = readline (prompt);
@@ -93,23 +104,24 @@ readit:
     if (line == NULL) {
         fputs ("*EOF*\n", echoto);
         if (initted < 0) printf ("%s*EOF*\n", prompt);
-        return NULL;
-    }
-    if ((line[0] != 0) && ((lastline == NULL) || (strcmp (line, lastline) != 0))) {
-        result = history_expand (line, &expansion);
-        if (result != 0) {
-            fprintf (echoto, "%s\n", expansion);
+    } else {
+        if ((line[0] != 0) && ((lastline == NULL) || (strcmp (line, lastline) != 0))) {
+            result = history_expand (line, &expansion);
+            if (result != 0) {
+                fprintf (echoto, "%s\n", expansion);
+            }
+            if ((result < 0) || (result == 2)) {
+                free (expansion);
+                goto readit;
+            }
+            add_history (expansion);
+            free (line);
+            line = expansion;
         }
-        if ((result < 0) || (result == 2)) {
-            free (expansion);
-            goto readit;
-        }
-        add_history (expansion);
-        free (line);
-        line = expansion;
+        if (initted < 0) printf ("%s%s\n", prompt, line);
     }
     if (lastline != NULL) free (lastline);
     lastline = line;
-    if (initted < 0) printf ("%s%s\n", prompt, lastline);
+    if (tcsetattr (STDIN_FILENO, TCSANOW, &oldattrs) < 0) abort ();
     return lastline;
 }
