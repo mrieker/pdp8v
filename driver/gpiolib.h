@@ -101,8 +101,7 @@ struct GpioLib {
     virtual ~GpioLib ();
     virtual void open () = 0;
     virtual void close () = 0;
-    virtual void halfcycle ();
-    virtual void halfcycle (bool aluadd);
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false) = 0;
     virtual uint32_t readgpio () = 0;
     virtual void writegpio (bool wdata, uint32_t valu) = 0;
     virtual bool haspads () = 0;
@@ -132,7 +131,7 @@ struct CSrcLib : GpioLib {
     virtual ~CSrcLib ();
     virtual void open ();
     virtual void close ();
-    virtual void halfcycle ();
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false);
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();
@@ -156,7 +155,7 @@ struct NohwLib : GpioLib {
     NohwLib ();
     virtual void open ();
     virtual void close ();
-    virtual void halfcycle ();
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false);
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();
@@ -173,7 +172,7 @@ struct PipeLib : GpioLib {
     PipeLib (char const *modname);
     virtual void open ();
     virtual void close ();
-    virtual void halfcycle ();
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false);
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();
@@ -195,7 +194,7 @@ private:
 
 struct TimedLib : GpioLib {
     virtual void open ();
-    virtual void halfcycle (bool aluadd);
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false);
 
 private:
     struct timespec hafcycts;
@@ -256,11 +255,11 @@ private:
 
 struct ZynqLib : TimedLib {
     ZynqLib ();
-    ZynqLib (char const *modname);
+    ZynqLib (char const *modname, uint16_t *memarray = NULL);
     virtual ~ZynqLib ();
     virtual void open ();
     virtual void close ();
-    virtual void halfcycle (bool aluadd);
+    virtual void halfcycle (bool aluadd = true, bool topoloop = false);
     virtual uint32_t readgpio ();
     virtual void writegpio (bool wdata, uint32_t valu);
     virtual bool haspads ();
@@ -269,8 +268,11 @@ struct ZynqLib : TimedLib {
 
 private:
     GpioFile gpiofile;
+    uint16_t *memarray;
     uint32_t boardena;
     uint32_t volatile *gpiopage;
+
+    void fpstopped ();
 };
 
 char *lockfile (int fd, int how);

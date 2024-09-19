@@ -83,7 +83,7 @@ void CSrcLib::close ()
     }
 }
 
-void CSrcLib::halfcycle ()
+void CSrcLib::halfcycle (bool aluadd, bool topoloop)
 {
     bool backing[module->boolcount];
     uint32_t nloops = 0;

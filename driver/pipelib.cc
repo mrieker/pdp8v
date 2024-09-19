@@ -149,7 +149,7 @@ void PipeLib::close ()
 }
 
 // delay half a clock cycle
-void PipeLib::halfcycle ()
+void PipeLib::halfcycle (bool aluadd, bool topoloop)
 {
     // tell sim how much to run
     fprintf (sendfile, "run %s\n", runcount);

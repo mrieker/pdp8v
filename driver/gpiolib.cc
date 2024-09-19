@@ -139,16 +139,6 @@ void GpioLib::doareset ()
     ABORT ();
 }
 
-void GpioLib::halfcycle ()
-{
-    halfcycle (true);
-}
-
-void GpioLib::halfcycle (bool aluadd)
-{
-    halfcycle ();
-}
-
 // decode 32-bit value read from the gpio connector
 //  input:
 //   bits = value read from the gpio connector

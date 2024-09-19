@@ -88,6 +88,7 @@
 #include "miscdefs.h"
 #include "pidp.h"
 #include "rdcyc.h"
+#include "resetprocessorexception.h"
 #include "rimloader.h"
 #include "scncall.h"
 #include "script.h"
@@ -464,7 +465,7 @@ int main (int argc, char **argv)
     // ...or nothing but shadow
     GpioLib *gp = pipelib ? (GpioLib *) new PipeLib ("proc") :
                   csrclib ? (GpioLib *) new CSrcLib ("proc") :
-                        zynqlib ? (GpioLib *) new ZynqLib () :
+                        zynqlib ? (GpioLib *) new ZynqLib ("aclalumapcrpiseq", memarray) :
                         nohwlib ? (GpioLib *) new NohwLib () :
                                   (GpioLib *) new PhysLib ();
     gp->open ();
@@ -555,7 +556,7 @@ reseteverything:;
             } else {
                 gpio->writegpio (false, G_CLOCK | syncintreq);
             }
-            gpio->halfcycle (shadow.aluadd ());
+            gpio->halfcycle (shadow.aluadd (), true);
 
             // we are now halfway through the cycle with the clock still high
 
@@ -722,6 +723,8 @@ reseteverything:;
         }
     }
     catch (ResetProcessorException& rpe) {
+        resetio = rpe.resetio;
+        startpc = rpe.startpc;
     }
     catch (Shadow::StateMismatchException& sme) {
         if (! resetonerr) {
@@ -909,6 +912,8 @@ static void stopped (bool sigint)
     if (stopflags & SF_RESETIT) {
         ctl_unlock (true);  // make sure to unblock SIGINT before throwing exception
         ResetProcessorException rpe;
+        rpe.resetio = resetio;
+        rpe.startpc = startpc;
         throw rpe;
     }
 

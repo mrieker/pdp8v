@@ -34,6 +34,13 @@ entity Zynq is
             LEDoutG : out STD_LOGIC;     -- IO_B34_LP7 Y16
             LEDoutB : out STD_LOGIC;     -- IO_B34_LN7 Y17
 
+            fpscli : out STD_LOGIC;     -- composite static of SCL line
+            fpsclo : in STD_LOGIC;      -- SCL coming from master
+            fpsclt : in STD_LOGIC;      -- master is sending on SCL
+            fpsdai : out STD_LOGIC;     -- composite state of SDA line
+            fpsdao : in STD_LOGIC;      -- SDA coming from master
+            fpsdat : in STD_LOGIC;      -- master is sending on SDA
+
             GP0OUT : out std_logic_vector (33 downto 0);
             LEDS : out std_logic_vector (7 downto 0);
             TRIGGR : out std_logic;
@@ -168,7 +175,7 @@ architecture rtl of Zynq is
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WUSER: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WUSER";
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WVALID: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WVALID";
 
-    constant VERSION : std_logic_vector (31 downto 0) := x"00000162";
+    constant VERSION : std_logic_vector (31 downto 0) := x"00000171";
 
     constant BURSTLEN : natural := 10;
 
@@ -186,10 +193,12 @@ architecture rtl of Zynq is
     signal paddlwra, paddlwrb, paddlwrc, paddlwrd : std_logic_vector (31 downto 0);
     signal boardena : std_logic_vector (5 downto 0);
     signal numtrisoff, numtottris : std_logic_vector (9 downto 0);
+    signal fpscl, fpsda, fpsdaj : std_logic;
 
     signal readaddr, writeaddr : std_logic_vector (11 downto 2);
     signal gpinput, gpoutput, gpcompos : std_logic_vector (31 downto 0);
     signal denadata, qenadata : std_logic_vector (12 downto 0);
+    signal fpinput, fpoutput : std_logic_vector (31 downto 0);
 
     signal dmardaddr, dmawtaddr : std_logic_vector (31 downto 0);
     signal maxiARVALID, maxiRREADY, maxiAWVALID, maxiWVALID, maxiBREADY : std_logic;
@@ -325,6 +334,8 @@ begin
                          paddlwrb when readaddr = b"0000001101" else
                          paddlwrc when readaddr = b"0000001110" else
                          paddlwrd when readaddr = b"0000001111" else
+                         fpinput  when readaddr = b"0000010000" else
+                         fpoutput when readaddr = b"0000010001" else
                         dmardaddr when readaddr = b"0100000000" else
                         dmawtaddr when readaddr = b"0100000001" else
                             temp0 when readaddr = b"1000000000" else
@@ -354,6 +365,7 @@ begin
 
             gpoutput <= x"00000000";                        -- reset the PDP8
             boardena <= b"111111";                          -- by default all boards are enabled
+            fpoutput <= x"00000000";                        -- by default, front panel is disabled
 
             -- reset dma read registers
             dmardaddr <= (others => '0');
@@ -396,6 +408,7 @@ begin
                     when b"0000001101" => paddlwrb  <= saxi_WDATA;
                     when b"0000001110" => paddlwrc  <= saxi_WDATA;
                     when b"0000001111" => paddlwrd  <= saxi_WDATA;
+                    when b"0000010001" => fpoutput  <= saxi_WDATA;
                     when b"0100000000" => dmardaddr <= saxi_WDATA;
                     when b"0100000001" => dmawtaddr <= saxi_WDATA;
                     when b"1000000000" => temp0 <= saxi_WDATA;
@@ -509,8 +522,8 @@ begin
 
     bpinst: entity backplane port map (
         CLOCK => CLOCK,
-        TRIGGR => TRIGGR,
-        DEBUGS => DEBUGS,
+        -- TRIGGR => TRIGGR,
+        -- DEBUGS => DEBUGS,
 
         paddlrda => paddlrda,
         paddlrdb => paddlrdb,
@@ -528,5 +541,38 @@ begin
         gpcompos => gpcompos,
         nto => numtrisoff,
         ntt => numtottris
+    );
+
+    -- front panel code in here
+
+    fpscli <= fpscl;
+    fpscl  <= fpsclo when fpsclt = '1' else '1';
+    fpsda  <= fpsdao when fpsdat = '1' else '1';
+
+    TRIGGR <= not fpsclo or not fpsdao or fpsclt or fpsdat;
+    DEBUGS(0) <= fpsclo;
+    DEBUGS(1) <= fpsdao;
+    DEBUGS(2) <= fpsclt;
+    DEBUGS(3) <= fpsdat;
+    DEBUGS(4) <= fpsdaj;
+    fpsdai <= fpsdaj;
+    DEBUGS(13 downto 5) <= (others => '0');
+
+    fpinst: entity frontpanel port map (
+        scl    => fpscl,
+        sdax   => fpsda,
+        sday   => fpsdaj,
+        CLOCK  => CLOCK,
+        --TRIGGR => TRIGGR,
+        --DEBUGS => DEBUGS,
+
+        paddlrda => paddlrda,
+        paddlrdb => paddlrdb,
+        paddlrdc => paddlrdc,
+        paddlrdd => paddlrdd,
+
+        fpinput  => fpinput,
+        fpoutput => fpoutput,
+        gpcompos => gpcompos
     );
 end rtl;

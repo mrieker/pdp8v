@@ -57,7 +57,7 @@ void TimedLib::open ()
     fprintf (stderr, "TimedLib::open: hafcychi=%u hafcyclo=%u\n", hafcychi, hafcyclo);
 }
 
-void TimedLib::halfcycle (bool aluadd)
+void TimedLib::halfcycle (bool aluadd, bool topoloop)
 {
     if (hafcycts.tv_nsec >= 1000000) {
         if (nanosleep (&hafcycts, NULL) < 0) ABORT ();

@@ -36,7 +36,7 @@ void NohwLib::open ()
 void NohwLib::close ()
 { }
 
-void NohwLib::halfcycle ()
+void NohwLib::halfcycle (bool aluadd, bool topoloop)
 { }
 
 // read what gpio connector should be at end of cycle

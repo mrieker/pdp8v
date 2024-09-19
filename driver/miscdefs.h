@@ -92,10 +92,4 @@ extern uint32_t stopflags;
 bool getmintimes ();
 void setmintimes (bool mintimes);
 
-#include <exception>
-
-struct ResetProcessorException : std::exception {
-    virtual char const *what ();
-};
-
 #endif
