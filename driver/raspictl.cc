@@ -938,7 +938,7 @@ static uint16_t group2io (uint32_t opcode, uint16_t input)
             switchregister = readswitches ("switchregister");
             input |= switchregister & 07777;
         }
-        if (opcode & 0002) {                                    // HLT
+        if ((opcode & 0002) && ! randmem) {                     // HLT
             stopordie ("HALTSTOP");
         }
     }
