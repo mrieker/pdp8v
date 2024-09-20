@@ -105,6 +105,7 @@ bool randmem;
 bool resetio;
 bool scriptmode;
 bool skipopt;
+bool startln;
 bool tubesaver;
 bool waitingforinterrupt;
 char **cmdargv;
@@ -115,6 +116,7 @@ int numstopats;
 MemExt memext;
 Shadow shadow;
 uint16_t lastreadaddr;
+uint16_t startac;
 uint16_t startpc;
 uint16_t switchregister;
 uint16_t *memory;
@@ -141,8 +143,8 @@ static uint16_t intreqmask;
 static uint16_t lastreaddata;
 static uint32_t syncintreq;
 
-static void writestartpc ();
-static void clraccumlink ();
+static void writestartpcacln ();
+static void initaccumlink ();
 static void stopped (bool sigint);
 static void *mintimesthread (void *dummy);
 static uint16_t group2io (uint32_t opcode, uint16_t input);
@@ -526,9 +528,9 @@ reseteverything:;
     // ignore stopflags, GUI.java or script.cc is waiting for us to initialize
     try {
         if (startpc != 0xFFFFU) {
-            writestartpc ();
+            writestartpcacln ();
         } else if (randmem) {
-            clraccumlink ();
+            initaccumlink ();
         }
     } catch (Shadow::StateMismatchException& sme) {
         stopreason = "STATEMISMATCH";
@@ -724,6 +726,8 @@ reseteverything:;
     }
     catch (ResetProcessorException& rpe) {
         resetio = rpe.resetio;
+        startac = rpe.startac;
+        startln = rpe.startln;
         startpc = rpe.startpc;
     }
     catch (Shadow::StateMismatchException& sme) {
@@ -750,11 +754,11 @@ reseteverything:;
 }
 
 // load DF and IF with the frame and JMP to the address
-// also clears accum and link
+// also sets accum and link
 // assumes processor is at end of fetch1 with clock still low, shadow.clock() not called yet
 // returns with processor at end of fetch1 with clock still low, shadow.clock() not called yet
 // might throw StateMismatchException
-static void writestartpc ()
+static void writestartpcacln ()
 {
     // set DF and IF registers to given frame
     memext.setdfif ((startpc >> 12) & 7);
@@ -790,51 +794,52 @@ static void writestartpc ()
     gpio->halfcycle (shadow.aluadd ());
 
     // half way through DEFER2 with clock still high
-    // drop clock and start sending it the PC contents - 1 for the CLA CLL we're about to send
-    gpio->writegpio (true, ((startpc - 1) & 07777) * G_DATA0);
+    // drop clock and start sending it the PC contents - 2 for the CLA CLL and TAD we're about to send
+    gpio->writegpio (true, ((startpc - 2) & 07777) * G_DATA0);
     gpio->halfcycle (shadow.aluadd ());
 
     // drive clock high to transition to EXEC1/JMP
-    // keep sending startpc - 1 so it gets clocked into MA
+    // keep sending startpc - 2 so it gets clocked into MA
     shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, ((startpc - 1) & 07777) * G_DATA0 | G_CLOCK);
+    gpio->writegpio (true, ((startpc - 2) & 07777) * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
 
     // drop clock and run to end of EXEC1/JUMP
     gpio->writegpio (false, 0);
     gpio->halfcycle (shadow.aluadd ());
 
-    // end of EXEC1/JUMP - processor should be reading the opcode at startpc - 1
-    // but startpc - 1 has not clocked into PC yet
+    // end of EXEC1/JUMP - processor should be reading the opcode at startpc - 2
+    // but startpc - 2 has not clocked into PC yet
 
-    // clear accumulator and link
-    // - clocks startpc - 1 into PC then increments PC to startpc
+    // initialize accumulator and link
+    // - clocks startpc - 2 into PC then increments PC to startpc
     // - also gets us to a real FETCH1 state with PC updated
-    clraccumlink ();
+    initaccumlink ();
 
     // the tubes are waiting at the end of FETCH1 with the clock still low
     // when resumed, raspictl.cc main will sample the GPIO lines, call shadow.clock() and resume processing from there
 }
 
-// clear accumulator and link
-// also increments program counter
+// initialize accumulator and link
+// also increments program counter twice
 // assumes processor is at end of FETCH1 or equiv with clock still low, shadow.clock() not called yet
 // returns with processor at end of FETCH1 with clock still low, shadow.clock() not called yet
 // might throw StateMismatchException
-static void clraccumlink ()
+static void initaccumlink ()
 {
     // raise clock to enter FETCH2
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (false, G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
 
-    // drop clock, start sending the tubes a CLA CLL instruction
-    gpio->writegpio (true, 07300 * G_DATA0);
+    // drop clock, start sending the tubes a CLA CLL CMA [CML] instruction
+    uint16_t clacll = startln ? 07360 : 07340;
+    gpio->writegpio (true, clacll * G_DATA0);
     gpio->halfcycle (shadow.aluadd ());
 
     // raise clock to enter EXEC1, keep sending opcode
     shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, 07300 * G_DATA0 | G_CLOCK);
+    gpio->writegpio (true, clacll * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
 
     // drop clock, stop sending opcode
@@ -844,6 +849,42 @@ static void clraccumlink ()
     // raise clock to enter FETCH1
     shadow.clock (gpio->readgpio ());
     gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, to get to end of FETCH1
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter FETCH2
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (false, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, start sending the tubes a AND 0000 instruction
+    gpio->writegpio (true, 00000 * G_DATA0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter EXEC1, keep sending opcode
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (true, 00000 * G_DATA0 | G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, stop sending opcode
+    gpio->writegpio (false, 0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter EXEC2
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (true, G_CLOCK);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // drop clock, start sending the tubes initial accum contents
+    gpio->writegpio (true, startac * G_DATA0);
+    gpio->halfcycle (shadow.aluadd ());
+
+    // raise clock to enter FETCH1, keep sending startac so tubes will clock it in
+    shadow.clock (gpio->readgpio ());
+    gpio->writegpio (true, startac * G_DATA0 | G_CLOCK);
     gpio->halfcycle (shadow.aluadd ());
 
     // drop clock, to get to end of FETCH1
@@ -913,6 +954,8 @@ static void stopped (bool sigint)
         ctl_unlock (true);  // make sure to unblock SIGINT before throwing exception
         ResetProcessorException rpe;
         rpe.resetio = resetio;
+        rpe.startac = startac;
+        rpe.startln = startln;
         rpe.startpc = startpc;
         throw rpe;
     }
@@ -1467,9 +1510,4 @@ static void exithandler ()
     fprintf (stderr, "raspictl: closing %s\n", gpio->libname);
     gpio->close ();
     fprintf (stderr, "raspictl: exiting\n");
-}
-
-char const *ResetProcessorException::what ()
-{
-    return "processor reset requested";
 }

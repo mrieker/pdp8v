@@ -286,103 +286,10 @@ bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc)
     // reset processor and load newpc-2
     // this puts raspictl main() at wherever it would be for stopped in middle of FETCH2 with clock still high
     uint16_t savedframe = memext.dframe;
-    uint16_t newpcm2 = (newpc - 2) & 07777;
-    if (! ctl_reset (memext.iframe | newpcm2, false)) return false;
+    startac = newac;
+    startln = newlink;
+    if (! ctl_reset (memext.iframe | newpc, false)) return false;
     memext.dframe = savedframe;
-
-    // FETCH2 - send CLA CLL CMA [CML] opcode to tubes
-    // also increments PC to newpc-1
-    ASSERT (shadow.r.state == Shadow::State::FETCH2);
-    uint32_t clacll = (newlink ? 07360 : 07340) * G_DATA0;
-    gpio->writegpio (true, clacll);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, clacll | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // GRPA1 - tubes are writing AC and LIMK
-    ASSERT (shadow.r.state == Shadow::State::GRPA1);
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // FETCH1 - tubes are sending us newpc-1
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // FETCH2 - send ANDI 0000 opcode to tubes
-    // also increments PC to newpc
-    ASSERT (shadow.r.state == Shadow::State::FETCH2);
-    gpio->writegpio (true, 00400 * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, 00400 * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // DEFER1 - tubes are sending us the 0000 address
-    ASSERT (shadow.r.state == Shadow::State::DEFER1);
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // DEFER2 - send tubes newma so it gets loaded in MA
-    ASSERT (shadow.r.state == Shadow::State::DEFER2);
-    uint32_t data = newma * G_DATA0;
-    gpio->writegpio (true, data);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, data | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // ARITH1 - tubes are sending us the MA to read from
-    ASSERT (shadow.r.state == Shadow::State::ARITH1);
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // AND2 - send tubes new AC contents
-    ASSERT (shadow.r.state == Shadow::State::AND2);
-    gpio->writegpio (true, newac * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, newac * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-
-    // FETCH1 - tubes are sending us the new PC
-    ASSERT (shadow.r.state == Shadow::State::FETCH1);
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    gpio->halfcycle (false);
 
     // raspictl main() is still wherever it would be for stopped in middle of FETCH2 with clock still high
     ASSERT (shadow.r.state == Shadow::State::FETCH2);

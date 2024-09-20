@@ -279,9 +279,19 @@ void ZynqLib::fpstopped ()
             gpiopage[GP_FPOUT] = FPO_ENABLE;                // indicate that processor is no longer stopped
             if (! (sample & FPI_JUMP)) break;               // if no 'load address' done, just continue in current state
             ResetProcessorException rpe;                    // reset to load program counter and resume processing
-            rpe.resetio = (sample & FPI_STRT) != 0;         // start switch resets i/o
             rpe.startpc = (sample & FPI_DATA) / FPI_DATA0;  // load address wipes state and writes program counter
-            throw rpe;
+            rpe.resetio = true;                             // assume it was start switch
+            rpe.startac = 0;
+            rpe.startln = 0;
+            if (! (sample & FPI_STRT)) {                    // start switch resets i/o and clears link and accum
+                ABCD abcd;                                  // otherwise, preserve link and accum
+                readpads (abcd.cons);
+                abcd.decode ();
+                rpe.startac = abcd.acq;
+                rpe.startln = abcd.lnq;
+                rpe.resetio = false;                        // ...and don't reset io
+            }
+            throw rpe;                                      // tink!
         }
     }
 }

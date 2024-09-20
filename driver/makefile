@@ -59,6 +59,7 @@ lib.$(MACH).a: \
 		pipelib.$(MACH).o \
 		rdcyc.$(MACH).o \
 		readprompt.$(MACH).o \
+		resetprocessorexception.$(MACH).o \
 		rimloader.$(MACH).o \
 		scncall.$(MACH).o \
 		script.$(MACH).o \

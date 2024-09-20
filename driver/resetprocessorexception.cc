@@ -18,18 +18,9 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-#ifndef _RESETPROCESSOREXCEPTION_H
-#define _RESETPROCESSOREXCEPTION_H
+#include "resetprocessorexception.h"
 
-#include <exception>
-#include <stdint.h>
-
-struct ResetProcessorException : std::exception {
-    bool resetio;
-    bool startln;
-    uint16_t startac;
-    uint16_t startpc;
-    virtual char const *what ();
-};
-
-#endif
+char const *ResetProcessorException::what ()
+{
+    return "processor reset requested";
+}
