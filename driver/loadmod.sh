@@ -1,9 +1,9 @@
 #!/bin/bash
+cd `dirname $0`
 if [ "`uname -m`" == armv6l ]
 then
     if ! lsmod | grep -q ^armmhz
     then
-        cd `dirname $0`
         if [ ! -f km-armmhz/armmhz.`uname -r`.ko ]
         then
             cd km-armmhz
@@ -19,7 +19,6 @@ if [ "`uname -m`" == armv7l ]
 then
     if ! lsmod | grep -q ^enabtsc
     then
-        cd `dirname $0`
         if [ ! -f km/enabtsc.`uname -r`.ko ]
         then
             cd km
@@ -35,7 +34,6 @@ if grep -q 'Xilinx Zynq' /proc/cpuinfo
 then
     if ! lsmod | grep -q ^zynqgpio
     then
-        cd `dirname $0`
         if [ ! -f km-zynqgpio/zynqgpio.`uname -r`.ko ]
         then
             cd km-zynqgpio
