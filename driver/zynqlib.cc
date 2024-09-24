@@ -239,6 +239,8 @@ void ZynqLib::fpstopped ()
     // let frontpanel.v know we have stopped
     gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED;
 
+    fprintf (stderr, "ZynqLib::fpstopped*: stopped via pipanel i2c\n");
+
     while (true) {
 
         // FPO_CLOCK is low, wait a bit for fpga to process last thing sent
@@ -256,7 +258,9 @@ void ZynqLib::fpstopped ()
             uint16_t addr = (sample & FPI_DATA) / FPI_DATA0;
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED;
             usleep (1000);
-            memarray[addr] = (gpiopage[GP_FPIN] & FPI_DATA) / FPI_DATA0;
+            uint16_t data = (gpiopage[GP_FPIN] & FPI_DATA) / FPI_DATA0;
+            fprintf (stderr, "ZynqLib::fpstopped*: deposit %04o into %05o\n", data, addr);
+            memarray[addr] = data;
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | FPO_CLOCK;
             usleep (1000);
         }
@@ -265,6 +269,7 @@ void ZynqLib::fpstopped ()
         if (sample & FPI_EXAM) {
             uint16_t addr = (sample & FPI_DATA) / FPI_DATA0;
             uint16_t data = memarray[addr];
+            fprintf (stderr, "ZynqLib::fpstopped*: examine %04o from %05o\n", data, addr);
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | data * FPO_DATA0;
             usleep (1000);
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | data * FPO_DATA0 | FPO_CLOCK;
@@ -277,7 +282,10 @@ void ZynqLib::fpstopped ()
         // process request to continue processing
         if (sample & FPI_CONT) {
             gpiopage[GP_FPOUT] = FPO_ENABLE;                // indicate that processor is no longer stopped
-            if (! (sample & FPI_JUMP)) break;               // if no 'load address' done, just continue in current state
+            if (! (sample & FPI_JUMP)) {
+                fprintf (stderr, "ZynqLib::fpstopped*: continuing\n");
+                break;                                      // if no 'load address' done, just continue in current state
+            }
             ResetProcessorException rpe;                    // reset to load program counter and resume processing
             rpe.startpc = (sample & FPI_DATA) / FPI_DATA0;  // load address wipes state and writes program counter
             rpe.resetio = true;                             // assume it was start switch
@@ -291,6 +299,8 @@ void ZynqLib::fpstopped ()
                 rpe.startln = abcd.lnq;
                 rpe.resetio = false;                        // ...and don't reset io
             }
+            fprintf (stderr, "ZynqLib::fpstopped*: resetting startpc=%05o resetio=%o startac=%04o startln=%o\n",
+                rpe.startpc, rpe.resetio, rpe.startac, rpe.startln);
             throw rpe;                                      // tink!
         }
     }
