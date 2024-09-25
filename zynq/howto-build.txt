@@ -1,17 +1,19 @@
 
-from homepc2:
 
- 1) build with vivado 2018.3
- 2) cd ~/MYIR_HW
- 3) source both.si
- 4) cd petakernl/zturn
- 5) petalinux-package --boot --force --fsbl images/linux/zynq_fsbl.elf --fpga ~/nfs/pdp8/zynq/pdp8v.runs/impl_1/myboard_wrapper.bit --u-boot
- 6) scp -p images/linux/BOOT.BIN root@192.168.1.19:/boot/
- 7) ssh root@192.168.1.19 reboot
+to build zynq zturn:
 
-test:
+    ./makemodv.sh   ...create verilog equivalent of tube boards
+    ./makentov.sh   ...adds nto counters (number of tubes on) to verilog
 
- 1) ssh 192.168.1.19
- 2) cd nfs/pdp8/driver
- 3) ./raspictl -cpuhz 60000 -zynqlib -randmem -quiet -mintimes
+    build bitstream file with vivado2018.3 or try script ./makebitfile.sh
+        ...creates file pdp8v.runs/impl_1/myboard_wrapper.bit
+
+    create BOOT.BIN file with ./makebootbin.sh
+        this requires ~/MYIR_HW contain directories
+            petadevel   ...which contains petadevel/settings.sh
+            petakernl   ...which contains petakernl/zturn/images/linux
+
+to run it:
+    cd pdp8v/driver
+    ./raspictl -zynqlib -randmem -mintimes
 
