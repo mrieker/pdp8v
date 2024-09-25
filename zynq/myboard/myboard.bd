@@ -1,10 +1,10 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x868DDF053D2E6730",
+      "boundary_crc": "0x81291C7AB98A76DC",
       "device": "xc7z020clg400-1",
       "name": "myboard",
-      "synth_flow_mode": "Hierarchical",
+      "synth_flow_mode": "None",
       "tool_version": "2018.3",
       "validated": "true"
     },
@@ -121,6 +121,12 @@
             "value_src": "default"
           }
         }
+      },
+      "EXTSCL_0": {
+        "direction": "I"
+      },
+      "EXTSDA_0": {
+        "direction": "IO"
       }
     },
     "components": {
@@ -894,10 +900,10 @@
             "value": "54"
           },
           "PCW_MIO_TREE_PERIPHERALS": {
-            "value": "GPIO#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#GPIO#Quad SPI Flash#GPIO#GPIO#GPIO#I2C 1#I2C 1#CAN 0#CAN 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#UART 1#UART 1#GPIO#USB Reset#Enet 0#Enet 0"
+            "value": "GPIO#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#Quad SPI Flash#GPIO#Quad SPI Flash#GPIO#UART 0#UART 0#I2C 1#I2C 1#CAN 0#CAN 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#Enet 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#USB 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#SD 0#UART 1#UART 1#GPIO#USB Reset#Enet 0#Enet 0"
           },
           "PCW_MIO_TREE_SIGNALS": {
-            "value": "gpio[0]#qspi0_ss_b#qspi0_io[0]#qspi0_io[1]#qspi0_io[2]#qspi0_io[3]/HOLD_B#qspi0_sclk#gpio[7]#qspi_fbclk#gpio[9]#gpio[10]#gpio[11]#scl#sda#rx#tx#tx_clk#txd[0]#txd[1]#txd[2]#txd[3]#tx_ctl#rx_clk#rxd[0]#rxd[1]#rxd[2]#rxd[3]#rx_ctl#data[4]#dir#stp#nxt#data[0]#data[1]#data[2]#data[3]#clk#data[5]#data[6]#data[7]#clk#cmd#data[0]#data[1]#data[2]#data[3]#cd#wp#tx#rx#gpio[50]#reset#mdc#mdio"
+            "value": "gpio[0]#qspi0_ss_b#qspi0_io[0]#qspi0_io[1]#qspi0_io[2]#qspi0_io[3]/HOLD_B#qspi0_sclk#gpio[7]#qspi_fbclk#gpio[9]#rx#tx#scl#sda#rx#tx#tx_clk#txd[0]#txd[1]#txd[2]#txd[3]#tx_ctl#rx_clk#rxd[0]#rxd[1]#rxd[2]#rxd[3]#rx_ctl#data[4]#dir#stp#nxt#data[0]#data[1]#data[2]#data[3]#clk#data[5]#data[6]#data[7]#clk#cmd#data[0]#data[1]#data[2]#data[3]#cd#wp#tx#rx#gpio[50]#reset#mdc#mdio"
           },
           "PCW_PACKAGE_DDR_BOARD_DELAY0": {
             "value": "0.089"
@@ -1285,6 +1291,12 @@
               }
             },
             "interface_nets": {
+              "s00_couplers_to_auto_pc": {
+                "interface_ports": [
+                  "S_AXI",
+                  "auto_pc/S_AXI"
+                ]
+              },
               "auto_us_to_s00_couplers": {
                 "interface_ports": [
                   "M_AXI",
@@ -1295,12 +1307,6 @@
                 "interface_ports": [
                   "auto_pc/M_AXI",
                   "auto_us/S_AXI"
-                ]
-              },
-              "s00_couplers_to_auto_pc": {
-                "interface_ports": [
-                  "S_AXI",
-                  "auto_pc/S_AXI"
                 ]
               }
             },
@@ -1564,7 +1570,7 @@
         "xci_name": "myboard_system_ila_0_0",
         "parameters": {
           "C_DATA_DEPTH": {
-            "value": "131072"
+            "value": "32768"
           },
           "C_MON_TYPE": {
             "value": "NATIVE"
@@ -1573,7 +1579,7 @@
             "value": "2"
           },
           "C_PROBE1_WIDTH": {
-            "value": "14"
+            "value": "32"
           },
           "C_PROBE_WIDTH_PROPAGATION": {
             "value": "MANUAL"
@@ -1598,7 +1604,7 @@
                 "value_src": "default_prop"
               },
               "FREQ_HZ": {
-                "value": "1e+08",
+                "value": "100000000",
                 "value_src": "user_prop"
               }
             }
@@ -1651,7 +1657,7 @@
                 "value_src": "constant"
               },
               "FREQ_HZ": {
-                "value": "1e+08",
+                "value": "100000000",
                 "value_src": "user_prop"
               },
               "HAS_BRESP": {
@@ -1844,7 +1850,7 @@
                 "value_src": "constant"
               },
               "FREQ_HZ": {
-                "value": "1e+08",
+                "value": "100000000",
                 "value_src": "user_prop"
               },
               "HAS_BRESP": {
@@ -2142,7 +2148,7 @@
                 "value_src": "default_prop"
               },
               "FREQ_HZ": {
-                "value": "1e+08",
+                "value": "100000000",
                 "value_src": "user_prop"
               }
             }
@@ -2160,24 +2166,6 @@
           "LEDoutB": {
             "direction": "O"
           },
-          "fpscli": {
-            "direction": "O"
-          },
-          "fpsclo": {
-            "direction": "I"
-          },
-          "fpsclt": {
-            "direction": "I"
-          },
-          "fpsdai": {
-            "direction": "O"
-          },
-          "fpsdao": {
-            "direction": "I"
-          },
-          "fpsdat": {
-            "direction": "I"
-          },
           "GP0OUT": {
             "direction": "O",
             "left": "33",
@@ -2193,8 +2181,14 @@
           },
           "DEBUGS": {
             "direction": "O",
-            "left": "13",
+            "left": "31",
             "right": "0"
+          },
+          "EXTSCL": {
+            "direction": "I"
+          },
+          "EXTSDA": {
+            "direction": "IO"
           }
         },
         "addressing": {
@@ -2208,10 +2202,10 @@
       }
     },
     "interface_nets": {
-      "processing_system7_0_M_AXI_GP0": {
+      "processing_system7_0_DDR": {
         "interface_ports": [
-          "processing_system7_0/M_AXI_GP0",
-          "axi_interconnect_1/S00_AXI"
+          "DDR",
+          "processing_system7_0/DDR"
         ]
       },
       "S00_AXI_1": {
@@ -2220,10 +2214,10 @@
           "Zynq_0/M00_AXI"
         ]
       },
-      "processing_system7_0_FIXED_IO": {
+      "axi_interconnect_0_M00_AXI": {
         "interface_ports": [
-          "FIXED_IO",
-          "processing_system7_0/FIXED_IO"
+          "axi_interconnect_0/M00_AXI",
+          "processing_system7_0/S_AXI_HP0"
         ]
       },
       "axi_interconnect_1_M00_AXI": {
@@ -2232,16 +2226,16 @@
           "Zynq_0/S00_AXI"
         ]
       },
-      "axi_interconnect_0_M00_AXI": {
+      "processing_system7_0_M_AXI_GP0": {
         "interface_ports": [
-          "axi_interconnect_0/M00_AXI",
-          "processing_system7_0/S_AXI_HP0"
+          "processing_system7_0/M_AXI_GP0",
+          "axi_interconnect_1/S00_AXI"
         ]
       },
-      "processing_system7_0_DDR": {
+      "processing_system7_0_FIXED_IO": {
         "interface_ports": [
-          "DDR",
-          "processing_system7_0/DDR"
+          "FIXED_IO",
+          "processing_system7_0/FIXED_IO"
         ]
       }
     },
@@ -2304,37 +2298,28 @@
           "SyncReset_0/RESET_N"
         ]
       },
+      "Zynq_0_TRIGGR": {
+        "ports": [
+          "Zynq_0/TRIGGR",
+          "system_ila_0/probe0"
+        ]
+      },
       "Zynq_0_DEBUGS": {
         "ports": [
           "Zynq_0/DEBUGS",
           "system_ila_0/probe1"
         ]
       },
-      "processing_system7_0_I2C0_SCL_O": {
+      "EXTSCL_0_1": {
         "ports": [
-          "processing_system7_0/I2C0_SCL_O",
-          "system_ila_0/probe0",
-          "processing_system7_0/I2C0_SCL_I",
-          "Zynq_0/fpsclo"
+          "EXTSCL_0",
+          "Zynq_0/EXTSCL"
         ]
       },
-      "processing_system7_0_I2C0_SCL_T": {
+      "Net": {
         "ports": [
-          "processing_system7_0/I2C0_SCL_T",
-          "Zynq_0/fpsclt"
-        ]
-      },
-      "processing_system7_0_I2C0_SDA_O": {
-        "ports": [
-          "processing_system7_0/I2C0_SDA_O",
-          "processing_system7_0/I2C0_SDA_I",
-          "Zynq_0/fpsdao"
-        ]
-      },
-      "processing_system7_0_I2C0_SDA_T": {
-        "ports": [
-          "processing_system7_0/I2C0_SDA_T",
-          "Zynq_0/fpsdat"
+          "EXTSDA_0",
+          "Zynq_0/EXTSDA"
         ]
       }
     },

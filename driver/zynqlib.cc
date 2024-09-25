@@ -47,14 +47,16 @@
 #define GP_FPOUT 17
 
 // sent by frontpanel.v
-#define FPI_DATA0 0x00001U      // data word
-#define FPI_DATA  0x00FFFU
-#define FPI_DEP   0x01000U      // deposit key, write memory
-#define FPI_EXAM  0x02000U      // examine key, read memory
-#define FPI_JUMP  0x04000U      // along with FPI_CONT, set PC to FPI_DATA
-#define FPI_CONT  0x08000U      // continue key
-#define FPI_STRT  0x10000U      // along with FPI_CONT, reset I/O
-#define FPI_STOP  0x20000U      // step or stop key
+#define FPI_DATA0  0x000001U    // data word
+#define FPI_DATA   0x000FFFU
+#define FPI_DEP    0x001000U    // deposit key, write memory
+#define FPI_EXAM   0x002000U    // examine key, read memory
+#define FPI_JUMP   0x004000U    // along with FPI_CONT, set PC to FPI_DATA
+#define FPI_CONT   0x008000U    // continue key
+#define FPI_STRT   0x010000U    // along with FPI_CONT, reset I/O
+#define FPI_STOP   0x020000U    // step or stop key
+#define FPI_STATE0 0x040000U    // frontpanel.v state (debugging)
+#define FPI_STATE  0x1C0000U
 
 // sent to frontpanel.v
 #define FPO_DATA0   0x0001U     // data word
@@ -239,41 +241,43 @@ void ZynqLib::fpstopped ()
     // let frontpanel.v know we have stopped
     gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED;
 
-    fprintf (stderr, "ZynqLib::fpstopped*: stopped via pipanel i2c\n");
+    fprintf (stderr, "ZynqLib::fpstopped: stopped via pipanel i2c\n");
 
     while (true) {
 
         // FPO_CLOCK is low, wait a bit for fpga to process last thing sent
-        usleep (1000);
+        usleep (100);
 
         // get fpga request value
         uint32_t sample = gpiopage[GP_FPIN];
 
         // tell fpga we got it by driving clock high then wait a bit before sending reply
         gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | FPO_CLOCK;
-        usleep (1000);
+        usleep (100);
 
         // process request to write memory
         if (sample & FPI_DEP) {
             uint16_t addr = (sample & FPI_DATA) / FPI_DATA0;
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED;
-            usleep (1000);
+            usleep (100);
             uint16_t data = (gpiopage[GP_FPIN] & FPI_DATA) / FPI_DATA0;
-            fprintf (stderr, "ZynqLib::fpstopped*: deposit %04o into %05o\n", data, addr);
+            fprintf (stderr, "ZynqLib::fpstopped: deposit %04o into %05o\n", data, addr);
             memarray[addr] = data;
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | FPO_CLOCK;
-            usleep (1000);
+            usleep (100);
         }
 
         // process request to read memory
         if (sample & FPI_EXAM) {
+            // should now be in middle of state EXAM2
             uint16_t addr = (sample & FPI_DATA) / FPI_DATA0;
             uint16_t data = memarray[addr];
-            fprintf (stderr, "ZynqLib::fpstopped*: examine %04o from %05o\n", data, addr);
+            fprintf (stderr, "ZynqLib::fpstopped: examine %04o from %05o\n", data, addr);
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | data * FPO_DATA0;
-            usleep (1000);
+            usleep (100);
             gpiopage[GP_FPOUT] = FPO_ENABLE | FPO_STOPPED | data * FPO_DATA0 | FPO_CLOCK;
-            usleep (1000);
+            usleep (100);
+            // should now be in middle of state IDLE
         }
 
         // drive clock low cuz that's what's expected at top of loop
@@ -283,7 +287,7 @@ void ZynqLib::fpstopped ()
         if (sample & FPI_CONT) {
             gpiopage[GP_FPOUT] = FPO_ENABLE;                // indicate that processor is no longer stopped
             if (! (sample & FPI_JUMP)) {
-                fprintf (stderr, "ZynqLib::fpstopped*: continuing\n");
+                fprintf (stderr, "ZynqLib::fpstopped: continuing\n");
                 break;                                      // if no 'load address' done, just continue in current state
             }
             ResetProcessorException rpe;                    // reset to load program counter and resume processing
@@ -299,7 +303,7 @@ void ZynqLib::fpstopped ()
                 rpe.startln = abcd.lnq;
                 rpe.resetio = false;                        // ...and don't reset io
             }
-            fprintf (stderr, "ZynqLib::fpstopped*: resetting startpc=%05o resetio=%o startac=%04o startln=%o\n",
+            fprintf (stderr, "ZynqLib::fpstopped: resetting startpc=%05o resetio=%o startac=%04o startln=%o\n",
                 rpe.startpc, rpe.resetio, rpe.startac, rpe.startln);
             throw rpe;                                      // tink!
         }

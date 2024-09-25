@@ -34,17 +34,12 @@ entity Zynq is
             LEDoutG : out STD_LOGIC;     -- IO_B34_LP7 Y16
             LEDoutB : out STD_LOGIC;     -- IO_B34_LN7 Y17
 
-            fpscli : out STD_LOGIC;     -- composite static of SCL line
-            fpsclo : in STD_LOGIC;      -- SCL coming from master
-            fpsclt : in STD_LOGIC;      -- master is sending on SCL
-            fpsdai : out STD_LOGIC;     -- composite state of SDA line
-            fpsdao : in STD_LOGIC;      -- SDA coming from master
-            fpsdat : in STD_LOGIC;      -- master is sending on SDA
-
             GP0OUT : out std_logic_vector (33 downto 0);
             LEDS : out std_logic_vector (7 downto 0);
             TRIGGR : out std_logic;
-            DEBUGS : out std_logic_vector (13 downto 0);
+            DEBUGS : out std_logic_vector (31 downto 0);
+            EXTSCL : in std_logic;          -- I2C clock from RasPI pipanel/i2clib.cc
+            EXTSDA : inout std_logic;       -- I2C data to/from pipanel/i2clib.cc
 
             -- arm processor memory bus interface (AXI)
             -- we are a slave for accessing the control registers (read & write)
@@ -65,49 +60,49 @@ entity Zynq is
             saxi_WREADY : out std_logic;
             saxi_WVALID : in std_logic;
 
-        -- - we are a master for accessing the ring buffer (read only)
-        maxi_ARADDR : out std_logic_vector (31 downto 0);
-        maxi_ARBURST : out std_logic_vector (1 downto 0);
-        maxi_ARCACHE : out std_logic_vector (3 downto 0);
-        maxi_ARID : out std_logic_vector (0 downto 0);
-        maxi_ARLEN : out std_logic_vector (7 downto 0);
-        maxi_ARLOCK : out std_logic_vector (1 downto 0);
-        maxi_ARPROT : out std_logic_vector (2 downto 0);
-        maxi_ARQOS : out std_logic_vector (3 downto 0);
-        maxi_ARREADY : in std_logic;
-        maxi_ARREGION : out std_logic_vector (3 downto 0);
-        maxi_ARSIZE : out std_logic_vector (2 downto 0);
-        maxi_ARUSER : out std_logic_vector (0 downto 0);
-        maxi_ARVALID : out std_logic;
+            -- - we are a master for accessing the ring buffer (read only)
+            maxi_ARADDR : out std_logic_vector (31 downto 0);
+            maxi_ARBURST : out std_logic_vector (1 downto 0);
+            maxi_ARCACHE : out std_logic_vector (3 downto 0);
+            maxi_ARID : out std_logic_vector (0 downto 0);
+            maxi_ARLEN : out std_logic_vector (7 downto 0);
+            maxi_ARLOCK : out std_logic_vector (1 downto 0);
+            maxi_ARPROT : out std_logic_vector (2 downto 0);
+            maxi_ARQOS : out std_logic_vector (3 downto 0);
+            maxi_ARREADY : in std_logic;
+            maxi_ARREGION : out std_logic_vector (3 downto 0);
+            maxi_ARSIZE : out std_logic_vector (2 downto 0);
+            maxi_ARUSER : out std_logic_vector (0 downto 0);
+            maxi_ARVALID : out std_logic;
 
-        maxi_AWADDR : out std_logic_vector (31 downto 0);
-        maxi_AWBURST : out std_logic_vector (1 downto 0);
-        maxi_AWCACHE : out std_logic_vector (3 downto 0);
-        maxi_AWID : out std_logic_vector (0 downto 0);
-        maxi_AWLEN : out std_logic_vector (7 downto 0);
-        maxi_AWLOCK : out std_logic_vector (1 downto 0);
-        maxi_AWPROT : out std_logic_vector (2 downto 0);
-        maxi_AWQOS : out std_logic_vector (3 downto 0);
-        maxi_AWREADY : in std_logic;
-        maxi_AWREGION : out std_logic_vector (3 downto 0);
-        maxi_AWSIZE : out std_logic_vector (2 downto 0);
-        maxi_AWUSER : out std_logic_vector (0 downto 0);
-        maxi_AWVALID : out std_logic;
+            maxi_AWADDR : out std_logic_vector (31 downto 0);
+            maxi_AWBURST : out std_logic_vector (1 downto 0);
+            maxi_AWCACHE : out std_logic_vector (3 downto 0);
+            maxi_AWID : out std_logic_vector (0 downto 0);
+            maxi_AWLEN : out std_logic_vector (7 downto 0);
+            maxi_AWLOCK : out std_logic_vector (1 downto 0);
+            maxi_AWPROT : out std_logic_vector (2 downto 0);
+            maxi_AWQOS : out std_logic_vector (3 downto 0);
+            maxi_AWREADY : in std_logic;
+            maxi_AWREGION : out std_logic_vector (3 downto 0);
+            maxi_AWSIZE : out std_logic_vector (2 downto 0);
+            maxi_AWUSER : out std_logic_vector (0 downto 0);
+            maxi_AWVALID : out std_logic;
 
-        maxi_BREADY : out std_logic;
-        maxi_BVALID : in std_logic;
+            maxi_BREADY : out std_logic;
+            maxi_BVALID : in std_logic;
 
-        maxi_RDATA : in std_logic_vector (31 downto 0);
-        maxi_RLAST : in std_logic;
-        maxi_RREADY : out std_logic;
-        maxi_RVALID : in std_logic;
+            maxi_RDATA : in std_logic_vector (31 downto 0);
+            maxi_RLAST : in std_logic;
+            maxi_RREADY : out std_logic;
+            maxi_RVALID : in std_logic;
 
-        maxi_WDATA : out std_logic_vector (31 downto 0);
-        maxi_WLAST : out std_logic;
-        maxi_WREADY : in std_logic;
-        maxi_WSTRB : out std_logic_vector (3 downto 0);
-        maxi_WUSER : out std_logic_vector (0 downto 0);
-        maxi_WVALID : out std_logic);
+            maxi_WDATA : out std_logic_vector (31 downto 0);
+            maxi_WLAST : out std_logic;
+            maxi_WREADY : in std_logic;
+            maxi_WSTRB : out std_logic_vector (3 downto 0);
+            maxi_WUSER : out std_logic_vector (0 downto 0);
+            maxi_WVALID : out std_logic);
 end Zynq;
 
 architecture rtl of Zynq is
@@ -175,7 +170,7 @@ architecture rtl of Zynq is
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WUSER: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WUSER";
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WVALID: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WVALID";
 
-    constant VERSION : std_logic_vector (31 downto 0) := x"00000171";
+    constant VERSION : std_logic_vector (31 downto 0) := x"00000219";
 
     constant BURSTLEN : natural := 10;
 
@@ -193,12 +188,20 @@ architecture rtl of Zynq is
     signal paddlwra, paddlwrb, paddlwrc, paddlwrd : std_logic_vector (31 downto 0);
     signal boardena : std_logic_vector (5 downto 0);
     signal numtrisoff, numtottris : std_logic_vector (9 downto 0);
-    signal fpscl, fpsda, fpsdaj : std_logic;
+
+    signal RESET_P : std_logic;
+    signal fpsint, fpsclm, fpsdam, fpsdas : std_logic;
+    signal intscl, intsdai, intsdao : std_logic;
+    signal fpsda0s : std_logic;
 
     signal readaddr, writeaddr : std_logic_vector (11 downto 2);
     signal gpinput, gpoutput, gpcompos : std_logic_vector (31 downto 0);
     signal denadata, qenadata : std_logic_vector (12 downto 0);
     signal fpinput, fpoutput : std_logic_vector (31 downto 0);
+    signal i2ccmd, i2csts : std_logic_vector (63 downto 0);
+    signal wri2ccmd : std_logic;
+    signal i2cmstate : std_logic_vector (2 downto 0);
+    signal i2cmcount : std_logic_vector (4 downto 0);
 
     signal dmardaddr, dmawtaddr : std_logic_vector (31 downto 0);
     signal maxiARVALID, maxiRREADY, maxiAWVALID, maxiWVALID, maxiBREADY : std_logic;
@@ -336,6 +339,10 @@ begin
                          paddlwrd when readaddr = b"0000001111" else
                          fpinput  when readaddr = b"0000010000" else
                          fpoutput when readaddr = b"0000010001" else
+             i2ccmd(31 downto 00) when readaddr = b"0000010100" else
+             i2ccmd(63 downto 32) when readaddr = b"0000010101" else
+             i2csts(31 downto 00) when readaddr = b"0000010110" else
+             i2csts(63 downto 32) when readaddr = b"0000010111" else
                         dmardaddr when readaddr = b"0100000000" else
                         dmawtaddr when readaddr = b"0100000001" else
                             temp0 when readaddr = b"1000000000" else
@@ -354,6 +361,7 @@ begin
     -- A3.3.1 Write transaction dependencies
     --        AXI4 write response dependency
     process (CLOCK, RESET_N)
+        variable i2ccmdset : boolean;
     begin
         if RESET_N = '0' then
             saxiARREADY <= '1';                             -- we are ready to accept read address
@@ -366,6 +374,8 @@ begin
             gpoutput <= x"00000000";                        -- reset the PDP8
             boardena <= b"111111";                          -- by default all boards are enabled
             fpoutput <= x"00000000";                        -- by default, front panel is disabled
+            i2ccmd   <= x"0000000000000000";
+            wri2ccmd <= '0';
 
             -- reset dma read registers
             dmardaddr <= (others => '0');
@@ -378,6 +388,7 @@ begin
             maxiWVALID <= '0';
             maxiBREADY <= '0';
         elsif rising_edge (CLOCK) then
+            i2ccmdset := false;
 
             ---------------------
             --  register read  --
@@ -409,6 +420,11 @@ begin
                     when b"0000001110" => paddlwrc  <= saxi_WDATA;
                     when b"0000001111" => paddlwrd  <= saxi_WDATA;
                     when b"0000010001" => fpoutput  <= saxi_WDATA;
+                    when b"0000010100" => i2ccmd(31 downto 00) <= saxi_WDATA;
+                    when b"0000010101" =>
+                        i2ccmd(63 downto 32) <= saxi_WDATA;
+                        wri2ccmd <= '1';
+                        i2ccmdset := true;
                     when b"0100000000" => dmardaddr <= saxi_WDATA;
                     when b"0100000001" => dmawtaddr <= saxi_WDATA;
                     when b"1000000000" => temp0 <= saxi_WDATA;
@@ -439,6 +455,11 @@ begin
                 if saxiBVALID = '1' and saxi_BREADY = '1' then
                     saxiBVALID <= '0';
                 end if;
+            end if;
+
+            -- wri2ccmd is set for one cycle only
+            if not i2ccmdset then
+                wri2ccmd <= '0';
             end if;
 
             -----------------------------------------
@@ -545,26 +566,41 @@ begin
 
     -- front panel code in here
 
-    fpscli <= fpscl;
-    fpscl  <= fpsclo when fpsclt = '1' else '1';
-    fpsda  <= fpsdao when fpsdat = '1' else '1';
+    RESET_P <= not RESET_N;
 
-    TRIGGR <= not fpsclo or not fpsdao or fpsclt or fpsdat;
-    DEBUGS(0) <= fpsclo;
-    DEBUGS(1) <= fpsdao;
-    DEBUGS(2) <= fpsclt;
-    DEBUGS(3) <= fpsdat;
-    DEBUGS(4) <= fpsdaj;
-    fpsdai <= fpsdaj;
-    DEBUGS(13 downto 5) <= (others => '0');
+    i2cminst: entity i2cmaster port map (
+        CLOCK   => CLOCK,
+        RESET   => RESET_P,
+        wrcmd   => wri2ccmd,
+        command => i2ccmd,
+        status  => i2csts,
+        sclo    => intscl,
+        sdao    => intsdao,
+        sdai    => intsdai,
+        state   => i2cmstate,
+        counthi => i2cmcount);
+
+    -- fpsint = '0' : use i2c coming from raspi
+    --          '1' : use i2c from internal i2cmaster
+    fpsint <= i2csts(63);   -- whenever i2cmaster is busy, assume using it
+
+    -- data to raspi
+    EXTSDA <= '0' when fpsint = '0' and fpsdas = '0' else 'Z';
+    -- clock going to frontpanel mcp23017-like circuit
+    fpsclm <= EXTSCL when fpsint = '0' else intscl;
+    -- data going to frontpanel mcp23017-like circuit
+    fpsdam <= EXTSDA when fpsint = '0' else intsdao;
+    -- data going to i2cmaster
+    intsdai <= '1' when fpsint = '0' else fpsdas;
 
     fpinst: entity frontpanel port map (
-        scl    => fpscl,
-        sdax   => fpsda,
-        sday   => fpsdaj,
+        scl    => fpsclm,
+        sdai   => fpsdam,
+        sdao   => fpsdas,
         CLOCK  => CLOCK,
-        --TRIGGR => TRIGGR,
-        --DEBUGS => DEBUGS,
+        RESET  => RESET_P,
+        TRIGGR => TRIGGR,
+        DEBUGS => DEBUGS,
 
         paddlrda => paddlrda,
         paddlrdb => paddlrdb,
