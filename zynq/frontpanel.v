@@ -170,7 +170,7 @@ module frontpanel (scl, sdai, sdao,
     assign srswitches[00] = fpswchs[8'h45];
 
     // front panel state
-    reg incrdep;
+    reg incrdep, increxm;
     reg lastclock, lastcont, lastdep, lastexam, lastldad, laststrt;
     reg thisclock, thiscont, thisdep, thisexam, thisldad, thisstrt;
     reg[11:00] pcreg;
@@ -182,6 +182,7 @@ module frontpanel (scl, sdai, sdao,
             state    <= IDLE;
             fpinreg  <= 0;
             incrdep  <= 0;
+            increxm  <= 0;
             lastcont <= 0;
             lastdep  <= 0;
             lastexam <= 0;
@@ -229,6 +230,7 @@ module frontpanel (scl, sdai, sdao,
                                 fpinreg[FPI_V_STRT] <= 0;
                                 fpinreg[11:00] <= pcreg;
                                 incrdep <= 0;
+                                increxm <= 0;
                                 state <= CONT;
                             end
 
@@ -239,6 +241,7 @@ module frontpanel (scl, sdai, sdao,
                                 fpinreg[FPI_V_DEP] <= 1;
                                 mareg   <= mareg + incrdep;
                                 incrdep <= 1;
+                                increxm <= 0;
                                 state   <= DEP;
                                 fetreg  <= 0;
                                 defreg  <= 0;
@@ -249,10 +252,11 @@ module frontpanel (scl, sdai, sdao,
                             // EXAM switch just released
                             // increment MA and tell ARM to read that memory location
                             else if (lastexam & ~ thisexam) begin
-                                fpinreg[11:00] <= mareg + 1;
+                                fpinreg[11:00] <= mareg + increxm;
                                 fpinreg[FPI_V_EXAM] <= 1;
+                                mareg   <= mareg + increxm;
                                 incrdep <= 0;
-                                mareg   <= mareg + 1;
+                                increxm <= 1;
                                 state   <= EXAM1;
                                 fetreg  <= 0;
                                 defreg  <= 0;
@@ -266,6 +270,7 @@ module frontpanel (scl, sdai, sdao,
                                 fpinreg[11:00] <= srswitches;
                                 fpinreg[FPI_V_EXAM] <= 1;
                                 incrdep <= 0;
+                                increxm <= 0;
                                 mareg   <= srswitches;
                                 pcreg   <= srswitches;
                                 state   <= EXAM1;
@@ -282,6 +287,7 @@ module frontpanel (scl, sdai, sdao,
                                 fpinreg[FPI_V_STRT] <= 1;
                                 fpinreg[11:00] <= pcreg;
                                 incrdep <= 0;
+                                increxm <= 0;
                                 state   <= CONT;
                             end
 
