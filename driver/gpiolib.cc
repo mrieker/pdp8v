@@ -90,7 +90,7 @@ bool *GpioLib::getvarbool (char const *varname, int rbit)
 }
 
 // read hardware switch register, by default we have none
-uint16_t GpioLib::readhwsr ()
+uint16_t GpioLib::readhwsr (char const *swname)
 {
     return UNSUPIO;
 }

@@ -72,6 +72,7 @@ module frontpanel (scl, sdai, sdao,
     localparam[2:0] EXAM2 = 6;
 
     // data is in bits [11:00]
+    wire[11:00] srswitches;
     reg[31:00] fpinreg;
     localparam FPI_V_DEP  = 12;     // requesting raspictl/zynqlib.cc to write memory
     localparam FPI_V_EXAM = 13;     // requesting raspictl/zynqlib.cc to read memory
@@ -79,12 +80,12 @@ module frontpanel (scl, sdai, sdao,
     localparam FPI_V_CONT = 15;     // requesting raspictl/zynqlib.cc to continue processing
     localparam FPI_V_STRT = 16;     // requesting raspictl/zynqlib.cc to reset i/o
     localparam FPI_V_STOP = 17;     // requesting raspictl/zynqlib.cc to stop processing
-    localparam FPI_V_STATE = 18;    // state for debugging
-    localparam FPI_S_STATE = 3;
+    localparam FVI_V_SWRG = 18;     // current switch register
+    localparam FPI_S_SWRG = 12;
     assign fpinput[16:00] = fpinreg[16:00];
-    assign fpinput[FPI_V_STOP] = ~ fpswchs[8'h4F] | ~ fpswchs[8'h49];  // P_STEP,P_STOP
-    assign fpinput[20:18] = state;
-    assign fpinput[31:21] = 0;
+    assign fpinput[17]    = ~ fpswchs[8'h4F] | ~ fpswchs[8'h49];  // P_STEP,P_STOP
+    assign fpinput[29:18] = srswitches;
+    assign fpinput[31:30] = 0;
 
     // drive PDP-8/L panel lights
     reg[11:00] mareg, mbreg;

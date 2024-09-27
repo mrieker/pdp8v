@@ -1000,6 +1000,9 @@ uint16_t readswitches (char const *swvar)
 {
     if (randmem) return randuint16 (15);
 
+    uint16_t hwsr = gpio->readhwsr (swvar);
+    if (hwsr != UNSUPIO) return hwsr;
+
     if (strcmp (swvar, "switchregister") == 0) {
         if (pidpmode | scriptmode | guimode) return switchregister;
     }

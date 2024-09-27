@@ -109,7 +109,7 @@ struct GpioLib {
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss) = 0;
     virtual int examine (char const *varname, uint32_t *value);
     virtual bool *getvarbool (char const *varname, int rbit);
-    virtual uint16_t readhwsr ();
+    virtual uint16_t readhwsr (char const *swname);
     void doareset ();
 
     static std::string decogpio (uint32_t bits);
@@ -265,6 +265,7 @@ struct ZynqLib : TimedLib {
     virtual bool haspads ();
     virtual void readpads (uint32_t *pinss);
     virtual void writepads (uint32_t const *masks, uint32_t const *pinss);
+    virtual uint16_t readhwsr (char const *swname);
 
 private:
     GpioFile gpiofile;

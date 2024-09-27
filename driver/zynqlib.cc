@@ -47,16 +47,16 @@
 #define GP_FPOUT 17
 
 // sent by frontpanel.v
-#define FPI_DATA0  0x000001U    // data word
-#define FPI_DATA   0x000FFFU
-#define FPI_DEP    0x001000U    // deposit key, write memory
-#define FPI_EXAM   0x002000U    // examine key, read memory
-#define FPI_JUMP   0x004000U    // along with FPI_CONT, set PC to FPI_DATA
-#define FPI_CONT   0x008000U    // continue key
-#define FPI_STRT   0x010000U    // along with FPI_CONT, reset I/O
-#define FPI_STOP   0x020000U    // step or stop key
-#define FPI_STATE0 0x040000U    // frontpanel.v state (debugging)
-#define FPI_STATE  0x1C0000U
+#define FPI_DATA0  0x00000001U  // data word
+#define FPI_DATA   0x00000FFFU
+#define FPI_DEP    0x00001000U  // deposit key, write memory
+#define FPI_EXAM   0x00002000U  // examine key, read memory
+#define FPI_JUMP   0x00004000U  // along with FPI_CONT, set PC to FPI_DATA
+#define FPI_CONT   0x00008000U  // continue key
+#define FPI_STRT   0x00010000U  // along with FPI_CONT, reset I/O
+#define FPI_STOP   0x00020000U  // step or stop key
+#define FPI_SWREG0 0x00040000U  // switch register
+#define FPI_SWREG  0x3FFC0000U
 
 // sent to frontpanel.v
 #define FPO_DATA0   0x0001U     // data word
@@ -230,6 +230,15 @@ void ZynqLib::writepads (uint32_t const *masks, uint32_t const *pinss)
     gpiopage[GP_PADWRB] = pinss[1] | ~ masks[1];
     gpiopage[GP_PADWRC] = pinss[2] | ~ masks[2];
     gpiopage[GP_PADWRD] = pinss[3] | ~ masks[3];
+}
+
+// read hardware switch register from frontpanel.v
+uint16_t ZynqLib::readhwsr (char const *swname)
+{
+    if (strcmp (swname, "switchregister") == 0) {
+        return (gpiopage[GP_FPIN] & FPI_SWREG) / FPI_SWREG0;
+    }
+    return UNSUPIO;
 }
 
 // frontpanel.v has told us to stop
