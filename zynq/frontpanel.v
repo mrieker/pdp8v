@@ -83,7 +83,7 @@ module frontpanel (scl, sdai, sdao,
     localparam FVI_V_SWRG = 18;     // current switch register
     localparam FPI_S_SWRG = 12;
     assign fpinput[16:00] = fpinreg[16:00];
-    assign fpinput[17]    = ~ fpswchs[8'h4F] | ~ fpswchs[8'h49];  // P_STEP,P_STOP
+    assign fpinput[17]    = ~ fpswchs[8'h47] | ~ fpswchs[8'h41];  // P_STEP,P_STOP
     assign fpinput[29:18] = srswitches;
     assign fpinput[31:30] = 0;
 
@@ -98,77 +98,77 @@ module frontpanel (scl, sdai, sdao,
     assign DEBUGS[04:00] = fpinreg[16:12];
 
     // - all light bulbs are active low
-    assign fplites[8'h03] = ~ paddlrda[02-1];   // P_ACnn = acq[11-nn]
-    assign fplites[8'h05] = ~ paddlrda[09-1];
-    assign fplites[8'h1E] = ~ paddlrda[16-1];
-    assign fplites[8'h08] = ~ paddlrda[23-1];
-    assign fplites[8'h1B] = ~ paddlrda[30-1];
-    assign fplites[8'h14] = ~ paddlrdb[06-1];
-    assign fplites[8'h19] = ~ paddlrdb[13-1];
-    assign fplites[8'h16] = ~ paddlrdb[20-1];
-    assign fplites[8'h2C] = ~ paddlrdb[27-1];
-    assign fplites[8'h2B] = ~ paddlrdc[02-1];
-    assign fplites[8'h3D] = ~ paddlrdc[09-1];
-    assign fplites[8'h3E] = ~ paddlrdc[16-1];
+    assign fplites[8'h0B] = ~ paddlrda[02-1];   // P_ACnn = acq[11-nn]
+    assign fplites[8'h0D] = ~ paddlrda[09-1];
+    assign fplites[8'h16] = ~ paddlrda[16-1];
+    assign fplites[8'h00] = ~ paddlrda[23-1];
+    assign fplites[8'h13] = ~ paddlrda[30-1];
+    assign fplites[8'h1C] = ~ paddlrdb[06-1];
+    assign fplites[8'h11] = ~ paddlrdb[13-1];
+    assign fplites[8'h1E] = ~ paddlrdb[20-1];
+    assign fplites[8'h24] = ~ paddlrdb[27-1];
+    assign fplites[8'h23] = ~ paddlrdc[02-1];
+    assign fplites[8'h35] = ~ paddlrdc[09-1];
+    assign fplites[8'h36] = ~ paddlrdc[16-1];
 
-    assign fplites[8'h32] = ~ paddlrda[08-1];   // P_IRnn = irq[11-nn]
-    assign fplites[8'h36] = ~ paddlrda[15-1];
-    assign fplites[8'h40] = ~ paddlrda[22-1];
+    assign fplites[8'h3A] = ~ paddlrda[08-1];   // P_IRnn = irq[11-nn]
+    assign fplites[8'h3E] = ~ paddlrda[15-1];
+    assign fplites[8'h48] = ~ paddlrda[22-1];
 
-    assign fplites[8'h0C] = ~ paddlrdd[23-1];   // P_LINK = lnq
+    assign fplites[8'h04] = ~ paddlrdd[23-1];   // P_LINK = lnq
 
-    assign fplites[8'h06] = ~ mareg[11];        // P_MAnn = mareg[11-nn]
-    assign fplites[8'h09] = ~ mareg[10];
-    assign fplites[8'h11] = ~ mareg[09];
-    assign fplites[8'h1D] = ~ mareg[08];
-    assign fplites[8'h1C] = ~ mareg[07];
-    assign fplites[8'h15] = ~ mareg[06];
-    assign fplites[8'h20] = ~ mareg[05];
-    assign fplites[8'h21] = ~ mareg[04];
-    assign fplites[8'h2D] = ~ mareg[03];
-    assign fplites[8'h28] = ~ mareg[02];
-    assign fplites[8'h3C] = ~ mareg[01];
-    assign fplites[8'h30] = ~ mareg[00];
+    assign fplites[8'h0E] = ~ mareg[11];        // P_MAnn = mareg[11-nn]
+    assign fplites[8'h01] = ~ mareg[10];
+    assign fplites[8'h19] = ~ mareg[09];
+    assign fplites[8'h15] = ~ mareg[08];
+    assign fplites[8'h14] = ~ mareg[07];
+    assign fplites[8'h1D] = ~ mareg[06];
+    assign fplites[8'h28] = ~ mareg[05];
+    assign fplites[8'h29] = ~ mareg[04];
+    assign fplites[8'h25] = ~ mareg[03];
+    assign fplites[8'h20] = ~ mareg[02];
+    assign fplites[8'h34] = ~ mareg[01];
+    assign fplites[8'h38] = ~ mareg[00];
 
-    assign fplites[8'h04] = ~ mbreg[11];        // P_MBnn = mbreg[11-nn]
-    assign fplites[8'h0A] = ~ mbreg[10];
-    assign fplites[8'h10] = ~ mbreg[09];
-    assign fplites[8'h12] = ~ mbreg[08];
-    assign fplites[8'h13] = ~ mbreg[07];
-    assign fplites[8'h1A] = ~ mbreg[06];
-    assign fplites[8'h18] = ~ mbreg[05];
-    assign fplites[8'h22] = ~ mbreg[04];
-    assign fplites[8'h2E] = ~ mbreg[03];
-    assign fplites[8'h29] = ~ mbreg[02];
-    assign fplites[8'h3B] = ~ mbreg[01];
-    assign fplites[8'h26] = ~ mbreg[00];
+    assign fplites[8'h0C] = ~ mbreg[11];        // P_MBnn = mbreg[11-nn]
+    assign fplites[8'h02] = ~ mbreg[10];
+    assign fplites[8'h18] = ~ mbreg[09];
+    assign fplites[8'h1A] = ~ mbreg[08];
+    assign fplites[8'h1B] = ~ mbreg[07];
+    assign fplites[8'h12] = ~ mbreg[06];
+    assign fplites[8'h10] = ~ mbreg[05];
+    assign fplites[8'h2A] = ~ mbreg[04];
+    assign fplites[8'h26] = ~ mbreg[03];
+    assign fplites[8'h21] = ~ mbreg[02];
+    assign fplites[8'h33] = ~ mbreg[01];
+    assign fplites[8'h2E] = ~ mbreg[00];
 
-    assign fplites[8'h0B] = ~ 0;                // P_EMA
-    assign fplites[8'h31] = ~ fetreg;           // P_FET
-    assign fplites[8'h33] = ~ 0;                // P_ION
-    assign fplites[8'h34] = ~ 0;                // P_PARE
-    assign fplites[8'h35] = ~ exereg;           // P_EXE
-    assign fplites[8'h41] = ~ 0;                // P_PRTE
-    assign fplites[8'h42] = fpoutput[FPO_V_STOPPED];  // P_RUN
-    assign fplites[8'h43] = ~ 0;                // P_WCT
-    assign fplites[8'h44] = ~ brkreg;           // P_BRK
-    assign fplites[8'h4B] = ~ 0;                // P_CAD
-    assign fplites[8'h4E] = ~ defreg;           // P_DEF
+    assign fplites[8'h03] = ~ 0;                // P_EMA
+    assign fplites[8'h39] = ~ fetreg;           // P_FET
+    assign fplites[8'h3B] = ~ 0;                // P_ION
+    assign fplites[8'h3C] = ~ 0;                // P_PARE
+    assign fplites[8'h3D] = ~ exereg;           // P_EXE
+    assign fplites[8'h49] = ~ 0;                // P_PRTE
+    assign fplites[8'h4A] = fpoutput[FPO_V_STOPPED];  // P_RUN
+    assign fplites[8'h4B] = ~ 0;                // P_WCT
+    assign fplites[8'h4C] = ~ brkreg;           // P_BRK
+    assign fplites[8'h43] = ~ 0;                // P_CAD
+    assign fplites[8'h46] = ~ defreg;           // P_DEF
 
     // sense PDP-8/L panel switches (active high)
     wire [11:00] srswitches;
-    assign srswitches[11] = fpswchs[8'h07];
-    assign srswitches[10] = fpswchs[8'h02];
-    assign srswitches[09] = fpswchs[8'h01];
-    assign srswitches[08] = fpswchs[8'h00];
-    assign srswitches[07] = fpswchs[8'h0D];
-    assign srswitches[06] = fpswchs[8'h27];
-    assign srswitches[05] = fpswchs[8'h25];
-    assign srswitches[04] = fpswchs[8'h24];
-    assign srswitches[03] = fpswchs[8'h23];
-    assign srswitches[02] = fpswchs[8'h2F];
-    assign srswitches[01] = fpswchs[8'h17];
-    assign srswitches[00] = fpswchs[8'h45];
+    assign srswitches[11] = fpswchs[8'h0F];
+    assign srswitches[10] = fpswchs[8'h0A];
+    assign srswitches[09] = fpswchs[8'h09];
+    assign srswitches[08] = fpswchs[8'h08];
+    assign srswitches[07] = fpswchs[8'h05];
+    assign srswitches[06] = fpswchs[8'h2F];
+    assign srswitches[05] = fpswchs[8'h2D];
+    assign srswitches[04] = fpswchs[8'h2C];
+    assign srswitches[03] = fpswchs[8'h2B];
+    assign srswitches[02] = fpswchs[8'h27];
+    assign srswitches[01] = fpswchs[8'h1F];
+    assign srswitches[00] = fpswchs[8'h4D];
 
     // front panel state
     reg incrdep, increxm;
@@ -298,11 +298,11 @@ module frontpanel (scl, sdai, sdao,
                             lastexam <= thisexam;
                             lastldad <= thisldad;
                             laststrt <= thisstrt;
-                            thiscont <= ~ fpswchs[8'h46];       // P_CONT
-                            thisdep  <= ~ fpswchs[8'h3F];       // P_DEP
-                            thisexam <= ~ fpswchs[8'h37];       // P_EXAM
-                            thisldad <= ~ fpswchs[8'h47];       // P_LDAD
-                            thisstrt <= ~ fpswchs[8'h48];       // P_STRT
+                            thiscont <= ~ fpswchs[8'h4E];       // P_CONT
+                            thisdep  <= ~ fpswchs[8'h37];       // P_DEP
+                            thisexam <= ~ fpswchs[8'h3F];       // P_EXAM
+                            thisldad <= ~ fpswchs[8'h4F];       // P_LDAD
+                            thisstrt <= ~ fpswchs[8'h40];       // P_STRT
                         end
 
                         // zyqlib.cc is sending us memory contents
