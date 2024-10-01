@@ -34,12 +34,16 @@ entity Zynq is
             LEDoutG : out STD_LOGIC;     -- IO_B34_LP7 Y16
             LEDoutB : out STD_LOGIC;     -- IO_B34_LN7 Y17
 
-            GP0OUT : out std_logic_vector (33 downto 0);
-            LEDS : out std_logic_vector (7 downto 0);
             TRIGGR : out std_logic;
             DEBUGS : out std_logic_vector (31 downto 0);
             EXTSCL : in std_logic;          -- I2C clock from RasPI pipanel/i2clib.cc
             EXTSDA : inout std_logic;       -- I2C data to/from pipanel/i2clib.cc
+            ZI2CSCLM : in std_logic;        -- I2C clock from zynq /dev/i2c-0
+            ZI2CSCLS : out std_logic;       -- I2C clock to zynq /dev/i2c-0
+            ZI2CSDAM : in std_logic;        -- I2C data from zynq /dev/i2c-0
+            ZI2CSDAS : out std_logic;       -- I2C data to zynq /dev/i2c-0
+            ZI2CENAB : out std_logic;       -- seems the I2C is busy
+            ZI2CTIMO : out std_logic;       -- I2C has timed out
 
             -- arm processor memory bus interface (AXI)
             -- we are a slave for accessing the control registers (read & write)
@@ -170,7 +174,7 @@ architecture rtl of Zynq is
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WUSER: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WUSER";
     ATTRIBUTE X_INTERFACE_INFO OF maxi_WVALID: SIGNAL IS "xilinx.com:interface:aximm:1.0 M00_AXI WVALID";
 
-    constant VERSION : std_logic_vector (31 downto 0) := x"00000223";
+    constant VERSION : std_logic_vector (31 downto 0) := x"00000227";
 
     constant BURSTLEN : natural := 10;
 
@@ -192,7 +196,8 @@ architecture rtl of Zynq is
     signal RESET_P : std_logic;
     signal fpsint, fpsclm, fpsdam, fpsdas : std_logic;
     signal intscl, intsdai, intsdao : std_logic;
-    signal fpsda0s : std_logic;
+    signal zi2cact, zi2cdat : std_logic;
+    signal zi2ctmo : integer range 0 to 99999;
 
     signal readaddr, writeaddr : std_logic_vector (11 downto 2);
     signal gpinput, gpoutput, gpcompos : std_logic_vector (31 downto 0);
@@ -580,18 +585,55 @@ begin
         state   => i2cmstate,
         counthi => i2cmcount);
 
-    -- fpsint = '0' : use i2c coming from raspi
-    --          '1' : use i2c from internal i2cmaster
+    -- fpsint = '1' : use i2c from internal i2cmaster
     fpsint <= i2csts(63);   -- whenever i2cmaster is busy, assume using it
 
-    -- data to raspi
-    EXTSDA <= '0' when fpsint = '0' and fpsdas = '0' else 'Z';
-    -- clock going to frontpanel mcp23017-like circuit
-    fpsclm <= EXTSCL when fpsint = '0' else intscl;
-    -- data going to frontpanel mcp23017-like circuit
-    fpsdam <= EXTSDA when fpsint = '0' else intsdao;
+    -- zi2cact = '1' : use i2c coming from zynq /dev/i2c-0
+    process (CLOCK, RESET_N)
+    begin
+        if RESET_N = '0' then
+            zi2cact  <= '0';
+            zi2cdat  <= '1';
+            zi2ctmo  <= 0;
+            ZI2CTIMO <= '0';
+        elsif rising_edge (CLOCK) then
+            if ZI2CSCLM = '1' and zi2cdat = '1' and ZI2CSDAM = '0' then
+                zi2cact  <= '1';     -- start bit
+                zi2ctmo  <= 0;
+                ZI2CTIMO <= '0';
+            elsif ZI2CSCLM = '1' and zi2cdat = '0' and ZI2CSDAM = '1' then
+                zi2cact <= '0';     -- stop bit
+                zi2ctmo <= 0;
+            elsif zi2ctmo /= 99999 then
+                zi2ctmo <= zi2ctmo + 1;
+            elsif zi2cact = '1' then
+                ZI2CTIMO <= '1';    -- way too long since started
+                zi2cact  <= '0';    -- stop processing
+            end if;
+            zi2cdat <= ZI2CSDAM;
+        end if;
+    end process;
+    ZI2CENAB <= zi2cact;
+
     -- data going to i2cmaster
-    intsdai <= '1' when fpsint = '0' else fpsdas;
+    intsdai <= fpsdas when fpsint = '1' else '1';
+
+    -- data going to zynq /dev/i2c-0
+    --  when zi2cact = 0, loopback of data coming from zynq /dev/i2c-0
+    --                 1, wired and of data from /dev/i2c-0 and data from frontpanel
+    ZI2CSDAS <= '1' when (ZI2CSDAM = '1') and ((zi2cact = '0') or (fpsdas = '1')) else '0';
+
+    -- clock going to zynq /dev/i2c-0 = loopback of clock coming from /dev/i2c-0
+    ZI2CSCLS <= ZI2CSCLM;
+
+    -- data going to raspi
+    EXTSDA <= '0' when fpsint = '0' and zi2cact = '0' and fpsdas = '0' else 'Z';
+
+    -- clock going to frontpanel mcp23017-like circuit
+    fpsclm <= intscl  when fpsint = '1' else ZI2CSCLM when zi2cact = '1' else EXTSCL;
+
+    -- data going to frontpanel mcp23017-like circuit
+    fpsdam <= intsdao when fpsint = '1' else ZI2CSDAM when zi2cact = '1' else EXTSDA;
 
     fpinst: entity frontpanel port map (
         scl    => fpsclm,
