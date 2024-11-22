@@ -99,7 +99,7 @@ static IODevOps const iodevops[] = {
     { 06771, "DTSF (TC08) skip on flag" },
     { 06772, "DTRB (TC08) read status register B" },
     { 06773, "DTSF DTRB (TC08) skip on flag, read status register B" },
-    { 06774, "DTXB (TC08) load status register B" },
+    { 06774, "DTXB (TC08) load status register B and clear accumulator" },
 };
 
 static char const *const cmdmnes[8] = { "MOVE", "SRCH", "RDAT", "RALL", "WDAT", "WALL", "WTIM", "ERR7" };
@@ -415,7 +415,7 @@ uint16_t IODevTC08::ioinstroffline (uint16_t opcode, uint16_t input)
             break;
         }
 
-        // DTXB (TC08) load status register B <05:03>
+        // DTXB (TC08) load status register B <05:03> and clear accumulator
         case 06774: {
             input &= IO_LINK;
             break;
@@ -529,7 +529,7 @@ uint16_t IODevTC08::ioinstronline (uint16_t opcode, uint16_t input)
             break;
         }
 
-        // DTXB (TC08) load status register B <05:03>
+        // DTXB (TC08) load status register B <05:03> and clear accumulator
         case 06774: {
             shm->status_b = (shm->status_b & 07707) | (input & 00070);
             DBGPR (2, "IODevTC08::ioinstr: load status_b %04o\n", shm->status_b);
@@ -586,7 +586,8 @@ void IODevTC08::thread ()
 
             uint16_t oldidwc = memarray[IDWC];
             uint16_t field = (shm->status_b & 070) << 9;
-            uint16_t *memfield = &memarray[field];
+
+            DBGPR (1, "IODevTC08::thread: start st_A=%04o st_B=%04o idwc=%04o idca=%04o\n", shm->status_a, shm->status_b, oldidwc, memarray[IDCA]);
 
             int driveno = (shm->status_a >> 9) & 007;
             IODevTC08Drive *drive = &shm->drives[driveno];
@@ -656,8 +657,8 @@ void IODevTC08::thread ()
 
                         idwc = (idwc + 1) & 07777;                              // update word count before writing out block number
                         memarray[IDWC] = idwc;                                  // ...os8 driver has idca==IDWC
-                        memfield[idca] = drive->tapepos / 4;                    // write out mark we just hopped over
-                        DBGPR (2, "IODevTC08::thread: search memarray[IDWC] = %04o ; memfield[%04o] <= %04o\n", idwc, idca, drive->tapepos / 4);
+                        memarray[field|idca] = drive->tapepos / 4;              // write out mark we just hopped over
+                        DBGPR (2, "IODevTC08::thread: search memarray[IDWC] = %04o ; memarray[%05o] <= %04o\n", idwc, field | idca, drive->tapepos / 4);
                     } while (CONTIN && (idwc != 0));
                     goto success;
                 }
@@ -692,7 +693,7 @@ void IODevTC08::thread ()
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; -- i >= 0;) {
                                 idca = (idca + 1) & 07777;
-                                memfield[idca] = ocarray[buff[i]&07777];
+                                memarray[field|idca] = ocarray[buff[i]&07777];
                                 idwc = (idwc + 1) & 07777;
                                 if (idwc == 0) break;
                             }
@@ -716,6 +717,7 @@ void IODevTC08::thread ()
                                     memarray[IDWC] = idwc = (memarray[IDWC] + 1) & 07777;
                                     memarray[IDCA] = idca = (memarray[IDCA] + 1) & 07777;
                                     field = (shm->status_b & 070) << 9;
+                                    DBGPR (4, "IODevTC08::thread:  slow memarray[%05o] = %04o\n", field | idca, buff[i] & 07777);
                                     memarray[field|idca] = buff[i] & 07777;     // transfer a word
                                     if (idwc == 0) break;
                                 }
@@ -724,7 +726,8 @@ void IODevTC08::thread ()
                                 for (int i = 0; i < WORDSPERBLOCK; i ++) {
                                     idwc = (idwc + 1) & 07777;
                                     idca = (idca + 1) & 07777;
-                                    memfield[idca] = buff[i] & 07777;
+                                    DBGPR (4, "IODevTC08::thread:  rfwd memarray[%05o] = %04o\n", field | idca, buff[i] & 07777);
+                                    memarray[field|idca] = buff[i] & 07777;
                                     if (idwc == 0) break;
                                 }
                                 memarray[IDCA] = idca;
@@ -803,7 +806,7 @@ void IODevTC08::thread ()
                         if (REVERS) {
                             for (int i = 5 + WORDSPERBLOCK + 5; -- i >= 0;) {
                                 idca = (idca + 1) & 07777;
-                                memfield[idca] = ocarray[buff[i]&07777];
+                                memarray[field|idca] = ocarray[buff[i]&07777];
                                 idwc = (idwc + 1) & 07777;
                                 if (idwc == 0) break;
                             }
@@ -811,7 +814,8 @@ void IODevTC08::thread ()
                             for (int i = 0; i < 5 + WORDSPERBLOCK + 5; i ++) {
                                 idwc = (idwc + 1) & 07777;
                                 idca = (idca + 1) & 07777;
-                                memfield[idca] = buff[i] & 07777;
+                                DBGPR (4, "IODevTC08::thread:  rall memarray[%05o] = %04o\n", field | idca, buff[i] & 07777);
+                                memarray[field|idca] = buff[i] & 07777;
                                 if (idwc == 0) break;
                             }
                         }
@@ -846,7 +850,7 @@ void IODevTC08::thread ()
                         if (REVERS) {
                             for (int i = WORDSPERBLOCK; i > 0;) {
                                 idca = (idca + 1) & 07777;
-                                buff[--i] = ocarray[memfield[idca]&07777];
+                                buff[--i] = ocarray[memarray[field|idca]&07777];
                                 idwc = (idwc + 1) & 07777;
                                 if (idwc == 0) {
                                     while (-- i >= 0) buff[i] = 07777;
@@ -856,7 +860,7 @@ void IODevTC08::thread ()
                         } else {
                             for (int i = 0; i < WORDSPERBLOCK;) {
                                 idca = (idca + 1) & 07777;
-                                buff[i++] = memfield[idca] & 07777;
+                                buff[i++] = memarray[field|idca] & 07777;
                                 idwc = (idwc + 1) & 07777;
                                 if (idwc == 0) {
                                     memset (&buff[i], 0, (WORDSPERBLOCK - i) * 2);

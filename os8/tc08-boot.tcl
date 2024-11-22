@@ -5,6 +5,7 @@ iodev tty lcucin 1                                  ;# convert lowercase to uppe
 iodev tty telnet 12303                              ;# put tty on telnet port 12303
 ##iodev tty pipes -
 iodev tc08 loadrw 0 dta0.tu56                       ;# bootable dectape
+iodev tc08 debug [getenv tc08_debug 0]
 puts ""
 puts "  telnet <thishost> 12303"
 puts "  enter 'exit' command here when done using OS/8"
