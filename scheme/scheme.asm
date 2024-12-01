@@ -25,7 +25,8 @@
 	OP_MEMCHK = 1	; memck before & after garbcoll
 	OP_POISON = 0	; poison freed memory blocks
 	OP_TTWAIT = 1	; wait after each char printed
-	OP_XARITH = 1	; extended arithmetic
+	OP_XARITH = 0	; extended arithmetic
+	OP_PDP8L  = 1	; use PDP-8/L style interrupts
 
 	SR_VTRUBS = 00001 ;<00> vt-style rubouts
 
@@ -33,6 +34,7 @@
 	iof   = 06002	; interrupts off
 	gtf   = 06004	; get flags
 	rtf   = 06005	; restore flags
+	rmf   = 06244	; restore saved registers
 
 	ksf   = 06031	; skip if kb char to be read
 	kcc   = 06032	; clear kb flag, clear acc, start reader
@@ -321,6 +323,7 @@ mainloop:
 
 readloop:
 	kbbuffcdf
+.if 1-OP_PDP8L
 	tadi	_readlnbuffdb	; maybe reading from load file
 	spa cla
 	jmp	readnofile
@@ -348,7 +351,6 @@ readloop:
 readloadeof:
 	jmsi	_closeload	; end of load file, close it
 	jmp	readloop	; read line from outer file or keyboard
-
 readnofile:
 	tad	hascmdline	; don't do command line twice
 	sza cla
@@ -360,6 +362,7 @@ readnofile:
 	isz	hascmdline
 	jmp	maintoke
 nocmdline:
+.endif
 	cla			; no command line arg, read from keyboard
 	isz	lineno
 	skp
@@ -4567,8 +4570,13 @@ tpsymchar: .word .-.
 ; interrupt service
 intserv:
 	dca	in_accum	; save accumulator
+.if OP_PDP8L
+	rar			; save link
+	dca	in_flags
+.else
 	gtf			; get flags
 	dca	in_flags	; save flags
+.endif
 	clsa			; clear realtime clock int req
 	cla
 	ksf			; check keyboard
@@ -4579,9 +4587,14 @@ kbintret:
 	skp
 	jmpi	_ttintserv
 ttintret:
+	cla cll
 	tad	in_flags
+.if OP_PDP8L
+	ral
+	rmf
+.else
 	rtf			; restore flags
-	cla
+.endif
 	tad	in_accum	; restore accumulator
 	jmpi	0
 
@@ -6691,6 +6704,7 @@ umulret:
 	jmpi	.+1
 	.word	umullohi1ret
 
+_7750_1: .word	07750
 umulhfl: .blkw	1		; 0=return low 24 bits; 1=return high 24 bits
 umulctr: .blkw	1		; count 24 iterations in loop
 umula:	 .blkw	2		; A operand (24-bit little endian)
