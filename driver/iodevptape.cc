@@ -475,7 +475,6 @@ start:;
                 usleep ((nextreadat - nowns + 999) / 1000);
                 goto start;
             }
-            lastreadat = nowns;
         }
 
         if (! printedbusy) {
@@ -540,6 +539,9 @@ start:;
         this->rdrnext = false;
         this->rdrflag = true;
         updintreq ();
+
+        if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
+        lastreadat = (uint64_t) nowts.tv_sec * 1000000000 + nowts.tv_nsec;
     }
 done:;
     pthread_mutex_unlock (&this->lock);
