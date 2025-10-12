@@ -431,7 +431,7 @@
       "step": "",
       "vrml": ""
     },
-    "page_layout_descr_file": "/home/mrieker/nfs/pdp8/kicads/notitleblock.kicad_wks"
+    "page_layout_descr_file": "../notitleblock.kicad_wks"
   },
   "schematic": {
     "annotate_start_num": 0,
