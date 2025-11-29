@@ -328,6 +328,29 @@ begin
 
     -- send register being read to ARM
 
+    --  register 0x000 : RO gpio input pins
+    --  register 0x001 : RW gpio output pins
+    --  register 0x002 : RW composite gpio pins
+    --  register 0x003 : RO fpga version
+    --  register 0x004 : RW board enable bits
+    --  register 0x005 : RO number total triodes, number triodes off
+    --  register 0x008 : RO paddle A readback
+    --  register 0x009 : RO paddle B readback
+    --  register 0x00A : RO paddle C readback
+    --  register 0x00B : RO paddle D readback
+    --  register 0x00C : RW paddle A write
+    --  register 0x00D : RW paddle B write
+    --  register 0x00E : RW paddle C write
+    --  register 0x00F : RW paddle D write
+    --  register 0x010 : RO front panel read register
+    --  register 0x011 : RW front panel write register
+    --  register 0x014 : RW i2c command low bits
+    --  register 0x015 : RW i2c command high bits
+    --  register 0x016 : RO i2c status low bits
+    --  register 0x017 : RO i2c status high bits
+    --  register 0x1.. : dma test registers
+    --  register 0x2.. : dma test registers
+
     saxi_RDATA <=        gpinput  when readaddr = b"0000000000" else
                          gpoutput when readaddr = b"0000000001" else
                          gpcompos when readaddr = b"0000000010" else

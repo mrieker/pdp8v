@@ -46,6 +46,8 @@
 #define GP_FPIN 16
 #define GP_FPOUT 17
 
+#define USEFRONTPANEL false
+
 // sent by frontpanel.v
 #define FPI_DATA0  0x00000001U  // data word
 #define FPI_DATA   0x00000FFFU
@@ -116,8 +118,8 @@ void ZynqLib::open ()
         ABORT ();
     }
 
-    // enable the i2c console
-    gpiopage[GP_FPOUT] = FPO_ENABLE;
+    // maybe enable the i2c console
+    gpiopage[GP_FPOUT] = USEFRONTPANEL ? FPO_ENABLE : 0;
 }
 
 void ZynqLib::close ()
@@ -144,7 +146,7 @@ void ZynqLib::halfcycle (bool aluadd, bool topoloop)
 
     // if at top of raspictl's main loop, ie not in middle of read/write/io,
     // ...check for step/stop switch from frontpanel.v
-    if (topoloop && (gpiopage[GP_FPIN] & FPI_STOP)) {
+    if (USEFRONTPANEL && topoloop && (gpiopage[GP_FPIN] & FPI_STOP)) {
         fpstopped ();
     }
 }
