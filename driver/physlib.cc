@@ -22,14 +22,61 @@
 // assumes raspberry pi gpio connector is plugged into rasboard
 // also accesses the abcd connector paddles on a pc or raspi
 
+/*
+  commands:
+    $ i2cdetect 0
+    WARNING! This program can confuse your I2C bus, cause data loss and worse!
+    I will probe file /dev/i2c-0.
+    I will probe address range 0x08-0x77.
+    Continue? [Y/n]
+         0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+    00:                         -- -- -- -- -- -- -- --
+    10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    20: 20 21 22 23 24 25 26 27 -- -- -- -- -- -- -- --
+    30: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    50: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    60: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    70: -- -- -- -- -- -- -- --
+
+  enable /dev/i2c-0 with /boot/firmware/config.txt
+    dtparam=i2c_vc=on   # enable /dev/i2c-0
+    should see /dev/i2c-0
+
+  https://forums.raspberrypi.com/viewtopic.php?t=344789
+    Normally on a Pi4 you have buses
+    - i2c-1 on GPIOs 2&3. Requires dtparam=i2c_arm in config.txt
+    - i2c-20 and i2c-21 on the HDMI ports for reading the EDID. Requires dtoverlay=vc4-kms-v3d in config.txt.
+    - i2c-0 on GPIOs 0&1. Requires dtparam=i2c_vc in config.txt.
+    - i2c-10 for the camera and display. Requires dtparam=i2c_vc in config.txt.
+    - i2c-22 as the parent hardware block for i2c-0 and i2c-10,
+      as they are just alternate pinmuxing options for the one block.
+      This should be ignored as it has no defined GPIOs to expose it
+      to the outside world, and will just use whichever of i2c-0 and i2c-10 that was last used.
+
+  https://github.com/fivdi/i2c-bus/blob/master/doc/raspberry-pi-i2c.md
+    add following to /boot/config.txt           "maybe this is hardware i2c"
+      dtparam=i2c_arm=on
+      dtparam=i2c_arm_baudrate=400000
+    add following to /etc/modules
+      i2c-dev
+*/
+
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/i2c.h>
+#include <linux/i2c-dev.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <poll.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -47,6 +94,7 @@
 #define GPIO_PUDMOD (0x94/4)    // pullup/pulldown enable (0=disable; 1=enable pulldown; 2=enable pullup)
 #define GPIO_PUDCLK (0x98/4)    // which pins to change pullup/pulldown mode
 
+
 PhysLib::PhysLib ()
 {
     libname = "physlib";
@@ -59,6 +107,9 @@ PhysLib::PhysLib ()
     this->gpioudpfd = -1;
     this->gpioudptm = 0;
     this->gpiopage = NULL;
+
+    this->i2cfd = -1;
+    memset (this->iowhandles, 0, sizeof this->iowhandles);
 }
 
 PhysLib::~PhysLib ()
@@ -94,9 +145,14 @@ void PhysLib::close ()
 
     if (paddlesopen) {
         paddlesopen = false;
-        for (int i = 0; i < NPADS; i ++) {
-            delete iowhandles[i];
-            iowhandles[i] = NULL;
+        if (this->i2cfd >= 0) {
+            ::close (this->i2cfd);
+            this->i2cfd = -1;
+        } else {
+            for (int i = 0; i < NPADS; i ++) {
+                delete iowhandles[i];
+                iowhandles[i] = NULL;
+            }
         }
     }
 }
@@ -601,6 +657,166 @@ static uint64_t const vfyoutmask100 =
         (1ULL << 010) |    // OUT 30
         (1ULL << 074) |    // OUT 31
         (1ULL << 070);     // OUT 32
+
+#define MCP_I2CBA  0x20     // I2C address of MCP23017 chip 0
+
+#define MCP_IODIRA   0x00   // pin direction: '1'=input ; '0'=output
+#define MCP_IODIRB   0x01   //   IO<7> must be set to 'output'
+#define MCP_IPOLA    0x02   // input polarity: '1'=flip ; '0'=normal
+#define MCP_IPOLB    0x03
+#define MCP_GPINTENA 0x04   // interrupt on difference bitmask
+#define MCP_GPINTENB 0x05
+#define MCP_DEFVALA  0x06   // comparison value for interrupt on difference
+#define MCP_DEFVALB  0x07
+#define MCP_INTCONA  0x08   // more interrupt comparison
+#define MCP_INTCONB  0x09
+#define MCP_IOCONA   0x0A   // various control bits
+#define MCP_IOCONB   0x0B
+#define MCP_GPPUA    0x0C   // pullup enable bits
+#define MCP_GPPUB    0x0D   //   '0' = disabled ; '1' = enabled
+#define MCP_INTFA    0x0E   // interrupt flag bits
+#define MCP_INTFB    0x0F
+#define MCP_INTCAPA  0x10   // interrupt captured value
+#define MCP_INTCAPB  0x11
+#define MCP_GPIOA    0x12   // reads pin state
+#define MCP_GPIOB    0x13
+#define MCP_OLATA    0x14   // output pin latch
+#define MCP_OLATB    0x15
+
+static uint8_t const i2cpins[] = {
+    // A paddle
+    0,      // A01
+    0x18,   // A02
+    0x16,   // A03
+    0x19,   // A04
+    0x15,   // A05
+    0x1A,   // A06
+    0x14,   // A07
+    0x1B,   // A08
+    0x13,   // A09
+    0x1C,   // A10
+    0x12,   // A11
+    0x1D,   // A12
+    0x11,   // A13
+    0x1E,   // A14
+    0x10,   // A15
+    0x28,   // A16
+    0x26,   // A17
+    0x29,   // A18
+    0x25,   // A19
+    0x2A,   // A20
+    0x24,   // A21
+    0x2B,   // A22
+    0x23,   // A23
+    0x2C,   // A24
+    0x22,   // A25
+    0x2D,   // A26
+    0x21,   // A27
+    0x2E,   // A28
+    0,      // A29 i2c SCK
+    0x20,   // A30
+    0x38,   // A31
+    0x36,   // A32
+    // B paddle
+    0,      // B01
+    0x39,   // B02
+    0x35,   // B03
+    0x3A,   // B04
+    0,      // B05 i2c SDA
+    0x34,   // B06
+    0x3B,   // B07
+    0x33,   // B08
+    0x3C,   // B09
+    0x32,   // B10
+    0x3D,   // B11
+    0x31,   // B12
+    0x3E,   // B13
+    0x30,   // B14
+    0x48,   // B15
+    0x46,   // B16
+    0x49,   // B17
+    0x45,   // B18
+    0x4A,   // B19
+    0x44,   // B20
+    0x43,   // B21
+    0x42,   // B22
+    0x41,   // B23
+    0x40,   // B24
+    0x58,   // B25
+    0x56,   // B26
+    0x59,   // B27
+    0x55,   // B28
+    0x5A,   // B29
+    0x54,   // B30
+    0x5B,   // B31
+    0x53,   // B32
+    // C paddle
+    0,      // C01
+    0x5C,   // C02
+    0x52,   // C03
+    0x5D,   // C04
+    0x51,   // C05
+    0x5E,   // C06
+    0x50,   // C07
+    0x68,   // C08
+    0x66,   // C09
+    0x69,   // C10
+    0x65,   // C11
+    0x6A,   // C12
+    0x64,   // C13
+    0x6B,   // C14
+    0x63,   // C15
+    0x6C,   // C16
+    0x62,   // C17
+    0x6D,   // C18
+    0x61,   // C19
+    0x6E,   // C20
+    0x60,   // C21
+    0x78,   // C22
+    0x76,   // C23
+    0x79,   // C24
+    0x75,   // C25
+    0x7A,   // C26
+    0x74,   // C27
+    0x7B,   // C28
+    0x73,   // C29
+    0x7C,   // C30
+    0x72,   // C31
+    0x7D,   // C32
+    // D paddle
+    0,      // D01
+    0x71,   // D02
+    0x7E,   // D03
+    0x70,   // D04
+    0x88,   // D05
+    0x86,   // D06
+    0x89,   // D07
+    0x85,   // D08
+    0x8A,   // D09
+    0x84,   // D10
+    0x8B,   // D11
+    0x83,   // D12
+    0x8C,   // D13
+    0x82,   // D14
+    0x8D,   // D15
+    0x81,   // D16
+    0x8E,   // D17
+    0x80,   // D18
+    0x96,   // D19
+    0x98,   // D20
+    0x95,   // D21
+    0x99,   // D22
+    0x94,   // D23
+    0x9A,   // D24
+    0x93,   // D25
+    0x9B,   // D26
+    0x92,   // D27
+    0x9C,   // D28
+    0x91,   // D29
+    0x9D,   // D30
+    0x90,   // D31
+    0x9E    // D32
+};
 
 // read abcd connector pins
 //  output:
@@ -609,67 +825,97 @@ void PhysLib::readpads (uint32_t *pinss)
 {
     openpaddles ();
 
-    // iows go nuts if the io calls are interrupted
-    blocksigint ();
+    if (this->i2cfd >= 0) {
+        uint16_t u[10];
+        u[0] = 0;
 
-    // tell each iowarrior to send its pins
-    for (int pad = 0; pad < NPADS; pad ++) {
-        IOWKIT_HANDLE iowh = iowhandles[pad];
-        switch (iowh->getpid ()) {
-            case IOWKIT_PRODUCT_ID_IOW56: {
-                iowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins56, sizeof reqallpins56);
-                break;
+        this->i2cwrite16 (MCP_I2CBA + 0, MCP_OLATA, 0x0080);    // BANKA=1; BANKB=0
+        u[1] = this->i2cread16 (MCP_I2CBA + 0, MCP_GPIOA);
+        u[8] = this->i2cread16 (MCP_I2CBA + 1, MCP_GPIOA);
+        u[9] = this->i2cread16 (MCP_I2CBA + 2, MCP_GPIOA);
+        u[7] = this->i2cread16 (MCP_I2CBA + 3, MCP_GPIOA);
+        u[6] = this->i2cread16 (MCP_I2CBA + 4, MCP_GPIOA);
+        u[5] = this->i2cread16 (MCP_I2CBA + 5, MCP_GPIOA);
+        u[4] = this->i2cread16 (MCP_I2CBA + 6, MCP_GPIOA);
+
+        this->i2cwrite16 (MCP_I2CBA + 0, MCP_OLATA, 0x8000);    // BANKA=0; BANKB=1
+        u[2] = this->i2cread16 (MCP_I2CBA + 5, MCP_GPIOA);
+        u[3] = this->i2cread16 (MCP_I2CBA + 6, MCP_GPIOA);
+
+        uint8_t const *bits = i2cpins + 128;
+        for (int j = 4; -- j >= 0;) {
+            uint32_t pins = 0;
+            for (int i = 32; -- i >= 0;) {
+                uint8_t bit = *(-- bits);
+                pins += pins + ((u[bit>>4] >> (bit & 15)) & 1);
             }
-            case IOWKIT_PRODUCT_ID_IOW100: {
-                iowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins100, sizeof reqallpins100);
-                break;
-            }
-            default: ABORT ();
+            pinss[j] = pins;
         }
-    }
 
-    // read then unscramble pins from each iowarrior
-    for (int pad = 0; pad < NPADS; pad ++) {
-        IOWKIT_HANDLE iowh = iowhandles[pad];
-        IOWKIT56_SPECIAL_REPORT rbk56pins;
-        IOWKIT100_SPECIAL_REPORT rbk100pins;
-        uint8_t const *map, *pins;
-        switch (iowh->getpid ()) {
-            case IOWKIT_PRODUCT_ID_IOW56: {
-                memset (&rbk56pins, 0, sizeof rbk56pins);
-                iowh->read (IOW_PIPE_SPECIAL_MODE, &rbk56pins, sizeof rbk56pins);
-                if (rbk56pins.ReportID != 255) {
-                    fprintf (stderr, "PhysLib::readpads: got report id %02X reading iow56 pins\n", rbk56pins.ReportID);
-                    ABORT ();
+    } else {
+
+        // iows go nuts if the io calls are interrupted
+        blocksigint ();
+
+        // tell each iowarrior to send its pins
+        for (int pad = 0; pad < NPADS; pad ++) {
+            IOWKIT_HANDLE iowh = iowhandles[pad];
+            switch (iowh->getpid ()) {
+                case IOWKIT_PRODUCT_ID_IOW56: {
+                    iowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins56, sizeof reqallpins56);
+                    break;
                 }
-                map  = inputpinmap56;
-                pins = rbk56pins.Bytes;
-                break;
-            }
-            case IOWKIT_PRODUCT_ID_IOW100: {
-                memset (&rbk100pins, 0, sizeof rbk100pins);
-                iowh->read (IOW_PIPE_SPECIAL_MODE, &rbk100pins, sizeof rbk100pins);
-                if (rbk100pins.ReportID != 255) {
-                    fprintf (stderr, "PhysLib::readpads: got report id %02X reading iow100 pins\n", rbk100pins.ReportID);
-                    ABORT ();
+                case IOWKIT_PRODUCT_ID_IOW100: {
+                    iowh->write (IOW_PIPE_SPECIAL_MODE, &reqallpins100, sizeof reqallpins100);
+                    break;
                 }
-                map  = inputpinmap100;
-                pins = rbk100pins.Bytes;
-                break;
+                default: ABORT ();
             }
-            default: ABORT ();
         }
 
-        uint32_t val = 0;
-        for (int j = 32; -- j >= 0;) {
-            uint8_t p = map[j];
-            val += val + ((pins[p/8] >> (p % 8)) & 1);
+        // read then unscramble pins from each iowarrior
+        for (int pad = 0; pad < NPADS; pad ++) {
+            IOWKIT_HANDLE iowh = iowhandles[pad];
+            IOWKIT56_SPECIAL_REPORT rbk56pins;
+            IOWKIT100_SPECIAL_REPORT rbk100pins;
+            uint8_t const *map, *pins;
+            switch (iowh->getpid ()) {
+                case IOWKIT_PRODUCT_ID_IOW56: {
+                    memset (&rbk56pins, 0, sizeof rbk56pins);
+                    iowh->read (IOW_PIPE_SPECIAL_MODE, &rbk56pins, sizeof rbk56pins);
+                    if (rbk56pins.ReportID != 255) {
+                        fprintf (stderr, "PhysLib::readpads: got report id %02X reading iow56 pins\n", rbk56pins.ReportID);
+                        ABORT ();
+                    }
+                    map  = inputpinmap56;
+                    pins = rbk56pins.Bytes;
+                    break;
+                }
+                case IOWKIT_PRODUCT_ID_IOW100: {
+                    memset (&rbk100pins, 0, sizeof rbk100pins);
+                    iowh->read (IOW_PIPE_SPECIAL_MODE, &rbk100pins, sizeof rbk100pins);
+                    if (rbk100pins.ReportID != 255) {
+                        fprintf (stderr, "PhysLib::readpads: got report id %02X reading iow100 pins\n", rbk100pins.ReportID);
+                        ABORT ();
+                    }
+                    map  = inputpinmap100;
+                    pins = rbk100pins.Bytes;
+                    break;
+                }
+                default: ABORT ();
+            }
+
+            uint32_t val = 0;
+            for (int j = 32; -- j >= 0;) {
+                uint8_t p = map[j];
+                val += val + ((pins[p/8] >> (p % 8)) & 1);
+            }
+            pinss[pad] = ~ val;
         }
-        pinss[pad] = ~ val;
+
+        // signals ok now
+        allowsigint ();
     }
-
-    // signals ok now
-    allowsigint ();
 }
 
 // write abcd connector pins by loading the 4 8-bit latches (actually DFFs)
@@ -680,115 +926,148 @@ void PhysLib::writepads (uint32_t const *masks, uint32_t const *pinss)
 {
     openpaddles ();
 
-    // iows go nuts if the io calls are interrupted
-    blocksigint ();
+    if (this->i2cfd >= 0) {
+        uint16_t u[10];
+        memset (u, 0, sizeof u);
 
-    // write output pins of the iow100s
-    for (int pad = 0; pad < NPADS; pad ++) {
-        if (iowhandles[pad]->getpid () != IOWKIT_PRODUCT_ID_IOW100) continue;
-
-        uint32_t mask = masks[pad];
-        uint32_t pins = pinss[pad];
-
-        // set up to write ones to all iow100 pins so they are open-drained
-        uint64_t updallpins = -1ULL;
-
-        // for any abcd pin not in the mask, clear the iow100 out pin so the 2N3904 will be open-collectored
-        // for any abcd pin in the mask that is set, also clear the iow100 out pin to open-collector the 2N3904
-        // for any abcd pin in the mask that is clear, leave the out pin set so the 2N3904 grounds that output
-        for (int j = 0; j < 32; j ++) {
-            if (((~ mask | pins) >> j) & 1) {
-                uint8_t p = outputpinmap100[j];
-                updallpins &= ~ (1ULL << p);
+        uint8_t const *bits = i2cpins;
+        for (int j = 0; j < 4; j ++) {
+            // masks bit = 0 : hi-Z the pin (set it to input mode)
+            //           = 1 : pinss bit = 0 : ground the pin (set it to output mode)
+            //                           = 1 : hi-Z the pin (it gets pulled up to 1)
+            uint32_t pins = ~ masks[j] | pinss[j];
+            for (int i = 0; i < 32; i ++) {
+                uint8_t bit = *(bits ++);
+                if (pins & 1) u[bit>>4] |= 1 << (bit & 15);
+                pins >>= 1;
             }
         }
 
-        IOWKIT_HANDLE iowh = iowhandles[pad];
-        write100 (iowh, updallpins);
-    }
+        this->i2cwrite16 (MCP_I2CBA + 0, MCP_OLATA, 0x0080);    // BANKA=1; BANKB=0
+        this->i2cwrite16 (MCP_I2CBA + 0, MCP_IODIRA, u[1]);
+        this->i2cwrite16 (MCP_I2CBA + 1, MCP_IODIRA, u[8]);
+        this->i2cwrite16 (MCP_I2CBA + 2, MCP_IODIRA, u[9]);
+        this->i2cwrite16 (MCP_I2CBA + 3, MCP_IODIRA, u[7]);
+        this->i2cwrite16 (MCP_I2CBA + 4, MCP_IODIRA, u[6]);
+        this->i2cwrite16 (MCP_I2CBA + 5, MCP_IODIRA, u[5]);
+        this->i2cwrite16 (MCP_I2CBA + 6, MCP_IODIRA, u[4]);
 
-    // write each of the 4 8-bit latches of the iow56s
-    for (int lat = 0; lat < 4; lat ++) {
-        int loadp = loadpinmap56[lat];
+        this->i2cwrite16 (MCP_I2CBA + 0, MCP_OLATA, 0x8000);    // BANKA=0; BANKB=1
+        this->i2cwrite16 (MCP_I2CBA + 5, MCP_IODIRA, u[2]);
+        this->i2cwrite16 (MCP_I2CBA + 6, MCP_IODIRA, u[3]);
 
-        // for this 8-bit latch, compute iow56 pins for all 4 paddles with clock low
-        bool havea56 = false;
-        uint64_t updallpinss[NPADS];
+    } else {
+
+        // iows go nuts if the io calls are interrupted
+        blocksigint ();
+
+        // write output pins of the iow100s
         for (int pad = 0; pad < NPADS; pad ++) {
-            if (iowhandles[pad]->getpid () != IOWKIT_PRODUCT_ID_IOW56) continue;
-            havea56 = true;
+            if (iowhandles[pad]->getpid () != IOWKIT_PRODUCT_ID_IOW100) continue;
 
             uint32_t mask = masks[pad];
             uint32_t pins = pinss[pad];
 
-            // at this point, we can assume all iow56 LOAD output pins are high
+            // set up to write ones to all iow100 pins so they are open-drained
+            uint64_t updallpins = -1ULL;
 
-            // set up to write ones to all iow56 pins so they are open-drained
-            // except set this LOAD<lat> output pin to zero
-            uint64_t updallpins = ~ (1ULL << loadp);
-
-            // for any abcd pin not in the mask, clear the iow56 OUT<n> pin so the 2N7000 will be open-drained
-            // for any abcd pin in the mask that is set, also clear the iow56 OUT<n> pin to open-drain the 2N7000
-            // for any abcd pin in the mask that is clear, leave the OUT<n> pin set so the 2N7000 grounds that output
-            int j0 = lat * 8;
-            int j8 = j0 + 8;
-            for (int j = j0; j < j8; j ++) {
+            // for any abcd pin not in the mask, clear the iow100 out pin so the 2N3904 will be open-collectored
+            // for any abcd pin in the mask that is set, also clear the iow100 out pin to open-collector the 2N3904
+            // for any abcd pin in the mask that is clear, leave the out pin set so the 2N3904 grounds that output
+            for (int j = 0; j < 32; j ++) {
                 if (((~ mask | pins) >> j) & 1) {
-                    uint8_t p = outputpinmap56[j];
+                    uint8_t p = outputpinmap100[j];
                     updallpins &= ~ (1ULL << p);
                 }
             }
 
-            updallpinss[pad] = updallpins;
+            IOWKIT_HANDLE iowh = iowhandles[pad];
+            write100 (iowh, updallpins);
         }
-        if (! havea56) break;
 
-        // first write out all 4 paddles with clock low then with clock high
-        for (int clk = 0; clk < 2; clk ++) {
+        // write each of the 4 8-bit latches of the iow56s
+        for (int lat = 0; lat < 4; lat ++) {
+            int loadp = loadpinmap56[lat];
 
+            // for this 8-bit latch, compute iow56 pins for all 4 paddles with clock low
+            bool havea56 = false;
+            uint64_t updallpinss[NPADS];
             for (int pad = 0; pad < NPADS; pad ++) {
                 if (iowhandles[pad]->getpid () != IOWKIT_PRODUCT_ID_IOW56) continue;
+                havea56 = true;
 
-                uint64_t updallpins = updallpinss[pad];
-                IOWKIT_HANDLE iowh = iowhandles[pad];
+                uint32_t mask = masks[pad];
+                uint32_t pins = pinss[pad];
 
-                // send write command to IOW-56 paddle with LOAD<lat> low first time, high second time
-                write56 (iowh, updallpins);
+                // at this point, we can assume all iow56 LOAD output pins are high
+
+                // set up to write ones to all iow56 pins so they are open-drained
+                // except set this LOAD<lat> output pin to zero
+                uint64_t updallpins = ~ (1ULL << loadp);
+
+                // for any abcd pin not in the mask, clear the iow56 OUT<n> pin so the 2N7000 will be open-drained
+                // for any abcd pin in the mask that is set, also clear the iow56 OUT<n> pin to open-drain the 2N7000
+                // for any abcd pin in the mask that is clear, leave the OUT<n> pin set so the 2N7000 grounds that output
+                int j0 = lat * 8;
+                int j8 = j0 + 8;
+                for (int j = j0; j < j8; j ++) {
+                    if (((~ mask | pins) >> j) & 1) {
+                        uint8_t p = outputpinmap56[j];
+                        updallpins &= ~ (1ULL << p);
+                    }
+                }
+
+                updallpinss[pad] = updallpins;
             }
+            if (! havea56) break;
 
-            if (clk != 0) break;
+            // first write out all 4 paddles with clock low then with clock high
+            for (int clk = 0; clk < 2; clk ++) {
 
-            // have to wait for it to soak thru iow56s, they're s-l-o-w
-            delayiow ();
+                for (int pad = 0; pad < NPADS; pad ++) {
+                    if (iowhandles[pad]->getpid () != IOWKIT_PRODUCT_ID_IOW56) continue;
 
-            // same write command but with LOAD<lat> high to kerchunk the 8 bits into latch
+                    uint64_t updallpins = updallpinss[pad];
+                    IOWKIT_HANDLE iowh = iowhandles[pad];
+
+                    // send write command to IOW-56 paddle with LOAD<lat> low first time, high second time
+                    write56 (iowh, updallpins);
+                }
+
+                if (clk != 0) break;
+
+                // have to wait for it to soak thru iow56s, they're s-l-o-w
+                delayiow ();
+
+                // same write command but with LOAD<lat> high to kerchunk the 8 bits into latch
+                for (int pad = 0; pad < NPADS; pad ++) {
+                    updallpinss[pad] |= 1ULL << loadp;
+                }
+            }
+        }
+
+        // signals ok now
+        allowsigint ();
+
+        // now verify the 32-pin abcd connector output pins match what we wrote out
+        // do a couple retries to give signals time to flow through the slow iowarriors
+        // usually verifies first time through
+        for (int retry = -3;; retry ++) {
+            uint32_t verifies[NPADS];
+            readpads (verifies);
+            bool bad = false;
             for (int pad = 0; pad < NPADS; pad ++) {
-                updallpinss[pad] |= 1ULL << loadp;
+                uint32_t verify = verifies[pad];
+                uint32_t pins   = pinss[pad];
+                uint32_t mask   = masks[pad];
+                if (((verify ^ pins) & mask) != 0) {
+                    bad = true;
+                    if (retry >= 0) fprintf (stderr, "PhysLib::writepads: verify %c error, wrote %08X readback %08X\n", 'A' + pad, pins & mask, verify & mask);
+                }
             }
+            if (! bad) break;
+            if (retry >= 0) ABORT ();
         }
-    }
-
-    // signals ok now
-    allowsigint ();
-
-    // now verify the 32-pin abcd connector output pins match what we wrote out
-    // do a couple retries to give signals time to flow through the slow iowarriors
-    // usually verifies first time through
-    for (int retry = -3;; retry ++) {
-        uint32_t verifies[NPADS];
-        readpads (verifies);
-        bool bad = false;
-        for (int pad = 0; pad < NPADS; pad ++) {
-            uint32_t verify = verifies[pad];
-            uint32_t pins   = pinss[pad];
-            uint32_t mask   = masks[pad];
-            if (((verify ^ pins) & mask) != 0) {
-                bad = true;
-                if (retry >= 0) fprintf (stderr, "PhysLib::writepads: verify %c error, wrote %08X readback %08X\n", 'A' + pad, pins & mask, verify & mask);
-            }
-        }
-        if (! bad) break;
-        if (retry >= 0) ABORT ();
     }
 }
 
@@ -903,56 +1182,84 @@ bool PhysLib::haspads ()
 {
     if (! paddlesopen) {
 
-        memset (iowhandles, 0, sizeof iowhandles);
-        blocksigint ();
-        for (int i = 0; i < NPADS; i ++) {
-            char env[12];
-            sprintf (env, "iowsn_%c", 'a' + i);
-            char const *esn = getenv (env);
-            if (esn == NULL) {
-                fprintf (stderr, "PhysLib::openpaddles: missing envar %s\n", env);
-                goto failed;
+        // usually /dev/i2c-0 for I2C bus on GPIO 0 & 1
+        char const *i2cenv = getenv ("i2cdev");
+        if (i2cenv != NULL) {
+
+            // open I2C bus
+            i2cfd = ::open (i2cenv, O_RDWR);
+            if (i2cfd < 0) {
+                fprintf (stderr, "I2CLib::openpads: error opening %s: %m\n", i2cenv);
+                ABORT ();
             }
-            IOWKIT_HANDLE iowh = new IowKit ();
-            if (! iowh->openbysn (esn)) {
-                fprintf (stderr, "PhysLib::openpaddles: missing paddle %s sn %s\n", env, esn);
-                goto failed;
+
+            // set pins A0..A6 = input, A7 = output
+            //          B0..B6 = input, B7 = output
+            // MCP23017s require A7,B7 be output pins
+            // also U1 A7 is the BANKA select; B7 is the BANKB select
+            // set all output bits (OLAT) to 0
+            // - outputting a 1 is done by setting the pin to input mode and letting pullup pull it up to 1
+            // - outputting a 0 is done by setting the pin to output mode with the OLAT bit still 0
+            for (int j = 0; j < 4; j ++) {
+                this->i2cwrite16 (MCP_I2CBA + j, MCP_IODIRA, 0x7F7F);
+                this->i2cwrite16 (MCP_I2CBA + j, MCP_OLATA, 0);
             }
-            iowhandles[i] = iowh;
 
-            // get type so we know how to access it
-            int prodid = iowh->getpid ();
+        } else {
 
-            // initialize to open-drain all 32 pins
-            switch (prodid) {
-
-                case IOWKIT_PRODUCT_ID_IOW56: {
-
-                    // set up to write zeroes to all the latches so the 2N7000s will be open-drained
-                    write56 (iowh, ~ vfyoutmask56);   // all LOADs = 0, all OUTs = 0, all other pins = 1
-
-                    // clock the LOADs to 1 to kerchunk zeroes into all the latches which will open-drain all the output 2N7000s
-                    write56 (iowh, ~ vfyoutmask56 | (1ULL << LOAD1) | (1ULL << LOAD2) | (1ULL << LOAD3) | (1ULL << LOAD4));
-                    break;
-                }
-
-                case IOWKIT_PRODUCT_ID_IOW100: {
-
-                    // write zeroes to open-drain all the output 2N7000s
-                    // write ones to all input pins to open drain the iow inputs
-                    write100 (iowh, ~ vfyoutmask100);
-                    break;
-                }
-
-                default: {
-                    fprintf (stderr, "PhysLib::openpaddles: io-warrior %s sn %s is not an io-warrior-56 or io-warrior-100 but is product-id 0x%X\n", env, esn, prodid);
+            memset (iowhandles, 0, sizeof iowhandles);
+            blocksigint ();
+            for (int i = 0; i < NPADS; i ++) {
+                char env[12];
+                sprintf (env, "iowsn_%c", 'a' + i);
+                char const *esn = getenv (env);
+                if (esn == NULL) {
+                    fprintf (stderr, "PhysLib::openpaddles: missing envar %s\n", env);
                     goto failed;
                 }
+                IOWKIT_HANDLE iowh = new IowKit ();
+                if (! iowh->openbysn (esn)) {
+                    fprintf (stderr, "PhysLib::openpaddles: missing paddle %s sn %s\n", env, esn);
+                    goto failed;
+                }
+                iowhandles[i] = iowh;
+
+                // get type so we know how to access it
+                int prodid = iowh->getpid ();
+
+                // initialize to open-drain all 32 pins
+                switch (prodid) {
+
+                    case IOWKIT_PRODUCT_ID_IOW56: {
+
+                        // set up to write zeroes to all the latches so the 2N7000s will be open-drained
+                        write56 (iowh, ~ vfyoutmask56);   // all LOADs = 0, all OUTs = 0, all other pins = 1
+
+                        // clock the LOADs to 1 to kerchunk zeroes into all the latches which will open-drain all the output 2N7000s
+                        write56 (iowh, ~ vfyoutmask56 | (1ULL << LOAD1) | (1ULL << LOAD2) | (1ULL << LOAD3) | (1ULL << LOAD4));
+                        break;
+                    }
+
+                    case IOWKIT_PRODUCT_ID_IOW100: {
+
+                        // write zeroes to open-drain all the output 2N7000s
+                        // write ones to all input pins to open drain the iow inputs
+                        write100 (iowh, ~ vfyoutmask100);
+                        break;
+                    }
+
+                    default: {
+                        fprintf (stderr, "PhysLib::openpaddles: io-warrior %s sn %s is not an io-warrior-56 or io-warrior-100 but is product-id 0x%X\n", env, esn, prodid);
+                        goto failed;
+                    }
+                }
             }
+            allowsigint ();
         }
-        allowsigint ();
+
         paddlesopen = true;
     }
+
     return true;
 
 failed:;
@@ -1137,4 +1444,74 @@ void PhysLib::blocksigint ()
 void PhysLib::allowsigint ()
 {
     if (pthread_sigmask (SIG_UNBLOCK, &sigintmask, NULL) != 0) ABORT ();
+}
+
+// write register pair in I2C MCP23017 chip
+void PhysLib::i2cwrite16 (uint8_t addr, uint8_t reg, uint16_t data)
+{
+    struct i2c_rdwr_ioctl_data msgset;
+    struct i2c_msg iomsgs[1];
+    uint8_t wbuf[3];
+
+    memset (&msgset, 0, sizeof msgset);
+    memset (iomsgs, 0, sizeof iomsgs);
+
+    for (int retry = 0; retry < 3; retry ++) {
+        wbuf[0] = reg;              // MCP23017 register number
+        wbuf[1] = data;
+        wbuf[2] = data >> 8;
+        iomsgs[0].addr  = addr;
+        iomsgs[0].flags = 0;        // write
+        iomsgs[0].buf   = wbuf;
+        iomsgs[0].len   = 3;
+
+        msgset.msgs  = iomsgs;
+        msgset.nmsgs = 1;
+
+        int rc = ioctl (i2cfd, I2C_RDWR, &msgset);
+        if (rc >= 0) {
+            if (retry > 0) fprintf (stderr, "I2CLib::write16: writing recovered\n");
+            return;
+        }
+
+        fprintf (stderr, "PhysLib::i2cwrite16: error writing to %02X.%02X: %m\n", addr, reg);
+    }
+    ABORT ();
+}
+
+// read register pair from I2C MCP23017 chip
+uint16_t PhysLib::i2cread16 (uint8_t addr, uint8_t reg)
+{
+    struct i2c_rdwr_ioctl_data msgset;
+    struct i2c_msg iomsgs[2];
+    uint8_t wbuf[1], rbuf[2];
+
+    memset (&msgset, 0, sizeof msgset);
+    memset (iomsgs, 0, sizeof iomsgs);
+
+    for (int retry = 0; retry < 3; retry ++) {
+        wbuf[0] = reg;              // MCP23017 register number
+        iomsgs[0].addr  = addr;
+        iomsgs[0].flags = 0;        // write
+        iomsgs[0].buf   = wbuf;
+        iomsgs[0].len   = 1;
+
+        iomsgs[1].addr  = addr;
+        iomsgs[1].flags = I2C_M_RD; // read
+        iomsgs[1].buf   = rbuf;
+        iomsgs[1].len   = 2;
+
+        msgset.msgs  = iomsgs;
+        msgset.nmsgs = 2;
+
+        int rc = ioctl (i2cfd, I2C_RDWR, &msgset);
+        if (rc >= 0) {
+            if (retry > 0) fprintf (stderr, "I2CLib::read16: reading recovered\n");
+            // reg+1 in upper byte; reg+0 in lower byte
+            return (rbuf[1] << 8) | rbuf[0];
+        }
+
+        fprintf (stderr, "PhysLib::i2cread16: error reading from %02X.%02X: %m\n", addr, reg);
+    }
+    ABORT ();
 }

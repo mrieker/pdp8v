@@ -221,11 +221,15 @@ struct PhysLib : TimedLib {
         uint32_t val;
     };
 
+    void i2cwrite16 (uint8_t addr, uint8_t reg, uint16_t data);
+    uint16_t i2cread16 (uint8_t addr, uint8_t reg);
+
 private:
     bool paddlesopen;
     GpioFile gpiofile;
     int gpioudpfd;
     int gpioudptm;
+    int i2cfd;
     IOWKIT_HANDLE iowhandles[NPADS];
     sigset_t allowedsigs;
     sigset_t sigintmask;

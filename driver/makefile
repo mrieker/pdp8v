@@ -4,7 +4,7 @@ TCLINC := -I$(shell ./tclinc.sh)
 GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
-LNKFLG := -ldl -lm -lpthread -lreadline -lrt -ltcl -lX11
+LNKFLG := -ldl -lm -lpthread -lreadline -lrt -l$(shell ./tcllib.sh) -lX11
 RDCYC  := rdcyc-$(MACH).cc
 
 ifeq ($(MACH),armv6l)
@@ -108,6 +108,9 @@ GUI.jar: GUI.java GUIRasPiCtl.h
 	CLASSPATH=. javac GUI.java
 	jar cf GUI.jar GUI*.class
 	rm -f GUI.class GUI\$$*.class
+
+i2cpadtest.$(MACH): i2cpadtest.$(MACH).o $(LIBS)
+	$(GPP) -o $@ $^ -lreadline
 
 iow56list.$(MACH): iow56list.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^
