@@ -1,4 +1,5 @@
 # serial numbers of IOWPaddles plugged into the A,B,C,D connectors
+# copy to iowsns.si then edit serial numbers as shown by iowlist
 export iowsn_a=00000247
 export iowsn_b=00000246
 export iowsn_c=00000243
