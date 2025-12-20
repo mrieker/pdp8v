@@ -200,7 +200,7 @@ module seqcirc (
     jms3q   = ~ (_exec3q | _ir_jms);
     jmp1q   = ~ (_exec1q | _ir_jmp);
     iot1q   = ~ (_exec1q | _ir_iot);            // includes group2 with OSR or HLT and group 3
-    iot2q   = ~ (_exec2q | _ir_iot);
+    iot2q   = ~ (_exec2q | _ir_iot);            // includes group2 with OSR or HLT and group 3
     opr1q   = ~ (_exec1q | _ir_opr);            // excludes group2 with OSR or HLT and group 3
     _grpa1q = ~ (opr1q & _maq[8]);              // group 1
     grpa1q  = ~ _grpa1q;
@@ -231,7 +231,7 @@ module seqcirc (
     _dfrm   = ~ (exec1q & _irq[11] & irq_8);
 
     // JUMP: tell raspi that memory references from here on use new instruction frame
-    //   set in first execution cycle of JMP,JMP
+    //   set in first execution cycle of JMS,JMP
     _jump   = ~ (exec1q & irq_11 & _irq[10]);
 
     // INTAK: interrupt is being acknowledged, raspi should stop requesting interrupt
@@ -288,7 +288,7 @@ module seqcirc (
     //                 TAD2 - captures memory value to be added to accumulator next cycle
     //                 ISZ2 - captures memory value to be incremented via ALU in next cycle
     //               INTAK1 - captures 0 being output by ALU like it is the address from a JMS 0 instruction
-    _ma_aluq = ~ (fetch2qa | defer2q | defer3q | tad2q | isz2q | intak1q);              // write MA from ALU output at end of cycle
+    _ma_aluq = ~ (fetch2qa | defer2q | defer3q | tad2q | isz2q | intak1q);
 
     // PC_ALUQ: write PC from ALU output at end of cycle
     //   set when in JMP1 - captures jump-to address
@@ -313,7 +313,7 @@ module seqcirc (
     // ALU_M1: gate 7777 to ALU A input
     //   set when in DCA2 - to pass accumulator sent to ALU B input through to raspi to write to memory
     //               IOT1 - to pass accumulator sent to ALU B input through to raspi for processing I/O
-    //            Group 1 with CMA - to complement accumulator set to ALU B input by XORing with all ones
+    //            Group 1 with CMA - to complement accumulator sent to ALU B input by XORing with all ones
     _alua_m1    = ~ (dca2q | iot1q | grpa1q & maq[5]);
 
     // ALUA_MQ1107: gate MQ[11:07] (MQ=value from raspi) to ALU A[11:07]  (upper 5 bits)
@@ -324,7 +324,7 @@ module seqcirc (
     //                 IOT2 - route return value from I/O instruction throug ALU for writing to AC
     alua_mq1107 = fetch2qa & _meminst | defer2q | arith2q | isz2q | iot2q;
 
-    // ALUA_MQ0600: gate MQ[06:00] (MQ=value from raspi) to ALU A[06:00]  (lower 5 bits)
+    // ALUA_MQ0600: gate MQ[06:00] (MQ=value from raspi) to ALU A[06:00]  (lower 7 bits)
     //   set when in FETCH2 - route lower instruction bits through ALU for writing to MA
     //               DEFER2 - route pointer value bits through ALU for writing to MA
     //               ARITH2 - route operand value bits through ALU for arithmetic
@@ -339,12 +339,11 @@ module seqcirc (
     //              Group 2 - route upper PC bits through ALU for possible incrementing for skip instruction
     alua_pc1107 = fetch1q | fetch2qa & meminst & mq[07] | jms2q | grpb1q;
 
-    // ALU_PC0600: gate PC[06:00] to ALU A[06:00]  (lower 7 bits)
+    // ALUA_PC0600: gate PC[06:00] to ALU A[06:00]  (lower 7 bits)
     //   set when in FETCH1 - route lower PC bits through ALU to send to raspi for fetching instruction
     //                 JMS2 - route lower PC bits through ALU to send to raspi for writing to memory
     //              Group 2 - route lower PC bits through ALU for possible incrementing for skip instruction
     alua_pc0600 = fetch1q | jms2q | grpb1q;
-
 
     // ALUB_AC: gate AC to ALU B input
     //   set when in AND2 - route AC to ALU B input for anding with value from memory being sent to ALU A
