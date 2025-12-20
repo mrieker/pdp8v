@@ -157,7 +157,9 @@ void loop() {
     // change which pin we are displaying
     if (++ updateindex == UPDPERSEC*MULTIPLIER) {
       updateindex = 0;
-      pindisplayindex = (pindisplayindex + 1) % 2;
+      // comment out next line for cycle frequency only
+      // uncomment for alternating cycle/instruction frequency
+      ////pindisplayindex = (pindisplayindex + 1) % 2;
     }
 
     // start displaying new digits
