@@ -40,7 +40,7 @@
 #define SECPERDISP 2    // number of seconds to display each value
 #define MULTIPLIER 1    // display this multiple of frequency
 #define UPDPERSEC  7    // update frequency reading this many times per second (exact)
-#define NUMDIGITS  5    // total number of digits
+#define NUMDIGITS  6    // total number of digits
 #define count_t uint16_t
 
 #define EVENSPLIT ((1000000 % UPDPERSEC) == 0)
@@ -65,6 +65,8 @@ struct PinData {
 int last_outen;
 int pindisplayindex;
 int updateindex;
+int wearlevelcount;
+int wearlevelshift;
 PinData pin1;
 PinData pin2;
 uint32_t lastdutymicros;
@@ -160,6 +162,14 @@ void loop() {
       // comment out next line for cycle frequency only
       // uncomment for alternating cycle/instruction frequency
       ////pindisplayindex = (pindisplayindex + 1) % 2;
+
+      // rotate digits every 30sec to wear level the nixies
+      if (++ wearlevelcount == 30) {
+        wearlevelcount = 0;
+        if (++ wearlevelshift == NUMDIGITS) {
+          wearlevelshift = 0;
+        }
+      }
     }
 
     // start displaying new digits
@@ -182,29 +192,35 @@ void PinData::updatevalues ()
   // update total count for the past MULTIPLIER seconds
   totalcount += samplecounter - maincounters[updateindex];
   maincounters[updateindex] = samplecounter;
-  Serial.println (totalcount);
+  //Serial.println (totalcount);
 }
 
 // shift out the totalcount to the nixie tubes
 void PinData::shiftitout ()
 {
-  // fill in at least 1 and up to 5 digits
+  uint16_t digbitss[NUMDIGITS];
+  // fill in at least 1 and up to NUMDIGITS digits
   count_t count = totalcount;
   bool topdig9 = false;
   int i = 0;
   do {
     uint16_t dig = count % 10;
     topdig9 = (dig == 9);
-    outputdigit (HVON | LOFF | (DIG0 << dig));
+    digbitss[i++] = HVON | LOFF | (DIG0 << dig);
     count /= 10;
-  } while ((++ i < NUMDIGITS) && (count > 0));
+  } while ((i < NUMDIGITS) && (count > 0));
 
   // blank fill upper digits
   // - if we're displaying ___9x, leave 100s digit HV ON
   //   turn HV OFF for all other digits to save a little power
-  while (++ i <= NUMDIGITS) {
-    outputdigit ((topdig9 ? HVON : 0) | LOFF);
+  while (i < NUMDIGITS) {
+    digbitss[i++] = (topdig9 ? HVON : 0) | LOFF;
     topdig9 = false;
+  }
+
+  // output digits to display, rotated by wear leveling
+  for (i = 0; i < NUMDIGITS; i ++) {
+    outputdigit (digbitss[(wearlevelshift+i)%NUMDIGITS]);
   }
 
   // update digits being displayed
