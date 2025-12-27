@@ -13,6 +13,7 @@
 	tls   = 06046
 	pioff = 06310	; printinstr off
 	pion  = 06311	; printinstr on
+	wfi   = 06313	; wait for interrupt
 	dtra  = 06761
 	dtxa  = 06764
 	dtla  = 06766
@@ -472,12 +473,12 @@ wfd_loop:
 	sza
 	jmpi	waitfordone
 	ion			; busy, enable interrupts
-	hlt
-wfd_halt:
+	wfi			; wait for interrupt
+wfd_wait:
 	iof
 	jmp	wfd_loop
 
-__wfd_halt: .word -wfd_halt
+__wfd_wait: .word -wfd_wait
 
 ;
 ; interrupt service -
@@ -488,7 +489,7 @@ intserv:
 	jmp	intret
 	dca	intacsave
 	tad	0		; see if interrupted waitfordone's HLT instruction
-	tad	__wfd_halt
+	tad	__wfd_wait
 	sna cla
 	jmp	wfd_loop	; if so, just jump back to it without enabling interrupts
 	dtra			; if not, read status A
