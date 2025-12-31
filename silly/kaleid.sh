@@ -13,6 +13,7 @@
 #
 #  Optional envars:
 #
+#   switchregister=04000  to draw full circle patters (else normal)
 #   vc8pms= persistence in milliseconds (default 500)
 #   vc8size= initial window size (default 1024)
 #
@@ -22,4 +23,9 @@ then
     ../asm/assemble -pal kaleid.pal kaleid.obj > kaleid.lis
     ../asm/link -o kaleid.oct kaleid.obj > kaleid.map
 fi
-vc8type=e exec ../driver/raspictl "$@" kaleid.oct
+if [ "$switchregister" == "" ]
+then
+    export switchregister=0
+fi
+export vc8type=e
+exec ../driver/raspictl "$@" kaleid.oct
