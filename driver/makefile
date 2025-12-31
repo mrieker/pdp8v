@@ -4,7 +4,7 @@ TCLINC := -I$(shell ./tclinc.sh)
 GPP    := g++ $(CFLAGS) $(TCLINC) -std=c++11 -g -Wall -fPIC
 ASM    := ../asm/assemble.$(MACH)
 LNK    := ../asm/link.$(MACH)
-LNKFLG := -ldl -lm -lpthread -lreadline -lrt -l$(shell ./tcllib.sh) -lX11
+LNKFLG := -ldl -lm -lpthread -lreadline -lrt -l$(shell ./tcllib.sh)
 RDCYC  := rdcyc-$(MACH).cc
 
 ifeq ($(MACH),armv6l)
@@ -141,7 +141,7 @@ pidpudpserver.$(MACH): pidpudpserver.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)
 
 raspictl.$(MACH): raspictl.$(MACH).o $(LIBS)
-	$(GPP) -o $@ $^ $(LNKFLG)
+	$(GPP) -o $@ $^ $(LNKFLG) -lX11
 
 tc08status.$(MACH): tc08status.$(MACH).o $(LIBS)
 	$(GPP) -o $@ $^ $(LNKFLG)

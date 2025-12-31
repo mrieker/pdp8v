@@ -155,6 +155,8 @@ static uint32_t ts_senddata (uint32_t intrq, uint16_t data);
 static uint32_t ts_recvdata (uint32_t intrq);
 static void senddata (uint16_t data);
 static uint16_t recvdata ();
+static uint32_t clockup (bool wdata, uint32_t valu, bool topoloop = false);
+static void clockdn (bool wdata, uint32_t valu);
 static void nullsighand (int signum);
 static void scriptsigint (int signum);
 static void sighandler (int signum);
@@ -547,18 +549,8 @@ reseteverything:;
             //  G_DENA has been asserted for half cycle so we can read MDL,MD coming from cpu
 
             // get input signals just before raising clock
-            uint32_t sample = gpio->readgpio ();
-
-            // raise clock then wait for half a cycle
-            shadow.clock (sample);
-            if (shadow.r.state == Shadow::FETCH2) {
-                // keep IR LEDs steady with old opcode instead of turning all on
-                // cosmetic only, otherwise can use the else's writegpio()
-                gpio->writegpio (true, G_CLOCK | syncintreq | shadow.r.ir * G_DATA0);
-            } else {
-                gpio->writegpio (false, G_CLOCK | syncintreq);
-            }
-            gpio->halfcycle (shadow.aluadd (), true);
+            // then raise clock then wait for half a cycle
+            uint32_t sample = clockup (false, syncintreq, true);
 
             // we are now halfway through the cycle with the clock still high
 
@@ -713,8 +705,7 @@ reseteverything:;
 
             // drop the clock and enable link,data bus read
             // then wait half a clock cycle while clock is low
-            gpio->writegpio (false, syncintreq);
-            gpio->halfcycle (shadow.aluadd ());
+            clockdn (false, syncintreq);
 
             // maybe reached cycle limit
             uint64_t cc;
@@ -768,45 +759,33 @@ static void writestartpcacln ()
     // processor should be asking us to read from memory
 
     // drive clock high to transition to FETCH2
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (false, 0);
 
     // half way through FETCH2 with clock still high
     // drop clock and start sending it a JMP @0 opcode
-    gpio->writegpio (true, 05400 * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, 05400 * G_DATA0);
 
     // drive clock high to transition to DEFER1
     // keep sending opcode so tubes will clock it in
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, 05400 * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, 05400 * G_DATA0);
 
     // half way through DEFER1 with clock still high
     // drop clock and step to end of cycle
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 
     // drive clock high to transition to DEFER2
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (false, 0);
 
     // half way through DEFER2 with clock still high
     // drop clock and start sending it the PC contents - 2 for the CLA CLL and TAD we're about to send
-    gpio->writegpio (true, ((startpc - 2) & 07777) * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, ((startpc - 2) & 07777) * G_DATA0);
 
     // drive clock high to transition to EXEC1/JMP
     // keep sending startpc - 2 so it gets clocked into MA
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, ((startpc - 2) & 07777) * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, ((startpc - 2) & 07777) * G_DATA0);
 
     // drop clock and run to end of EXEC1/JUMP
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 
     // end of EXEC1/JUMP - processor should be reading the opcode at startpc - 2
     // but startpc - 2 has not clocked into PC yet
@@ -828,68 +807,47 @@ static void writestartpcacln ()
 static void initaccumlink ()
 {
     // raise clock to enter FETCH2
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (false, 0);
 
     // drop clock, start sending the tubes a CLA CLL CMA [CML] instruction
     uint16_t clacll = startln ? 07360 : 07340;
-    gpio->writegpio (true, clacll * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, clacll * G_DATA0);
 
     // raise clock to enter EXEC1, keep sending opcode
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, clacll * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, clacll * G_DATA0);
 
     // drop clock, stop sending opcode
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 
     // raise clock to enter FETCH1
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (false, 0);
 
     // drop clock, to get to end of FETCH1
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 
     // raise clock to enter FETCH2
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (false, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (false, 0);
 
     // drop clock, start sending the tubes a AND 0000 instruction
-    gpio->writegpio (true, 00000 * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, 00000 * G_DATA0);
 
     // raise clock to enter EXEC1, keep sending opcode
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, 00000 * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, 00000 * G_DATA0);
 
     // drop clock, stop sending opcode
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 
     // raise clock to enter EXEC2
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, 0);
 
     // drop clock, start sending the tubes initial accum contents
-    gpio->writegpio (true, startac * G_DATA0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, startac * G_DATA0);
 
     // raise clock to enter FETCH1, keep sending startac so tubes will clock it in
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, startac * G_DATA0 | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
+    clockup (true, startac * G_DATA0);
 
     // drop clock, to get to end of FETCH1
-    gpio->writegpio (false, 0);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, 0);
 }
 
 // if using GUI or scripts, stop the processor
@@ -1157,8 +1115,8 @@ static void wfiwait ()
             // don't if we are in middle of cycle that writes IR latch cuz we would lose sync
             if ((shadow.r.state != Shadow::FETCH2) && (shadow.r.state != Shadow::INTAK1) && (randuint16 (5) == 0)) {
                 shadow.reset ();                        // we don't clock at end of current state
-                gpio->writegpio (false, G_RESET);       // send RESET (and drop CLOCK)
-                gpio->halfcycle (shadow.aluadd ());     // let the reset soak into the tubes
+                clockdn (false, G_RESET);               // send RESET (and drop CLOCK)
+                                                        // let the reset soak into the tubes
                                                         // now halfway through FETCH1 cycle
             }
 
@@ -1175,8 +1133,8 @@ static void wfiwait ()
 
         if (shadow.r.state != Shadow::FETCH2) {
             shadow.reset ();                        // we don't clock at end of current state
-            gpio->writegpio (false, G_RESET);       // send RESET (and drop CLOCK)
-            gpio->halfcycle (shadow.aluadd ());     // let the reset soak into the tubes
+            clockdn (false, G_RESET);               // send RESET (and drop CLOCK)
+                                                    // let the reset soak into the tubes
                                                     // now halfway through FETCH1 cycle
             ts_recvdata (0);                        // now halfway through FETCH2 cycle with clock still high
             ASSERT (shadow.r.state == Shadow::FETCH2);
@@ -1222,28 +1180,18 @@ static void wfiwait ()
 // send it out then return in middle of next cycle with clock still high
 static uint32_t ts_senddata (uint32_t intrq, uint16_t data)
 {
-    gpio->writegpio (true, data * G_DATA0 | intrq);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (true, data * G_DATA0 | intrq);
     gpio->halfcycle (false);    // compensate for wfiwait tubesaver loop simpler than main loop
-    uint32_t sample = gpio->readgpio ();
-    shadow.clock (sample);
-    gpio->writegpio (true, data * G_DATA0 | intrq | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    return sample;
+    return clockup (true, data * G_DATA0 | intrq);
 }
 
 // in middle of cycle with clock still high
 // return in middle of next cycle with clock still high
 static uint32_t ts_recvdata (uint32_t intrq)
 {
-    gpio->writegpio (false, intrq);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, intrq);
     gpio->halfcycle (false);    // compensate for wfiwait tubesaver loop simpler than main loop
-    uint32_t sample = gpio->readgpio ();
-    shadow.clock (sample);
-    gpio->writegpio (false, intrq | G_CLOCK);
-    gpio->halfcycle (shadow.aluadd ());
-    return sample;
+    return clockup (false, intrq);
 }
 
 // set the interrupt request bits
@@ -1395,19 +1343,14 @@ static void senddata (uint16_t data)
     ASSERT (G_IOS   == 020000 * G_DATA0);
     uint32_t sample = (data & 037777) * G_DATA0 | syncintreq;
 
-    // drop the clock and start sending skip,link,data to cpu
-    gpio->writegpio (true, sample);
+    // drop the clock and start sending skip,link,data to tubes
+    // then let it soak in (giving it a setup time in prep for a clock up)
+    clockdn (true, sample);
 
-    // let data soak into cpu (giving it a setup time)
-    gpio->halfcycle (shadow.aluadd ());
-
-    // tell cpu data is ready to be read by raising the clock
-    // hold data steady and keep sending data to cpu so it will be clocked in correctly
-    shadow.clock (gpio->readgpio ());
-    gpio->writegpio (true, G_CLOCK | sample);
-
-    // wait for cpu to clock data in (giving it a hold time)
-    gpio->halfcycle (shadow.aluadd ());
+    // tell tubes data is ready to be read by raising the clock
+    // hold data steady and keep sending data to tubes so it will be clocked in correctly
+    // wait for tubes to clock data in (giving it a hold time)
+    clockup (true, sample);
 }
 
 // recv data word from CPU as part of a MEM_WRITE cycle
@@ -1431,21 +1374,65 @@ static void senddata (uint16_t data)
 static uint16_t recvdata ()
 {
     // drop clock and wait for cpu to finish sending the data
-    gpio->writegpio (false, syncintreq);
-    gpio->halfcycle (shadow.aluadd ());
+    clockdn (false, syncintreq);
 
     // read data being sent by cpu just before raising clock
     // then raise clock and wait a half cycle to be at same timing as when called
-    uint32_t sample = gpio->readgpio ();
-    shadow.clock (sample);
-    gpio->writegpio (false, G_CLOCK | syncintreq);
-    gpio->halfcycle (shadow.aluadd ());
+    uint32_t sample = clockup (false, syncintreq);
 
     // return value received from cpu to be written to memory or sent to I/O device
     //  <15:13> = zeroes
     //     <12> = link value (used only for i/o instruction)
     //  <11:00> = data value
     return ((sample / G_DATA0) & 07777) | ((sample & G_LINK) / (G_LINK >> 12));
+}
+
+// sample the gpio pins, drive clock high then wait half a clock cycle
+//  input:
+//   wdata = false: data,link pins set to tubes-to-raspi direction
+//            true: data,link pins set to raspi-to-tubes direction
+//                  valu<G_DATA,G_LINK> = value being sent to tubes
+//   valu = value for the gpio pins being sent to tubes
+//   topoloop = true: at top of raspictl's main loop
+//             false: some other place
+//  output:
+//   returns gpio pins just before clock raised
+//   valu sent to tubes and clock raised
+//   followed by half clock cycle delay
+static uint32_t clockup (bool wdata, uint32_t valu, bool topoloop)
+{
+    // get gpio signals at end of cycle
+    uint32_t sample = gpio->readgpio ();
+
+    // check signals at end of old state
+    // then advance shadow to new state
+    shadow.clock (sample);
+
+    // keep IR LEDs steady with old opcode instead of turning all on
+    // cosmetic only, can be commented out
+    if (shadow.r.state == Shadow::FETCH2) {
+        wdata = true;
+        valu |= shadow.r.ir * G_DATA0;
+    }
+
+    // send positive edge clock to tubes
+    gpio->writegpio (wdata, G_CLOCK | valu);
+
+    // wait for new state to clock into tubes
+    gpio->halfcycle (shadow.aluadd (), topoloop);
+
+    return sample;
+}
+
+// drive clock low then wait half a clock cycle
+//   wdata = false: data,link pins set to tubes-to-raspi direction
+//            true: data,link pins set to raspi-to-tubes direction
+//                  valu<G_DATA,G_LINK> = value being sent to tubes
+//   valu = value for the gpio pins being sent to tubes
+static void clockdn (bool wdata, uint32_t valu)
+{
+    gpio->writegpio (wdata, valu);
+    gpio->halfcycle (shadow.aluadd ());
 }
 
 // null signal handler used to break out of read()s
