@@ -831,7 +831,8 @@ static void multhalfcycle (bool grpbskipvalid, std::string *str, char const *des
     // check for error only at end of cycle, not middle
     // eg, alu outputs may not be correct yet
     bool endofcycle = ! (smdcon & (D_clok2 | D_reset));
-    if (endofcycle && (adiff | bdiff | cdiff | ddiff | gdiff)) {
+    bool goterror = endofcycle && (adiff | bdiff | cdiff | ddiff | gdiff);
+    if (goterror) {
         gotanerror ();
     }
 
@@ -847,7 +848,7 @@ static void multhalfcycle (bool grpbskipvalid, std::string *str, char const *des
         strprintf (str, "%s" ESC_EREOL "\n", startpage);
         strprintf (str, "%s ---------------- cycle %10u %s  %4.1f cps" ESC_EREOL "\n", multitle.c_str (), cycleno, desc, dc / 10.0);
         strprintf (str, "" ESC_EREOL "\n");
-        if (endofcycle) {
+        if (goterror) {
             strprintf (str, "  hwacon=%08X  smacon=%08X  adiff=%08X  %s" ESC_EREOL "\n", hwacon & amask, smacon & amask, adiff, pinstring (adiff, apindefs).c_str ());
             strprintf (str, "  hwbcon=%08X  smbcon=%08X  bdiff=%08X  %s" ESC_EREOL "\n", hwbcon & bmask, smbcon & bmask, bdiff, pinstring (bdiff, bpindefs).c_str ());
             strprintf (str, "  hwccon=%08X  smccon=%08X  cdiff=%08X  %s" ESC_EREOL "\n", hwccon & cmask, smccon & cmask, cdiff, pinstring (cdiff, cpindefs).c_str ());
@@ -879,7 +880,7 @@ static void multhalfcycle (bool grpbskipvalid, std::string *str, char const *des
             if (gdiff & G_WRITE) gdiffstr.append (" write");
             if (gdiff & G_IAK)   gdiffstr.append (" iak");
 
-            if (endofcycle) {
+            if (goterror) {
                 strprintf (str, "  hwgcon=%08X  smgcon=%08X  gdiff=%08X %s" ESC_EREOL "\n", hwgcon, smgcon, gdiff, gdiffstr.c_str ());
             } else {
                 strprintf (str, "  hwgcon=%08X  smgcon=%08X" ESC_EREOL "\n", hwgcon, smgcon);

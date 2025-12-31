@@ -430,12 +430,12 @@ void ABCD::printfull (int (*xprintf) (void *out, char const *fmt, ...), void *ou
     uint16_t _aluashouldbe = 07777 ^ ((_alua_m1 ? 0 : 07777) | (_alua_ma ? 0 : maq)   | (alua_mq1107 ? mq & 07600 : 0) | (alua_mq0600 ? mq & 00177 : 0) | (alua_pc1107 ? pcq & 07600 : 0) | (alua_pc0600 ? pcq & 00177 : 0));
     uint16_t _alubshouldbe = 07777 ^ ((_alub_ac ? 0 : acq)   | (_alub_m1 ? 0 : 07777) | (alub_1 ? 00001 : 0));
 
-    xprintf (out, "                                    %o.%04o  =  %s/%04o  ", ! _alucout, _aluq ^ 07777, aluasrc, _aluashouldbe ^ 07777);
+    xprintf (out, "                                    %o.%04o  =  %s/%04o ", ! _alucout, _aluq ^ 07777, aluasrc, _aluashouldbe ^ 07777);
     if (! _alu_add) xprintf (out, "%c", '+');
     if (! _alu_and) xprintf (out, "%c", '&');
     if (! _grpa1q)  xprintf (out, "%c", '^');
-    xprintf (out, "  %s/%04o", alubsrc, _alubshouldbe ^ 07777);
-    if (! _grpa1q)  xprintf (out, "  +  %o", inc_axb);
+    xprintf (out, " %s/%04o", alubsrc, _alubshouldbe ^ 07777);
+    if (! _grpa1q)  xprintf (out, " + %o", inc_axb);
     xprintf (out, EOL);
 
     xprintf (out, EOL);
