@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <vector>
 
@@ -248,7 +249,24 @@ void IowKit::read (int numPipe, void *buffer, int length)
         abort ();
     }
 
-    int rc = ::read (this->fds[numPipe], ((char *)buffer) + extra, siz);
+    int pipefd = this->fds[numPipe];
+    fd_set readfds;
+    FD_ZERO (&readfds);
+    FD_SET (pipefd, &readfds);
+    struct timeval timeout;
+    memset (&timeout, 0, sizeof timeout);
+    timeout.tv_sec = 1;
+    int rc = ::select (pipefd + 1, &readfds, NULL, NULL, &timeout);
+    if (rc < 0) {
+        fprintf (stderr, "IowKit::read: error selecting %s pipe %d: %m\n", this->infos[numPipe].serial, numPipe);
+        abort ();
+    }
+    if (rc == 0) {
+        fprintf (stderr, "IowKit::read: timeout reading %s pipe %d\n", this->infos[numPipe].serial, numPipe);
+        abort ();
+    }
+
+    rc = ::read (pipefd, ((char *)buffer) + extra, siz);
     if (rc < 0) {
         fprintf (stderr, "IowKit::read: error reading %s pipe %d: %m\n", this->infos[numPipe].serial, numPipe);
         abort ();
