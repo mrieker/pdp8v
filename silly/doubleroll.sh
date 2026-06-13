@@ -1,4 +1,5 @@
 #!/bin/bash
+cd `dirname $0`
 if [ doubleroll.oct -ot doubleroll.pal ]
 then
     ../asm/assemble -pal doubleroll.pal doubleroll.obj > doubleroll.lis
