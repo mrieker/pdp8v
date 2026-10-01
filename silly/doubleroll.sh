@@ -1,8 +1,8 @@
 #!/bin/bash
 cd `dirname $0`
-if [ doubleroll.oct -ot doubleroll.pal ]
+if [ doubleroll.oct -ot doubleroll.asm ]
 then
-    ../asm/assemble -pal doubleroll.pal doubleroll.obj > doubleroll.lis
+    ../asm/assemble doubleroll.asm doubleroll.obj > doubleroll.lis
     ../asm/link -o doubleroll.oct doubleroll.obj > doubleroll.map
 fi
 if [ "$swithregister" == "" ]

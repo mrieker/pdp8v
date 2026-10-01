@@ -1,6 +1,7 @@
 *~
 *.FCStd1
 *.a
+*.aarch64
 *.armv6l
 *.armv7l
 *.*bak*
