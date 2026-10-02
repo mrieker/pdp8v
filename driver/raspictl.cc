@@ -1020,11 +1020,17 @@ static void dumpregs ()
 void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
 {
     if (! skipopt) return;                                  // can't do it if not enabled by -skipopt
-    if ((lastreadaddr & 00177) == 00177) return;            // can't do it if ioskip is last word of page
     if (memarray[lastreadaddr] != skipopcode) return;       // can't do if it's not an ioskip opcode
-    uint16_t jmpskip = 05200 | (lastreadaddr & 00177);      // verify that ioskip followed by jmp ioskip
-    uint16_t jmpzero = (lastreadaddr & 07600) ? 0 : 00200;  // maybe the ioskip/jmp.-1 is on page 0
-    if ((memarray[lastreadaddr+1] | jmpzero) != jmpskip) return;
+    uint16_t nextaddr = (lastreadaddr & 070000) | ((lastreadaddr + 1) & 007777);
+    uint16_t nextop = memarray[nextaddr];                   // get opcode following skip
+    if ((nextop & 07000) != 05000) return;                  // must be a JMP
+    uint16_t efaddr = (nextaddr & 070000) | (nextop & 00177);  // get target address of JMP
+    if (nextop & 00200) efaddr |= nextaddr & 007600;
+    if (nextop & 00400) {
+        if ((efaddr & 007770) == 000010) return;            // don't bother if indirect autoinc
+        efaddr = (nextaddr & 070000) | memarray[efaddr];    // read pointer, keep ifield
+    }
+    if (efaddr != lastreadaddr) return;                     // not if target address not the skip opcode
 
     *flag = true;
     pthread_mutex_unlock (lock);
