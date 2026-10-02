@@ -159,6 +159,9 @@ static void *pidpthread (void *dummy)
         swunscrams[gpio>>COLMIN] = data;
     }
 
+    char const *swregenv = getenv ("switchregister");
+    int swregovr = (swregenv == NULL) ? -1 : atoi (swregenv);
+
     // set up sequence number gt anything previously used
     PiDPMsg pidpmsg;
     memset (&pidpmsg, 0, sizeof pidpmsg);
@@ -214,7 +217,7 @@ static void *pidpthread (void *dummy)
         if (! pidp_proc (&pidpmsg)) continue;
 
         // row 1 - switch register switches
-        switchregister = swunscrams[(~pidpmsg.swrows[0]&COLMASK)>>COLMIN];
+        switchregister = (swregovr < 0) ? swunscrams[(~pidpmsg.swrows[0]&COLMASK)>>COLMIN] : swregovr;
 
         // row 2 - data field, instr field switches
         dfifswitches   = swunscrams[(~pidpmsg.swrows[1]&COLMASK)>>COLMIN];
