@@ -178,12 +178,14 @@ static void *pidpthread (void *dummy)
             (ctl_isstopped ()    ? 0 : (1 << COL5)) |               // RUN
             ledscrams[extarith.stepcount<<2];                       // SC
 
+        uint16_t memaddress;
         uint16_t membuffer;
         uint32_t lr6 = 0;
         if (inlimbo) {
 
             // ldaddr/exam/depos, show mem contents
-            membuffer = memarray[memext.iframe|shadow.r.ma];
+            memaddress = memext.iframe | shadow.r.ma;
+            membuffer  = memarray[memaddress];
         } else {
 
             // not doing ldaddr/exam/depos, show processor state
@@ -196,7 +198,8 @@ static void *pidpthread (void *dummy)
 
             if (st == Shadow::State::INTAK1) lr7 |= 1 << COL2;      // BREAK (we use it for INTAK1 cycle)
 
-            membuffer = (gpio->readgpio () & G_DATA) / G_DATA0;     // show what is on gpio bus
+            memaddress = mareg;                                     // show last memory read/write value
+            membuffer  = mbreg;
         }
 
         uint32_t lr8 =
@@ -205,7 +208,7 @@ static void *pidpthread (void *dummy)
 
         // output LED rows
         pidpmsg.ledrows[0] = ledscrams[shadow.r.pc];
-        pidpmsg.ledrows[1] = ledscrams[shadow.r.ma];
+        pidpmsg.ledrows[1] = ledscrams[memaddress&07777];
         pidpmsg.ledrows[2] = ledscrams[membuffer];
         pidpmsg.ledrows[3] = ledscrams[shadow.r.ac];
         pidpmsg.ledrows[4] = ledscrams[extarith.multquot];

@@ -66,6 +66,8 @@ extern GpioLib *gpio;
 extern int cmdargc;
 extern int numstopats;
 extern uint16_t lastreadaddr;
+extern uint16_t mareg;
+extern uint16_t mbreg;
 extern uint16_t startac;
 extern uint16_t startpc;
 extern uint16_t switchregister;

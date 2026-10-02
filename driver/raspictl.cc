@@ -116,6 +116,8 @@ int numstopats;
 MemExt memext;
 Shadow shadow;
 uint16_t lastreadaddr;
+uint16_t mareg;     // what real PDP-8 would be showing in MA display
+uint16_t mbreg;     // what real PDP-8 would be showing in MB display
 uint16_t startac;
 uint16_t startpc;
 uint16_t switchregister;
@@ -582,6 +584,7 @@ reseteverything:;
             if (sample & (G_READ | G_WRITE)) {
                 uint16_t addr = ((sample & G_DATA) / G_DATA0) | ((sample & G_DFRM) ? memext.dframe : memext.iframe);
                 ASSERT (addr < MEMSIZE);
+                mareg = addr;
 
                 if (numstopats > 0) {
                     uint16_t waddr = (((sample / G_WRITE) & 1) * STOPATWRITE) | addr;
@@ -612,6 +615,7 @@ reseteverything:;
                     } else {
                         lastreaddata = memarray[addr];
                     }
+                    mbreg = lastreaddata;
                     if (dyndisena) dyndisread (addr);
 
                     // save last address being read from
@@ -648,6 +652,7 @@ reseteverything:;
                     uint16_t data = recvdata () & 07777;
                     // eg in middle of FETCH1
                     memarray[addr] = data;
+                    mbreg = data;
                     if (dyndisena) dyndiswrite (addr);
                     stopcheck ();
                     if (randmem) {
@@ -1028,8 +1033,9 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     if (nextop & 00200) efaddr |= nextaddr & 007600;
     if (nextop & 00400) {
         if ((efaddr & 007770) == 000010) return;            // don't bother if indirect autoinc
-        efaddr = (nextaddr & 070000) | memarray[efaddr];    // read pointer, keep ifield
+        efaddr = memarray[efaddr];                          // read pointer
     }
+    efaddr = (efaddr & 007777) | memext.iframeafterjump;    // maybe JMP changes iframe
     if (efaddr != lastreadaddr) return;                     // not if target address not the skip opcode
 
     *flag = true;
