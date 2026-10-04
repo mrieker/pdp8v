@@ -14,8 +14,8 @@
 #  Optional envars:
 #
 #   switchregister=04000  to draw full circle patters (else normal)
-#   vc8pms= persistence in milliseconds (default 500)
-#   vc8size= initial window size (default 1024)
+#   vc8pms= persistence in milliseconds (default 9000)
+#   vc8size= initial window size (default 800)
 #
 cd `dirname $0`
 if [ kaleid.oct -ot kaleid.pal ]
@@ -26,6 +26,14 @@ fi
 if [ "$switchregister" == "" ]
 then
     export switchregister=0
+fi
+if [ "$vc8pms" == "" ]
+then
+    export vc8pms=9000
+fi
+if [ "$vc8size" == "" ]
+then
+    export vc8size=800
 fi
 export vc8type=e
 exec ../driver/raspictl "$@" kaleid.oct
