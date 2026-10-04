@@ -27,8 +27,8 @@
 
 struct PiDPMsg {
     uint64_t seq;
-    uint32_t ledrows[8];
-    uint32_t swrows[3];
+    uint32_t ledrows[8];    // active high scrambled
+    uint32_t swrows[3];     // active high scrambled
 };
 
 void pidp_start ();

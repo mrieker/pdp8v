@@ -173,10 +173,10 @@ static void *pidpthread (void *dummy)
         pidpmsg.seq ++;
 
         uint32_t lr7 =
-            (memext.intenabd ()  ? (1 << COL3) : 0) |               // ION
-            (waitingforinterrupt ? (1 << COL4) : 0) |               // PAUSE (we use it for 'wait for interrupt')
-            (ctl_isstopped ()    ? 0 : (1 << COL5)) |               // RUN
-            ledscrams[extarith.stepcount<<2];                       // SC
+            (memext.intenabd ()  ? (1 << COL3) : 0) |   // ION
+            (waitingforinterrupt ? (1 << COL4) : 0) |   // PAUSE (we use it for 'wait for interrupt')
+            (ctl_isstopped ()    ? 0 : (1 << COL5)) |   // RUN
+            ledscrams[extarith.stepcount<<2];           // SC
 
         uint16_t memaddress;
         uint16_t membuffer;
@@ -220,20 +220,20 @@ static void *pidpthread (void *dummy)
         if (! pidp_proc (&pidpmsg)) continue;
 
         // row 1 - switch register switches
-        switchregister = (swregovr < 0) ? swunscrams[(~pidpmsg.swrows[0]&COLMASK)>>COLMIN] : swregovr;
+        switchregister   = (swregovr < 0) ? swunscrams[pidpmsg.swrows[0]>>COLMIN] : swregovr;
 
         // row 2 - data field, instr field switches
-        dfifswitches   = swunscrams[(~pidpmsg.swrows[1]&COLMASK)>>COLMIN];
+        dfifswitches     = swunscrams[pidpmsg.swrows[1]>>COLMIN];
 
         // row 3 - control buttons
-        uint32_t buttons = ~ pidpmsg.swrows[2] & COLMASK;
-        buttonring[buttonindex] = buttons;
-        buttonindex = (buttonindex + 1) % 8;
+        uint32_t buttons = pidpmsg.swrows[2];
 
         // if button went from not pressed to pressed, perform function
         uint32_t butpressed = ~ lastbuttons & buttons;
 
         // if buttons have been steady past 8 iterations, we consider the buttons valid
+        buttonring[buttonindex] = buttons;
+        buttonindex = (buttonindex + 1) % 8;
         for (int i = 0; ++ i < 8;) {
             if (buttonring[i] != buttons) goto badbuttons;
         }

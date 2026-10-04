@@ -18,9 +18,15 @@
 //
 //    http://www.gnu.org/licenses/gpl-2.0.html
 
-// turn all pidp panel leds on
+// turn all pidp panel leds on and walk a zero through
+// then turn them all off and walk a one through
+
+// main switches xor into df,if,pc leds
+// control switches xor into instr leds
 
 #include <signal.h>
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include "pidp.h"
 
@@ -123,12 +129,18 @@ static uint16_t lamps[90] = {
 
 int main ()
 {
-    signal (SIGINT, sighand);
-    while (! ctrlcflag) {
-        time_t now = time (NULL);
-        uint16_t inv = ((now / 90) & 1) ? 0xFFF0 : 0x0000;
+    setlinebuf (stdout);
 
-        PiDPMsg pidpmsg;
+    PiDPMsg pidpmsg;
+    memset (&pidpmsg, 0, sizeof pidpmsg);
+
+    signal (SIGINT, sighand);
+
+    while (! ctrlcflag) {
+
+        time_t now = time (NULL);
+        uint16_t inv = 0; //// ((now / 90) & 1) ? 0xFFF0 : 0x0000;
+
         for (int i = 0; i < 8; i ++) {
             pidpmsg.ledrows[i] = inv;
         }
@@ -141,7 +153,22 @@ int main ()
             pidpmsg.ledrows[r] ^= 1 << b;
         }
 
+        // ledrow 0 = PC
+        // swrow  0 = main switches
+        pidpmsg.ledrows[0] ^= pidpmsg.swrows[0];
+
+        // ledrow 7 = DFIF
+        // swrow  1 = field switches
+        pidpmsg.ledrows[7] ^= pidpmsg.swrows[1];
+
+        // ledrow 5 = and,tad,isz,dca,jms,jmp,iot,opr
+        // swrow  2 = start,ldad,dep,exam,cont,sstep,sinst
+        pidpmsg.ledrows[5] ^= pidpmsg.swrows[2];
+
         pidp_proc (&pidpmsg);
+
+        printf ("\rswrows  %04X  %04X  %04X ", pidpmsg.swrows[0], pidpmsg.swrows[1], pidpmsg.swrows[2]);
+        fflush (stdout);
     }
     return 0;
 }

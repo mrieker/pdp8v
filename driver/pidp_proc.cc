@@ -39,6 +39,7 @@
 #include "gpiolib.h"
 #include "miscdefs.h"
 #include "pidp.h"
+#include "rdcyc.h"
 
 // gpio pins
 
@@ -88,14 +89,22 @@
 #define GPIO_PUDMOD (0x94/4)    // pullup/pulldown enable (0=disable; 1=enable pulldown; 2=enable pullup)
 #define GPIO_PUDCLK (0x98/4)    // which pins to change pullup/pulldown mode
 
+static uint16_t const swmasks[3] = { 0xFFF0, 0xC0F0, 0xC3F0 };
+
 static GpioFile gpiofile;
 static int gpioudpfd = -1;
 static int gpioudptm;
 static struct sockaddr_in gpioudpsa;
+static uint32_t rdcychz;    // actually cycles/0.131072sec
 static uint32_t timeoutctr;
 static uint32_t volatile *gpiopage;
 
-static void writegpio (uint32_t mask, uint32_t data);
+static uint32_t getnowns ();
+static void waitus (uint32_t us);
+static void set_mode_output (uint32_t bits);
+static void set_mode_input (uint32_t bits);
+static void set_output_high (uint32_t bits);
+static void set_output_low (uint32_t bits);
 
 // send LEDs to PiDP panel, read switches from PiDP panel
 bool pidp_proc (PiDPMsg *pidpmsg)
@@ -143,32 +152,74 @@ bool pidp_proc (PiDPMsg *pidpmsg)
 
             // not using UDP, access gpio pins directly
             gpiopage = (uint32_t volatile *) gpiofile.open ("/dev/gpiomem");
+            set_mode_input  (0xFF7FFF0U);   // set all pins we work with to inputs
+            set_output_low  (0xFF00000U);   // lamp selects are active high
+            set_output_high (0x0070000U);   // switch selects are active low
+            set_mode_output (0xFF70000U);   // set lamp & switch select lines to output
+            for (int i = 4; i < 16; i ++) { // put pullups on data pins for reading switches
+                gpiopage[GPIO_PUDMOD] = 2;  // 1=pulldown; 2=pullup
+                usleep (10);
+                gpiopage[GPIO_PUDCLK] = 1U << i;
+                usleep (10);
+                gpiopage[GPIO_PUDMOD] = 0;
+                usleep (10);
+                gpiopage[GPIO_PUDCLK] = 0;
+                usleep (10);
+            }
+
+            // stay on CPU 0 so rdcyc() will work
+            cpu_set_t cpuset;
+            CPU_ZERO (&cpuset);
+            CPU_SET (0, &cpuset);
+            if (sched_setaffinity (0, sizeof cpuset, &cpuset) < 0) {
+                ABORT ();
+            }
+
+            // read rdcyc() frequency
+            uint32_t startcyc = rdcyc ();
+            uint32_t startns  = getnowns ();
+            uint32_t stopcyc, stopns;
+            do {
+                stopcyc = rdcyc ();
+                stopns  = getnowns ();
+            } while (stopns - startns < 131072000);
+            rdcychz = stopcyc - startcyc;
         }
     }
 
     if (gpiopage != NULL) {
 
-        // set pins for outputting to LEDs
-        gpiopage[GPIO_FSEL0+0] = LEDSEL0;
-        gpiopage[GPIO_FSEL0+1] = LEDSEL1;
-        gpiopage[GPIO_FSEL0+2] = LEDSEL2;
+        // set data pins to output mode
+        set_mode_output (0xFFF0U);
 
         // output LED rows
         for (int i = 0; i < 8; i ++) {
-            writegpio ((0xFF << LEDROW1) | COLMASK, (1 << (LEDROW1 + i)) | (pidpmsg->ledrows[i] ^ COLMASK));
+
+            // output lamp data (active low)
+            uint32_t ledrow = pidpmsg->ledrows[i];
+            set_output_high (0xFFF0U & ~ ledrow);
+            set_output_low  (0xFFF0U &   ledrow);
+
+            // select lamp row (active high)
+            set_output_high (0x100000U << i);
+
+            // let light soak into eyeballs
             usleep (200);
+
+            // deselect lamp row then let it soak in
+            set_output_low (0xFF00000U);
+            waitus (5);
         }
 
-        // set pins for reading switches
-        gpiopage[GPIO_FSEL0+0] = SWSEL0;
-        gpiopage[GPIO_FSEL0+1] = SWSEL1;
-        gpiopage[GPIO_FSEL0+2] = SWSEL2;
+        // set data pins to input
+        set_mode_input (0xFFF0U);
 
         // read switch rows
         for (int i = 0; i < 3; i ++) {
-            writegpio ((0xFF << LEDROW1) | (7 << SWROW1), (7 << SWROW1) & ~ (1 << (SWROW1 + i)));
-            usleep (10);
-            pidpmsg->swrows[i] = gpiopage[GPIO_LEV0];
+            set_output_low  (0x10000U << i);
+            waitus (3);
+            pidpmsg->swrows[i] = swmasks[i] & ~ gpiopage[GPIO_LEV0];
+            set_output_high (0x70000U);
         }
     } else {
         struct pollfd polls[] = { gpioudpfd, POLLIN, 0 };
@@ -239,9 +290,58 @@ bool pidp_proc (PiDPMsg *pidpmsg)
     return true;
 }
 
-// write value to GPIO pins
-static void writegpio (uint32_t mask, uint32_t data)
+// read current time in nanoseconds
+static uint32_t getnowns ()
 {
-    gpiopage[GPIO_SET0] = data;
-    gpiopage[GPIO_CLR0] = data ^ mask;
+    struct timespec nowts;
+    if (clock_gettime (CLOCK_MONOTONIC, &nowts) < 0) ABORT ();
+    return nowts.tv_sec * 1000000000ULL + nowts.tv_nsec;
+}
+
+// wait (via loop) at least the given number of microseconds
+static void waitus (uint32_t us)
+{
+    uint32_t waitfor = us * rdcychz / 131072;
+    uint32_t start = rdcyc ();
+    uint32_t delta;
+    do delta = rdcyc () - start;
+    while (delta < waitfor);
+}
+
+// set given gpio pins to output mode
+static void set_mode_output (uint32_t bits)
+{
+    for (int i = 0; i < 3; i ++) {
+        uint32_t fsel = gpiopage[GPIO_FSEL0+i];
+        for (int b = 0; b < 10; b ++) {
+            if (bits & 1) fsel |= IGO << (b * 3);
+            bits >>= 1;
+        }
+        gpiopage[GPIO_FSEL0+i] = fsel;
+    }
+}
+
+// set given gpio pins to input mode
+static void set_mode_input (uint32_t bits)
+{
+    for (int i = 0; i < 3; i ++) {
+        uint32_t fsel = gpiopage[GPIO_FSEL0+i];
+        for (int b = 0; b < 10; b ++) {
+            if (bits & 1) fsel &= ~ (7 << (b * 3));
+            bits >>= 1;
+        }
+        gpiopage[GPIO_FSEL0+i] = fsel;
+    }
+}
+
+// set given gpio output pins to high (3.3V)
+static void set_output_high (uint32_t bits)
+{
+    gpiopage[GPIO_SET0] = bits;
+}
+
+// set given gpio output pins to low (0V)
+static void set_output_low (uint32_t bits)
+{
+    gpiopage[GPIO_CLR0] = bits;
 }
