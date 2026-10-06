@@ -1041,20 +1041,25 @@ void skipoptwait (uint16_t skipopcode, pthread_mutex_t *lock, bool *flag)
     *flag = true;
     pthread_mutex_unlock (lock);
 
-    waitforinterrupt ();
+    bool sigint = ctl_lock ();
+    if (! (stopflags & SF_STOPIT) && (intreqmask == 0)) {
+        if (setintreqcalled) setintreqcalled = false;
+        else wfiwait ();
+    }
+    ctl_unlock (sigint);
 
     pthread_mutex_lock (lock);
     *flag = false;
 }
 
 // wait for interrupt
-// - blocks until interrupt request, whether interrupts are enabled or not
+// - blocks until interrupt request (or stop switch),
+//   whether interrupts are enabled or not
 void waitforinterrupt ()
 {
     bool sigint = ctl_lock ();
-    if (! (stopflags & SF_STOPIT) && (intreqmask == 0)) {
-        if (setintreqcalled) setintreqcalled = false;
-        else wfiwait ();
+    while (! (stopflags & SF_STOPIT) && (intreqmask == 0)) {
+        wfiwait ();
     }
     ctl_unlock (sigint);
 }
