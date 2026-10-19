@@ -48,6 +48,7 @@ void ExtArith::setgtflag (bool gt)
 ExtArith::ExtArith ()
 {
     iodevname = "eae";
+    modei     = false;
 }
 
 // reset to power-on state
@@ -64,11 +65,12 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
 {
     // get [mq/gt/mode/sc]
     if (strcmp (argv[0], "get") == 0) {
-        if (argc == 1) return new SCRetStr ("mq=%05o;gt=%o;mode=%c;sc=%03o", this->multquot, this->gtflag, (this->modeb ? 'B' : 'A'), this->stepcount);
+        char const *modestr = this->modei ? "I" : (this->modeb ? "B" : "A");
+        if (argc == 1) return new SCRetStr ("mq=%05o;gt=%o;mode=%s;sc=%03o", this->multquot, this->gtflag, modestr, this->stepcount);
         if (argc == 2) {
             if (strcmp (argv[1], "mq")   == 0) return new SCRetInt (this->multquot);
             if (strcmp (argv[1], "gt")   == 0) return new SCRetInt (this->gtflag ? 1 : 0);
-            if (strcmp (argv[1], "mode") == 0) return new SCRetStr (this->modeb ? "B" : "A");
+            if (strcmp (argv[1], "mode") == 0) return new SCRetStr (modestr);
             if (strcmp (argv[1], "sc")   == 0) return new SCRetInt (this->stepcount);
         }
         return new SCRetErr ("iodev eae get [mq/gt/mode/sc]");
@@ -86,7 +88,7 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
         puts ("");
         puts ("  mq   - multiplicand / quotient");
         puts ("  gt   - greater than flag");
-        puts ("  mode - mode A or B");
+        puts ("  mode - mode A or B or I (for PDP-8/I style)");
         puts ("  sc   - step count");
         puts ("");
         return NULL;
@@ -110,10 +112,17 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
             if (strcmp (argv[1], "mode") == 0) {
                 if ((argv[2][0] | ('A' ^ 'a')) == ('A' | 'a')) {
                     this->modeb = false;
+                    this->modei = false;
                     return NULL;
                 }
                 if ((argv[2][0] | ('B' ^ 'b')) == ('B' | 'b')) {
                     this->modeb = true;
+                    this->modei = false;
+                    return NULL;
+                }
+                if ((argv[2][0] | ('I' ^ 'i')) == ('I' | 'i')) {
+                    this->modeb = false;
+                    this->modei = true;
                     return NULL;
                 }
                 return new SCRetErr ("mode %s not A or B", argv[2]);
@@ -143,14 +152,14 @@ SCRet *ExtArith::scriptcmd (int argc, char const *const *argv)
 uint16_t ExtArith::ioinstr (uint16_t opcode, uint16_t input)
 {
     DEBUG ("ExtArith::ioinstr*: %llu  pc=%05o ir=%04o  l.ac=%o.%04o mq=%04o gt=%d  [%c]",
-        shadow.getcycles (), lastreadaddr, opcode, input >> 12, input & 07777, multquot, gtflag, modeb ? 'B' : 'A');
+        (long long unsigned) shadow.getcycles (), lastreadaddr, opcode, input >> 12, input & 07777, multquot, gtflag, modei ? 'I' : (modeb ? 'B' : 'A'));
     nextreadaddr = (lastreadaddr & 070000) | ((lastreadaddr + 1) & 007777);
 
     // step 1
     if (opcode & 00200) input &= ~ IO_DATA;     // 0200 CLA - clear accumulator
 
     // step 2
-    if ((opcode & 07577) == 07431) {            // 7431 (MQL NMI) SWAB - switch to mode B
+    if (! modei && ((opcode & 07577) == 07431)) {  // 7431 (MQL NMI) SWAB - switch to mode B
         modeb = true;
         return input;
     }
@@ -181,7 +190,7 @@ uint16_t ExtArith::ioinstr (uint16_t opcode, uint16_t input)
 
     // step 3
     uint16_t output = modeb ? eae_modeb (opcode, input) : eae_modea (opcode, input);
-    DEBUG ("  =>  l.ac=%o.%04o mq=%04o gt=%d  [%c]\n", output >> 12, output & 07777, multquot, gtflag, modeb ? 'B' : 'A');
+    DEBUG ("  =>  l.ac=%o.%04o mq=%04o gt=%d  [%c]\n", output >> 12, output & 07777, multquot, gtflag, modei ? 'I' : (modeb ? 'B' : 'A'));
     return output;
 }
 
@@ -224,11 +233,13 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
         // DVI - divide
         // p227 v7-7
         case 023: {
-            break;                                  // 7447 SWBA - redundant switch to mode A
+            if (! modei) {
+                break;                              // 7447 SWBA - redundant switch to mode A
+            }
         }
         case 003: {                                 // 7407 DVI
             if (dyndisena) dyndisread (nextreadaddr);
-            uint16_t divisor  = memarray[nextreadaddr];
+            uint16_t divisor = memarray[nextreadaddr];
             input = divide (input, divisor);
             break;
         }
@@ -299,6 +310,8 @@ uint16_t ExtArith::eae_modea (uint16_t opcode, uint16_t input)
 
 uint16_t ExtArith::eae_modeb (uint16_t opcode, uint16_t input)
 {
+    ASSERT (! modei);
+
     switch ((opcode >> 1) & 027) {                  // step '3' bits
 
         // ACS - accumulator to step count
@@ -486,8 +499,17 @@ uint16_t ExtArith::divide (uint16_t input, uint16_t divisor)
     DEBUG ("  DIV %04o", divisor);
     uint32_t dividend = (((uint32_t) input & IO_DATA) << 12) | multquot;
     if ((dividend >> 12) < divisor) {
-        multquot = dividend / divisor;
-        input    = IO_SKIP | (dividend % divisor);
+        multquot  = dividend / divisor;
+        input     = IO_SKIP | (dividend % divisor);
+        stepcount = 0;
+    } else if (modei) {
+        // weird values to pass D0BA test
+        //  MQ = untouched (low dividend)
+        //  AC = Y + ~ AC (wacko)
+        //  LINK = 1
+        //  SC = 0
+        input = (divisor + (~ input & IO_DATA)) | IO_SKIP | IO_LINK;
+        stepcount = 0;
     } else if (dividend == ((uint32_t) divisor << 12)) {
         // weird values to pass D0MB test
         multquot = 1;

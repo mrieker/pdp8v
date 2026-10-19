@@ -48,6 +48,7 @@ private:
 
     bool gtflag;
     bool modeb;
+    bool modei;
     uint16_t nextreadaddr;
 };
 
