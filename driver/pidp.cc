@@ -66,6 +66,7 @@ static bool running;
 static pthread_t threadid;
 static uint16_t dfifswitches;
 static uint16_t ledscrams[4096];
+static uint16_t limboma;
 static uint16_t swunscrams[65536>>COLMIN];
 
 static void *pidpthread (void *dummy);
@@ -75,7 +76,7 @@ static void deposbutton ();
 static void exambutton ();
 static void contbutton (uint32_t buttons);
 static void stopbutton ();
-static void loadpcma (uint16_t newpc, uint16_t newma);
+static void loadpc (uint16_t newpc);
 static bool atendofmajorstate ();
 
 void pidp_start ()
@@ -169,6 +170,10 @@ static void *pidpthread (void *dummy)
     if (clock_gettime (CLOCK_REALTIME, &nowts) < 0) ABORT ();
     pidpmsg.seq = nowts.tv_sec * 1000000000ULL + nowts.tv_nsec;
 
+    bool firsttimethrough = false;
+    uint16_t lastswrows[3];
+    memset (lastswrows, 0, sizeof lastswrows);
+
     while (running) {
         pidpmsg.seq ++;
 
@@ -184,7 +189,7 @@ static void *pidpthread (void *dummy)
         if (inlimbo) {
 
             // ldaddr/exam/depos, show mem contents
-            memaddress = memext.iframe | shadow.r.ma;
+            memaddress = memext.iframe | limboma;
             membuffer  = memarray[memaddress];
         } else {
 
@@ -219,6 +224,12 @@ static void *pidpthread (void *dummy)
         // ... also read switches
         if (! pidp_proc (&pidpmsg)) continue;
 
+        // if any switch changed (incl buttons), means someone is using the switches
+        // so disable any switch override by envar 'switchregister'
+        if (! firsttimethrough && (memcmp (lastswrows, pidpmsg.swrows, sizeof lastswrows) != 0)) {
+            swregovr = -1;
+        }
+
         // row 1 - switch register switches
         switchregister   = (swregovr < 0) ? swunscrams[pidpmsg.swrows[0]>>COLMIN] : swregovr;
 
@@ -246,6 +257,9 @@ static void *pidpthread (void *dummy)
         if (butpressed & (1 << COL6)) stopbutton ();
         lastbuttons = buttons;
     badbuttons:;
+
+        memcpy (lastswrows, pidpmsg.swrows, sizeof lastswrows);
+        firsttimethrough = false;
     }
 
     return NULL;
@@ -264,11 +278,14 @@ static void startbutton (uint32_t buttons)
 static void ldaddrbutton ()
 {
     if (ctl_isstopped ()) {
-        loadpcma (switchregister, switchregister);
+        loadpc (switchregister);
         memext.dframe = (dfifswitches & 07000) << 3;
         memext.iframe = (dfifswitches & 00700) << 6;
         inlimbo   = true;
         lastdepos = false;
+        limboma   = switchregister;
+        // light scanning thread displays limboma for MA
+        //  and memarray[limboma] for MB
     }
 }
 
@@ -277,12 +294,10 @@ static void ldaddrbutton ()
 static void deposbutton ()
 {
     if (ctl_isstopped ()) {
-        uint16_t ma = shadow.r.ma;
         if (lastdepos) {
-            ma = (ma + 1) & 07777;
-            loadpcma (shadow.r.pc, ma);
+            limboma = (limboma + 1) & 07777;
         }
-        memarray[memext.iframe|ma] = switchregister;
+        memarray[memext.iframe|limboma] = switchregister;
         inlimbo   = true;
         lastdepos = true;
     }
@@ -293,10 +308,8 @@ static void deposbutton ()
 static void exambutton ()
 {
     if (ctl_isstopped ()) {
-        uint16_t ma = shadow.r.ma;
         if (! lastdepos) {
-            ma = (ma + 1) & 07777;
-            loadpcma (shadow.r.pc, ma);
+            limboma = (limboma + 1) & 07777;
         }
         inlimbo   = true;
         lastdepos = false;
@@ -336,11 +349,11 @@ static void stopbutton ()
 
 // load tubes' program counter and memory address register with given values
 // returns with tubes in middle of FETCH2 with clock still high
-static void loadpcma (uint16_t newpc, uint16_t newma)
+static void loadpc (uint16_t newpc)
 {
     uint16_t saveac = shadow.r.ac;
     bool savelink = shadow.r.link;
-    if (! ctl_ldregs (savelink, saveac, newma, newpc)) ABORT ();
+    if (! ctl_ldregs (savelink, saveac, newpc)) ABORT ();
 }
 
 // stopped in middle of some cycle - see if it is the last cycle of a major state

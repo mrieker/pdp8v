@@ -281,9 +281,9 @@ void ctl_wait ()
 // leaves the tubes stopped in the middle of FETCH2 with clock still high
 // returns true: registers loaded
 //        false: processor was not stopped
-bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc)
+bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newpc)
 {
-    // reset processor and load newpc-2
+    // reset processor and load newpc
     // this puts raspictl main() at wherever it would be for stopped in middle of FETCH2 with clock still high
     uint16_t savedframe = memext.dframe;
     startac = newac;
@@ -297,7 +297,6 @@ bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc)
     // verify results
     ASSERT (shadow.r.link == newlink);
     ASSERT (shadow.r.ac   == newac);
-    ASSERT (shadow.r.ma   == newma);
     ASSERT (shadow.r.pc   == newpc);
 
     return true;

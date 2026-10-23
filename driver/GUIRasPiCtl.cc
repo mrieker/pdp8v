@@ -189,7 +189,7 @@ JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_reset (JNIEnv *env, jclass klass, ji
 // returns:
 //   true = was stopped, reset, now stopped again at end of FETCH1
 //  false = failed
-JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_ldregs (JNIEnv *env, jclass klass, jboolean link, jint ac, jint ma, jint pc)
+JNIEXPORT jboolean JNICALL Java_GUIRasPiCtl_ldregs (JNIEnv *env, jclass klass, jboolean link, jint ac, jint pc)
 {
-    return ctl_ldregs (link, ac, ma, pc);
+    return ctl_ldregs (link, ac, pc);
 }

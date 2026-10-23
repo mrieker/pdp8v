@@ -31,7 +31,7 @@ bool ctl_reset (uint16_t addr, bool resio);
 bool ctl_run ();
 bool ctl_stepcyc ();
 bool ctl_stepins ();
-bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newma, uint16_t newpc);
+bool ctl_ldregs (bool newlink, uint16_t newac, uint16_t newpc);
 void ctl_unlock (bool sigint);
 void ctl_wait ();
 
